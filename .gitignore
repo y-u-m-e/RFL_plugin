@@ -1,0 +1,11 @@
+.gradle
+build
+bin/
+.planning/
+.idea/
+.project
+.settings/
+.classpath
+nbactions.xml
+nb-configuration.xml
+nbproject/
