@@ -631,7 +631,7 @@ public class PlayerCollisionPlugin extends Plugin
         final List<PluginEntry> entries = new ArrayList<>();
         for (Plugin plugin : pluginManager.getPlugins())
         {
-            if (!isPluginEnabled(plugin))
+            if (!pluginManager.isPluginEnabled(plugin))
             {
                 continue;
             }
@@ -1154,31 +1154,6 @@ public class PlayerCollisionPlugin extends Plugin
         {
             throw new IllegalStateException("SHA-256 not available", ex);
         }
-    }
-
-    /**
-     * Determines whether a plugin is enabled using PluginManager capability checks.
-     *
-     * @param plugin plugin instance to check
-     * @return true when plugin appears enabled
-     */
-    private boolean isPluginEnabled(final Plugin plugin)
-    {
-        try
-        {
-            final Object result = pluginManager.getClass()
-                .getMethod("isPluginEnabled", Plugin.class)
-                .invoke(pluginManager, plugin);
-            if (result instanceof Boolean)
-            {
-                return (Boolean) result;
-            }
-        }
-        catch (ReflectiveOperationException ignored)
-        {
-            // Fall through to default behavior when method availability changes across client versions.
-        }
-        return true;
     }
 
     /**
