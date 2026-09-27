@@ -48,7 +48,7 @@ RuneLite client (every player)                yume-api (gateway)             rfl
 ┌────────────────────────────┐   POST /plugins/rfl/report   ┌──────────┐  GET   ┌──────────┐
 │ PluginSnapshotter          │ ─────────── every 10 s ────▶ │ validate │ ◀───── │ read-only│
 │ PohDetector                │                              │ group    │        │ viewer   │
-│ ContactDetector (per frame)│ ◀── GET /plugins/rfl/banned  │ rfl-db   │        └──────────┘
+│ ContactDetector (per frame)│                              │ rfl-db   │        └──────────┘
 │ ReportSender (queue+OkHttp)│                              └──────────┘
 └────────────────────────────┘
 ```
@@ -102,15 +102,15 @@ file, ref right-click player option, and the panel controls for them. Source det
 - Base URL: `https://dev-api.ironforged.gg` while developing, `https://api.ironforged.gg` for
   release — a constant, not a user setting.
 
-### Banned list
+### Write-only
 
-The plugin fetches `GET /plugins/rfl/banned` on login and every 30 minutes, and shows a local
-notification if any enabled plugin is on it, so players find out before a match, not on rfl.gg.
+The plugin only sends. It never reads anything back: no banned list, no match state, no
+warnings. Judging plugins against the rules happens on the server and rfl.gg.
 
 ### Config
 
-One item: `showBannedWarning` (default on). Nothing else is user-tunable; the interval, URL, and
-detection are fixed so all players report identically.
+No user-facing settings. The interval, URL, and detection are fixed so all players report
+identically. The only stored value is the hidden `installId`.
 
 ## 4. Report format
 
@@ -158,7 +158,7 @@ in the `/plugins` index:
 | Route | Purpose |
 |---|---|
 | `POST /plugins/rfl/report` | The only write |
-| `GET /plugins/rfl/banned` | Banned plugin names (from a JSON file in the repo) |
+| `GET /plugins/rfl/banned` | Banned plugin names (from a JSON file in the repo), for rfl.gg only |
 | `GET /plugins/rfl/matches` | Live and recent matches |
 | `GET /plugins/rfl/matches/:id` | Players, reporting status, plugin snapshots, events, corroborated contacts |
 | `GET /plugins/rfl/players/:rsn` | A player's matches, gaps, snapshots |
