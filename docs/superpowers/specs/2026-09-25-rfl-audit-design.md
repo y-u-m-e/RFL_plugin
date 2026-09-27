@@ -105,7 +105,7 @@ file, ref right-click player option, and the panel controls for them. Source det
 ### Write-only
 
 The plugin only sends. It never reads anything back: no banned list, no match state, no
-warnings. Judging plugins against the rules happens on the server and rfl.gg.
+warnings. Judging plugins against the rules happens on rfl.gg.
 
 ### Config
 
@@ -158,13 +158,12 @@ in the `/plugins` index:
 | Route | Purpose |
 |---|---|
 | `POST /plugins/rfl/report` | The only write |
-| `GET /plugins/rfl/banned` | Banned plugin names (from a JSON file in the repo), for rfl.gg only |
 | `GET /plugins/rfl/matches` | Live and recent matches |
 | `GET /plugins/rfl/matches/:id` | Players, reporting status, plugin snapshots, events, corroborated contacts |
 | `GET /plugins/rfl/players/:rsn` | A player's matches, gaps, snapshots |
 
-No auth on any route (decided). The banned list is changed by commit; the git history is its
-audit trail.
+No auth on any route (decided). The API has no notion of banned plugins: it stores what was
+enabled, and rfl.gg judges it against its own configuration JSON (see the rfl.gg spec).
 
 ### Validation and limits (trust boundary — not optional)
 
