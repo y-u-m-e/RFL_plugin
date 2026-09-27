@@ -29,7 +29,7 @@ dependencies {
     testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
 }
 
-group = 'com.playercollision'
+group = 'com.rfl'
 version = '1.0-SNAPSHOT'
 
 tasks.withType(JavaCompile).configureEach {
@@ -41,6 +41,6 @@ tasks.register('runClient', JavaExec) {
     group = 'application'
     description = 'Run RuneLite with the plugin'
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.playercollision.PlayerCollisionPluginTest'
+    mainClass = 'com.rfl.RflPluginTest'
     jvmArgs = ['-ea']
 }

@@ -1,4 +1,4 @@
-package com.playercollision;
+package com.rfl;
 
 import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;
@@ -6,7 +6,7 @@ import net.runelite.client.externalplugins.ExternalPluginManager;
 /**
  * Local launcher used to run RuneLite with this plugin loaded for manual testing.
  */
-public class PlayerCollisionPluginTest
+public class RflPluginTest
 {
     /**
      * Starts RuneLite and loads this plugin as a built-in external plugin.
@@ -16,7 +16,7 @@ public class PlayerCollisionPluginTest
      */
     public static void main(final String[] args) throws Exception
     {
-        ExternalPluginManager.loadBuiltin(PlayerCollisionPlugin.class);
+        ExternalPluginManager.loadBuiltin(RflPlugin.class);
         RuneLite.main(args);
     }
 }
