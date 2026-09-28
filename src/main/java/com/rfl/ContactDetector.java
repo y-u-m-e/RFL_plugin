@@ -1,6 +1,7 @@
 package com.rfl;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,6 +87,20 @@ final class ContactDetector
         }
 
         return names;
+    }
+
+    /**
+     * Closes every currently open pair (an empty box map ends every active pair rather than
+     * dropping it silently), for leaving the POH, a hop, or a logout while reporting is still
+     * enabled. Callers that don't need the resulting {@code contact_end} events (reporting
+     * disabled, plugin shutdown) should call {@link #reset()} instead.
+     *
+     * @param client client used only for its tick count; no player state is read
+     * @return the contact_end events for every pair that was open
+     */
+    List<RflEvent> endAll(Client client)
+    {
+        return tracker.update(Collections.emptyMap(), System.currentTimeMillis(), client.getTickCount());
     }
 
     void reset()

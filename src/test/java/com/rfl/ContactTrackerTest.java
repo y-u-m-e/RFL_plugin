@@ -3,6 +3,7 @@ package com.rfl;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,5 +58,37 @@ public class ContactTrackerTest
         assertEquals("Zed", fromBFirst.b);
         assertEquals(fromAFirst.a, fromBFirst.a);
         assertEquals(fromAFirst.b, fromBFirst.b);
+    }
+
+    @Test
+    public void emptyMapClosesEveryOpenPairAndResetAllowsFreshStart()
+    {
+        ContactTracker t = new ContactTracker();
+
+        // A overlaps both B and C; B and C don't overlap each other, so two pairs are open.
+        Box wide = new Box(0, 200, 0, 100, 0, 100);
+        Box left = new Box(-50, 50, 0, 100, 0, 100);
+        Box right = new Box(150, 250, 0, 100, 0, 100);
+
+        List<RflEvent> started = t.update(Map.of("A", wide, "B", left, "C", right), 0, 0);
+        assertEquals(2, started.size());
+        assertTrue(started.stream().allMatch(e -> "contact_start".equals(e.type)));
+
+        List<RflEvent> ended = t.update(Collections.emptyMap(), 20, 1);
+        assertEquals("update(emptyMap) should close every open pair, one contact_end each", 2, ended.size());
+        assertTrue(ended.stream().allMatch(e -> "contact_end".equals(e.type)));
+
+        // Same overlap after the pairs already closed re-fires immediately (active is empty) --
+        // reset() only matters when a pair is still open. Start one again without closing it,
+        // then prove reset() (not another update) is what clears it for a fresh start.
+        List<RflEvent> restartedBeforeReset = t.update(Map.of("A", wide, "B", left), 40, 2);
+        assertEquals(1, restartedBeforeReset.size());
+        assertEquals("contact_start", restartedBeforeReset.get(0).type);
+
+        t.reset();
+
+        List<RflEvent> restartedAfterReset = t.update(Map.of("A", wide, "B", left), 60, 3);
+        assertEquals("reset() should let the same still-overlapping pair start fresh", 1, restartedAfterReset.size());
+        assertEquals("contact_start", restartedAfterReset.get(0).type);
     }
 }
