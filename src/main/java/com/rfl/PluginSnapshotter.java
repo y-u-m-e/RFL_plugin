@@ -26,6 +26,8 @@ import net.runelite.client.plugins.PluginManager;
 @Singleton
 class PluginSnapshotter
 {
+    static final int MAX_NAME = 64;
+
     private final PluginManager pluginManager;
 
     @Inject
@@ -116,9 +118,21 @@ class PluginSnapshotter
         final PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
         if (descriptor != null && descriptor.name() != null && !descriptor.name().trim().isEmpty())
         {
-            return descriptor.name().trim();
+            return truncateName(descriptor.name().trim());
         }
-        return plugin.getClass().getSimpleName();
+        return truncateName(plugin.getClass().getSimpleName());
+    }
+
+    /**
+     * Cuts a plugin name to the server's 64-char string limit (the server truncates too; this
+     * keeps the hash and the wire value identical on both ends).
+     *
+     * @param name plugin display name
+     * @return at most the first 64 characters of {@code name}
+     */
+    static String truncateName(final String name)
+    {
+        return name.length() <= MAX_NAME ? name : name.substring(0, MAX_NAME);
     }
 
     /**

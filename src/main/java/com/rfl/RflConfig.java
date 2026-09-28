@@ -18,8 +18,9 @@ public interface RflConfig extends Config
     @ConfigItem(
         keyName = "enableReporting",
         name = "Enable reporting",
-        description = "Reports your enabled plugins, world, RSN and nearby player names to api.ironforged.gg "
-            + "during RFL matches. Published publicly on rfl.gg. Off until you enable it.",
+        description = "While logged in, every 10 seconds, sends your RSN, world, enabled plugin list, and - "
+            + "inside a player-owned house - the names of nearby players and contact events, to "
+            + "api.ironforged.gg. Published publicly on rfl.gg. Off until you enable it.",
         warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by "
             + "RuneLite developers"
     )

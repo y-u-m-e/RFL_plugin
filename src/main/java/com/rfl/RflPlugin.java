@@ -1,6 +1,7 @@
 package com.rfl;
 
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -203,14 +204,15 @@ public class RflPlugin extends Plugin
                 return;
             }
 
-            final List<RflEvent> drained = eventQueue.drain();
+            final List<RflEvent> drained = eventQueue.drain(EventQueue.MAX_BATCH);
             final RflReport report = new RflReport(
                 rsn,
                 config.installId(),
                 client.getWorld(),
                 System.currentTimeMillis(),
                 inPoh,
-                contactDetector.seen(client),
+                // Nearby names only leave the client inside a POH (what the Hub description promises).
+                inPoh ? contactDetector.seen(client) : Collections.emptyList(),
                 snapshotter.snapshot(),
                 drained);
 

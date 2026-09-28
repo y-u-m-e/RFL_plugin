@@ -19,6 +19,27 @@ public class EventQueueTest
     }
 
     @Test
+    public void drainCapsBatchAndKeepsTheRestInOrder()
+    {
+        EventQueue q = new EventQueue();
+        for (int i = 0; i < 450; i++)
+        {
+            q.add(RflEvent.pluginToggle(i, i, "P" + i, true));
+        }
+
+        List<RflEvent> first = q.drain(EventQueue.MAX_BATCH);
+        assertEquals(400, first.size());
+        assertEquals("P0", first.get(0).plugin);
+        assertEquals("P399", first.get(399).plugin);
+
+        List<RflEvent> second = q.drain(EventQueue.MAX_BATCH);
+        assertEquals(50, second.size());
+        assertEquals("P400", second.get(0).plugin);
+        assertEquals("P449", second.get(49).plugin);
+        assertEquals(0, q.drain(EventQueue.MAX_BATCH).size());
+    }
+
+    @Test
     public void requeuePutsEventsBackFirst()
     {
         EventQueue q = new EventQueue();
