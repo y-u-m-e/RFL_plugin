@@ -3,6 +3,7 @@ package com.rfl;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
 
 /**
@@ -16,6 +17,11 @@ final class EventQueue
     private static final long MAX_AGE_MS = 300_000;
 
     private final List<RflEvent> events = new ArrayList<>();
+
+    @Inject
+    EventQueue()
+    {
+    }
 
     synchronized void add(final RflEvent event)
     {
