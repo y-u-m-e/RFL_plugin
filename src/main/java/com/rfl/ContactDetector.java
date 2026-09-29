@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javax.inject.Inject;
 
 import net.runelite.api.AABB;
 import net.runelite.api.Client;
@@ -36,6 +37,13 @@ import net.runelite.client.util.Text;
 final class ContactDetector
 {
     private final ContactTracker tracker = new ContactTracker();
+    private final ContactHighlights highlights;
+
+    @Inject
+    ContactDetector(ContactHighlights highlights)
+    {
+        this.highlights = highlights;
+    }
 
     List<RflEvent> onFrame(Client client)
     {
@@ -60,7 +68,19 @@ final class ContactDetector
             }
         }
 
-        return tracker.update(boxes, System.currentTimeMillis(), client.getTickCount());
+        long now = System.currentTimeMillis();
+        List<RflEvent> events = tracker.update(boxes, now, client.getTickCount());
+        for (RflEvent event : events)
+        {
+            Box a = boxes.get(event.a);
+            Box b = boxes.get(event.b);
+            if ("contact_start".equals(event.type) && a != null && b != null)
+            {
+                int[] center = Box.overlapCenter(a, b);
+                highlights.add(center[0], center[1], now);
+            }
+        }
+        return events;
     }
 
     List<String> seen(Client client)
@@ -106,6 +126,7 @@ final class ContactDetector
     void reset()
     {
         tracker.reset();
+        highlights.clear();
     }
 
     private static Box boxFor(Player player)

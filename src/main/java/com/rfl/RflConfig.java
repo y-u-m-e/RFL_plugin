@@ -1,9 +1,13 @@
 package com.rfl;
 
+import java.awt.Color;
+import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
+import net.runelite.client.config.Units;
 
 /**
  * User configuration for the RFL audit plugin.
@@ -25,6 +29,62 @@ public interface RflConfig extends Config
         position = 4
     )
     String FEATURES_SECTION = "features";
+
+    @ConfigSection(
+        name = "Display",
+        description = "What the plugin draws on your screen. Display only; nothing here is reported.",
+        position = 8
+    )
+    String DISPLAY_SECTION = "display";
+
+    /**
+     * @return true to briefly highlight the tile under each contact
+     */
+    @ConfigItem(
+        keyName = "highlightContacts",
+        name = "Highlight contacts",
+        description = "Briefly highlights the tile under the point where two players' models touch. "
+            + "Needs reporting and contact detection on, inside a player-owned house.",
+        section = DISPLAY_SECTION,
+        position = 9
+    )
+    default boolean highlightContacts()
+    {
+        return true;
+    }
+
+    /**
+     * @return colour of the contact tile highlight, including transparency
+     */
+    @Alpha
+    @ConfigItem(
+        keyName = "contactHighlightColor",
+        name = "Contact highlight colour",
+        description = "Colour of the contact tile highlight.",
+        section = DISPLAY_SECTION,
+        position = 10
+    )
+    default Color contactHighlightColor()
+    {
+        return new Color(255, 230, 0, 153);
+    }
+
+    /**
+     * @return how long a contact highlight takes to fade out, in milliseconds
+     */
+    @Range(min = 200, max = 5000)
+    @Units(Units.MILLISECONDS)
+    @ConfigItem(
+        keyName = "highlightDurationMs",
+        name = "Highlight duration",
+        description = "How long a contact highlight takes to fade out.",
+        section = DISPLAY_SECTION,
+        position = 11
+    )
+    default int highlightDurationMs()
+    {
+        return 1200;
+    }
 
     /**
      * Controls whether match reports are sent to the RFL audit server.

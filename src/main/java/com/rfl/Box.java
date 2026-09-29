@@ -35,4 +35,17 @@ final class Box
 
         return Math.min(x, Math.min(y, z));
     }
+
+    /**
+     * Scene-space centre of the horizontal intersection of two overlapping boxes: the point a
+     * contact happened at. Only meaningful when {@link #overlapDepth} is positive.
+     *
+     * @return {x, y} in local units
+     */
+    static int[] overlapCenter(Box a, Box b)
+    {
+        int x = (Math.max(a.minX, b.minX) + Math.min(a.maxX, b.maxX)) / 2;
+        int y = (Math.max(a.minY, b.minY) + Math.min(a.maxY, b.maxY)) / 2;
+        return new int[]{x, y};
+    }
 }

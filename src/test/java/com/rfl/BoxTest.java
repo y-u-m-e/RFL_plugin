@@ -1,5 +1,6 @@
 package com.rfl;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 import org.junit.Test;
@@ -30,5 +31,12 @@ public class BoxTest
     public void contained()
     {
         assertEquals(20, Box.overlapDepth(a, new Box(40, 60, 10, 90, 10, 90)));
+    }
+
+    @Test
+    public void overlapCenterIsTheMiddleOfTheIntersection()
+    {
+        // x overlap 70..100, y overlap 20..60 -> centre (85, 40)
+        assertArrayEquals(new int[]{85, 40}, Box.overlapCenter(a, new Box(70, 170, 20, 60, 0, 100)));
     }
 }

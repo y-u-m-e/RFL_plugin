@@ -24,6 +24,7 @@ import net.runelite.client.events.PluginChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.task.Schedule;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Text;
 
 /**
@@ -62,6 +63,12 @@ public class RflPlugin extends Plugin
     @Inject
     private OkHttpClient httpClient;
 
+    @Inject
+    private OverlayManager overlayManager;
+
+    @Inject
+    private ContactHighlightOverlay contactHighlightOverlay;
+
     /**
      * Cached each {@link GameTick}; {@link ClientTick} reads it rather than recomputing per
      * frame since {@link PohDetector} only needs to run once per game tick.
@@ -87,11 +94,13 @@ public class RflPlugin extends Plugin
         {
             config.installId(UUID.randomUUID().toString());
         }
+        overlayManager.add(contactHighlightOverlay);
     }
 
     @Override
     protected void shutDown()
     {
+        overlayManager.remove(contactHighlightOverlay);
         contactDetector.reset();
     }
 
