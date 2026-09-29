@@ -91,4 +91,26 @@ public class ContactTrackerTest
         assertEquals("reset() should let the same still-overlapping pair start fresh", 1, restartedAfterReset.size());
         assertEquals("contact_start", restartedAfterReset.get(0).type);
     }
+
+    @Test
+    public void grazesBelowTheStartDepthAreNotContactsButAStartedContactHoldsUntilSeparated()
+    {
+        ContactTracker t = new ContactTracker();
+        Cylinder amy = new Cylinder(0, 0, 50, 0, 100);
+
+        // Overlap 10 (< 16): a graze, no contact.
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", new Cylinder(90, 0, 50, 0, 100)), 0, 0).isEmpty());
+
+        // Overlap 20: contact starts.
+        List<RflEvent> start = t.update(Map.of("Amy", amy, "Zed", new Cylinder(80, 0, 50, 0, 100)), 20, 1);
+        assertEquals("contact_start", start.get(0).type);
+
+        // Back to overlap 5: still the same contact, no flicker.
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", new Cylinder(95, 0, 50, 0, 100)), 40, 1).isEmpty());
+
+        // Fully apart: ends, carrying the max depth.
+        List<RflEvent> end = t.update(Map.of("Amy", amy, "Zed", new Cylinder(120, 0, 50, 0, 100)), 60, 2);
+        assertEquals("contact_end", end.get(0).type);
+        assertEquals(20, (int) end.get(0).depth);
+    }
 }

@@ -15,6 +15,13 @@ import java.util.Map;
  */
 final class ContactTracker
 {
+    /**
+     * Overlap (local units, 128 = one tile) a pair must reach before it counts as a contact. In
+     * game, diagonal walk-bys graze at depth 1-13 while real walk-ins reach 28+. Once started, a
+     * contact holds until the bodies fully separate, so it doesn't flicker around the threshold.
+     */
+    static final int START_DEPTH = 16;
+
     // pairKey -> max overlap depth seen since the pair became active.
     private final Map<String, Integer> active = new HashMap<>();
 
@@ -31,6 +38,10 @@ final class ContactTracker
 
             if (maxSoFar == null)
             {
+                if (depth < START_DEPTH)
+                {
+                    continue;
+                }
                 String[] pair = splitKey(key);
                 events.add(RflEvent.contactStart(now, tick, pair[0], pair[1], depth));
                 active.put(key, depth);
