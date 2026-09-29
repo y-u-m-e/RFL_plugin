@@ -18,10 +18,10 @@ public class ContactTrackerTest
         ContactTracker t = new ContactTracker();
         Cylinder p = new Cylinder(50, 50, 50, 0, 100);
 
-        List<RflEvent> e1 = t.update(Map.of("Zed", p, "Amy", new Cylinder(130, 50, 50, 0, 100)), 1000, 1);
+        List<RflEvent> e1 = t.update(Map.of("Zed", p, "Amy", new Cylinder(110, 50, 50, 0, 100)), 1000, 1);
         assertEquals("contact_start", e1.get(0).type);
         assertEquals("Amy", e1.get(0).a);
-        assertEquals(20, (int) e1.get(0).depth);
+        assertEquals(40, (int) e1.get(0).depth);
 
         assertTrue(t.update(Map.of("Zed", p, "Amy", new Cylinder(100, 50, 50, 0, 100)), 1020, 1).isEmpty());
 
@@ -98,11 +98,11 @@ public class ContactTrackerTest
         ContactTracker t = new ContactTracker();
         Cylinder amy = new Cylinder(0, 0, 50, 0, 100);
 
-        // Overlap 10 (< 16): a graze, no contact.
-        assertTrue(t.update(Map.of("Amy", amy, "Zed", new Cylinder(90, 0, 50, 0, 100)), 0, 0).isEmpty());
+        // Overlap 27 (< 40): the deepest edge-case graze measured in game, no contact.
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", new Cylinder(73, 0, 50, 0, 100)), 0, 0).isEmpty());
 
-        // Overlap 20: contact starts.
-        List<RflEvent> start = t.update(Map.of("Amy", amy, "Zed", new Cylinder(80, 0, 50, 0, 100)), 20, 1);
+        // Overlap 40: contact starts.
+        List<RflEvent> start = t.update(Map.of("Amy", amy, "Zed", new Cylinder(60, 0, 50, 0, 100)), 20, 1);
         assertEquals("contact_start", start.get(0).type);
 
         // Back to overlap 5: still the same contact, no flicker.
@@ -111,6 +111,6 @@ public class ContactTrackerTest
         // Fully apart: ends, carrying the max depth.
         List<RflEvent> end = t.update(Map.of("Amy", amy, "Zed", new Cylinder(120, 0, 50, 0, 100)), 60, 2);
         assertEquals("contact_end", end.get(0).type);
-        assertEquals(20, (int) end.get(0).depth);
+        assertEquals(40, (int) end.get(0).depth);
     }
 }
