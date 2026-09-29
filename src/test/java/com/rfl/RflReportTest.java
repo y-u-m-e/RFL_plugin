@@ -23,7 +23,8 @@ public class RflReportTest
     public void jsonUsesSpecFieldNames()
     {
         RflReport report = new RflReport("Some Player", "install-1", 330, 1_000L, true,
-            List.of("Player B"), List.of(new PluginEntry("GPU", "BUILTIN")), List.of());
+            List.of("Player B"), List.of(new PluginEntry("GPU", "BUILTIN")), List.of(),
+            new RflReport.Features(true, true, true));
         String json = new GsonBuilder().create().toJson(report);
 
         assertTrue(json.contains("\"v\":1"));
@@ -36,5 +37,19 @@ public class RflReportTest
         assertTrue(json.contains("\"seen\":[\"Player B\"]"));
         assertTrue(json.contains("\"plugins\":["));
         assertTrue(json.contains("\"events\":[]"));
+        assertTrue(json.contains("\"features\":{\"plugins\":true,\"contacts\":true,\"nearby\":true}"));
+    }
+
+    @Test
+    public void disabledFeaturesBlankTheirFieldsAndAreReported()
+    {
+        RflReport report = new RflReport("Some Player", "install-1", 330, 1_000L, true,
+            List.of("Player B"), List.of(new PluginEntry("GPU", "BUILTIN")), List.of(),
+            new RflReport.Features(false, false, false));
+        String json = new GsonBuilder().create().toJson(report);
+
+        assertTrue(json.contains("\"seen\":[]"));
+        assertTrue(json.contains("\"plugins\":[]"));
+        assertTrue(json.contains("\"features\":{\"plugins\":false,\"contacts\":false,\"nearby\":false}"));
     }
 }

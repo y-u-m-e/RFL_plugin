@@ -105,7 +105,8 @@ public class RflPlugin extends Plugin
     public void onClientTick(final ClientTick event)
     {
         final boolean reporting = config.enableReporting();
-        final boolean watching = reporting && client.getGameState() == GameState.LOGGED_IN && inPoh;
+        final boolean watching = reporting && config.reportContacts()
+            && client.getGameState() == GameState.LOGGED_IN && inPoh;
 
         if (watching)
         {
@@ -116,7 +117,7 @@ public class RflPlugin extends Plugin
             return;
         }
 
-        // Not watching this tick (reporting off, not logged in, or outside the POH): never
+        // Not watching this tick (reporting or contacts off, not logged in, or outside the POH): never
         // leave the tracker holding pairs across a period we weren't watching. Close them with
         // a real contact_end when reporting is still on to queue, otherwise there's nothing to
         // send so just clear.
@@ -159,7 +160,7 @@ public class RflPlugin extends Plugin
     @Subscribe
     public void onPluginChanged(final PluginChanged event)
     {
-        if (!config.enableReporting())
+        if (!config.enableReporting() || !config.reportPlugins())
         {
             return;
         }
@@ -214,7 +215,8 @@ public class RflPlugin extends Plugin
                 // Nearby names only leave the client inside a POH (what the Hub description promises).
                 inPoh ? contactDetector.seen(client) : Collections.emptyList(),
                 snapshotter.snapshot(),
-                drained);
+                drained,
+                new RflReport.Features(config.reportPlugins(), config.reportContacts(), config.reportNearby()));
 
             httpClient.dispatcher().executorService().execute(() -> reportSender.send(report, drained));
         });

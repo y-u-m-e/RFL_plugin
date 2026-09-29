@@ -109,8 +109,13 @@ warnings. Judging plugins against the rules happens on rfl.gg.
 
 ### Config
 
-No user-facing settings. The interval, URL, and detection are fixed so all players report
-identically. The only stored value is the hidden `installId`.
+The interval, URL, and detection are fixed so all players report identically. Settings:
+`enableReporting` (master switch, off by default), plus three feature toggles under "Features",
+all on by default: `reportPlugins` (plugin list + `plugin_toggle` events), `reportContacts`
+(contact detection), `reportNearby` (`seen`). A disabled feature sends an empty field and is
+listed in every report's `features`; the server stores it and rfl.gg shows it as a flag —
+turning a feature off is always a visible act. The hidden `installId` is the only other stored
+value.
 
 ## 4. Report format
 
@@ -127,6 +132,7 @@ identically. The only stored value is the hidden `installId`.
   "inPoh": true,
   "seen": ["Player B", "Player C"],
   "plugins": [{ "name": "GPU", "source": "BUILTIN" }],
+  "features": { "plugins": true, "contacts": true, "nearby": true },
   "events": [
     { "at": 1789999998120, "tick": 51234, "type": "contact_start",
       "a": "Player B", "b": "Player C", "depth": 34 },
@@ -141,6 +147,9 @@ identically. The only stored value is the hidden `installId`.
 - `plugins` is the full enabled list every batch (~5 KB). The server stores a snapshot only when
   its hash changes. No diffing, no resync protocol.
 - `seen` is every other player the client can currently see; empty outside a POH is fine.
+- `features` is required: exactly three booleans, true = enabled. Stored as `features_off`
+  (sorted, comma-separated) on `rfl_players` (latest report) and `rfl_match_players` (union of
+  everything reported off during that match).
 - `at` / `sentAt` are client epoch ms. `tick` is `client.getTickCount()` — local to that client,
   only meaningful for ordering one observer's events.
 
