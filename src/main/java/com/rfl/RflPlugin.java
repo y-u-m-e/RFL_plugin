@@ -212,6 +212,8 @@ public class RflPlugin extends Plugin
                 client.getWorld(),
                 System.currentTimeMillis(),
                 inPoh,
+                config.matchCode(),
+                config.team(),
                 // Nearby names only leave the client inside a POH (what the Hub description promises).
                 inPoh ? contactDetector.seen(client) : Collections.emptyList(),
                 snapshotter.snapshot(),

@@ -110,12 +110,18 @@ warnings. Judging plugins against the rules happens on rfl.gg.
 ### Config
 
 The interval, URL, and detection are fixed so all players report identically. Settings:
-`enableReporting` (master switch, off by default), plus three feature toggles under "Features",
-all on by default: `reportPlugins` (plugin list + `plugin_toggle` events), `reportContacts`
+`enableReporting` (master switch, off by default); under "Match", two free-text labels, both
+empty by default — `matchCode` ("Match code": the code the league gave this game, e.g. `W3-G2`)
+and `team` ("Team"); then three feature toggles under "Features", all on by default: `reportPlugins` (plugin list + `plugin_toggle` events), `reportContacts`
 (contact detection), `reportNearby` (`seen`). A disabled feature sends an empty field and is
 listed in every report's `features`; the server stores it and rfl.gg shows it as a flag —
 turning a feature off is always a visible act. The hidden `installId` is the only other stored
 value.
+
+`matchCode` and `team` are sent on every report, trimmed and capped at 32 characters
+(`matchCode` also uppercased). They are **labels, never grouping keys**: matches are still
+formed by the server from world + POH + `seen` (§5), so changing your code cannot take you out
+of a match — it only gets you flagged.
 
 ## 4. Report format
 
@@ -130,6 +136,8 @@ value.
   "world": 330,
   "sentAt": 1790000000000,
   "inPoh": true,
+  "matchCode": "W3-G2",
+  "team": "Red",
   "seen": ["Player B", "Player C"],
   "plugins": [{ "name": "GPU", "source": "BUILTIN" }],
   "features": { "plugins": true, "contacts": true, "nearby": true },
@@ -150,6 +158,8 @@ value.
 - `features` is required: exactly three booleans, true = enabled. Stored as `features_off`
   (sorted, comma-separated) on `rfl_players` (latest report) and `rfl_match_players` (union of
   everything reported off during that match).
+- `matchCode` and `team` are required strings, empty allowed. The server trims both, uppercases
+  `matchCode`, and truncates each to 32 characters (truncated, not rejected); a non-string is `400`.
 - `at` / `sentAt` are client epoch ms. `tick` is `client.getTickCount()` — local to that client,
   only meaningful for ordering one observer's events.
 
@@ -167,9 +177,9 @@ in the `/plugins` index:
 | Route | Purpose |
 |---|---|
 | `POST /plugins/rfl/report` | The only write |
-| `GET /plugins/rfl/matches` | Live and recent matches |
-| `GET /plugins/rfl/matches/:id` | Players, reporting status, plugin snapshots, events, corroborated contacts |
-| `GET /plugins/rfl/players/:rsn` | A player's matches, gaps, snapshots |
+| `GET /plugins/rfl/matches` | Live and recent matches (newest 50), each with its `code`; optional `?code=W3-G2` filter |
+| `GET /plugins/rfl/matches/:id` | `code`; players (reporting status, `matchCode`, `team`, `codeMismatch`, plugin snapshots), all events, corroborated contacts |
+| `GET /plugins/rfl/players/:rsn` | A player's matches (each with the match's `code` and the player's `matchCode` / `team`), gaps, snapshots |
 
 No auth on any route (decided). The API has no notion of banned plugins: it stores what was
 enabled, and rfl.gg judges it against its own configuration JSON (see the rfl.gg spec).
@@ -184,11 +194,16 @@ enabled, and rfl.gg judges it against its own configuration JSON (see the rfl.gg
 
 | Table | Holds | Written |
 |---|---|---|
-| `rfl_players` | rsn (PK), install_id, last_report_at, world, in_poh, seen_json, plugin_hash | upsert every report |
+| `rfl_players` | rsn (PK), install_id, last_report_at, world, in_poh, seen_json, plugin_hash, features_off, match_code, team | upsert every report |
 | `rfl_plugin_snapshots` | rsn, install_id, at, hash, plugins_json | only when hash changes |
 | `rfl_matches` | id, world, started_at, last_active_at | group forms / updates |
-| `rfl_match_players` | match_id, rsn, first_at, last_at, reporting (0/1), max_observers | every in-POH report |
+| `rfl_match_players` | match_id, rsn, first_at, last_at, reporting (0/1), max_observers, features_off, match_code, team | every in-POH report |
 | `rfl_events` | id, match_id, observer_rsn, at (server time), tick, type, a, b, depth, plugin, enabled | from batches + server |
+
+Columns added after first deploy (`features_off`, `match_code`, `team`) are also added with a
+guarded `ALTER TABLE ... ADD COLUMN` (duplicate-column errors ignored), so older tables upgrade in
+place. `match_code` / `team` on `rfl_match_players` come from the reporter's latest in-POH report
+in that match; seen-only rows keep `''`.
 
 ### Grouping (on write)
 
@@ -204,6 +219,15 @@ this is the "plugin off" flag.
   `last_at` ending before the match's `last_active_at` shows it on read. (No cron needed, and
   staging has none.)
 - `install_conflict`: two `installId`s report the same RSN within 25 s of each other.
+
+### Match code (on read)
+
+A match's `code` is the most common non-empty `match_code` among its players with
+`reporting = 1`; a tie goes to the code whose player has the latest `last_at`; no codes → `null`.
+Computed in SQL per request (one query for the list). A reporting player gets
+`codeMismatch = true` when the match has a code and theirs differs — including an empty code
+while others agree. Players who never report are never flagged. `?code=` on the list is trimmed
+and uppercased before comparing against the computed code.
 
 ### Corroboration (on read)
 

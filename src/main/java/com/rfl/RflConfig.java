@@ -12,10 +12,17 @@ import net.runelite.client.config.ConfigSection;
 public interface RflConfig extends Config
 {
     @ConfigSection(
+        name = "Match",
+        description = "The match you're playing. Sent with every report and shown publicly on rfl.gg.",
+        position = 1
+    )
+    String MATCH_SECTION = "match";
+
+    @ConfigSection(
         name = "Features",
         description = "Each feature can be turned off. Any feature that is off is reported and shown "
             + "publicly on rfl.gg as a flag.",
-        position = 1
+        position = 4
     )
     String FEATURES_SECTION = "features";
 
@@ -40,6 +47,37 @@ public interface RflConfig extends Config
     }
 
     /**
+     * @return the league's code for this game, as typed (normalized when sent)
+     */
+    @ConfigItem(
+        keyName = "matchCode",
+        name = "Match code",
+        description = "The code your league gave this game, e.g. W3-G2. Shown on rfl.gg; a code that "
+            + "differs from the rest of your match is flagged.",
+        section = MATCH_SECTION,
+        position = 2
+    )
+    default String matchCode()
+    {
+        return "";
+    }
+
+    /**
+     * @return the player's team name for this match, as typed (normalized when sent)
+     */
+    @ConfigItem(
+        keyName = "team",
+        name = "Team",
+        description = "Your team name for this match. Shown on rfl.gg.",
+        section = MATCH_SECTION,
+        position = 3
+    )
+    default String team()
+    {
+        return "";
+    }
+
+    /**
      * @return true to send the enabled plugin list and plugin toggle events
      */
     @ConfigItem(
@@ -48,7 +86,7 @@ public interface RflConfig extends Config
         description = "Sends your enabled plugin list and plugin on/off changes. Turning this off is "
             + "reported and shown publicly on rfl.gg as a flag.",
         section = FEATURES_SECTION,
-        position = 2
+        position = 5
     )
     default boolean reportPlugins()
     {
@@ -64,7 +102,7 @@ public interface RflConfig extends Config
         description = "Detects and sends contact events between players inside a player-owned house. "
             + "Turning this off is reported and shown publicly on rfl.gg as a flag.",
         section = FEATURES_SECTION,
-        position = 3
+        position = 6
     )
     default boolean reportContacts()
     {
@@ -80,7 +118,7 @@ public interface RflConfig extends Config
         description = "Sends the names of nearby players inside a player-owned house. Turning this off "
             + "is reported and shown publicly on rfl.gg as a flag.",
         section = FEATURES_SECTION,
-        position = 4
+        position = 7
     )
     default boolean reportNearby()
     {
