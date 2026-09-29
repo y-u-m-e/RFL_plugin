@@ -1,30 +1,25 @@
 package com.rfl;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
 public class PohDetectorTest
 {
     @Test
-    public void decodesRegionFromChunkCoordinates()
+    public void recognisesRuneLitePohTemplateRegions()
     {
-        int chunkX = 100;
-        int chunkY = 200;
-        int chunkData = (chunkX << 14) | (chunkY << 3);
-
-        assertEquals(((chunkX >> 3) << 8) | (chunkY >> 3), PohDetector.regionIdFromChunkData(chunkData));
+        for (int region : new int[]{7257, 7534, 7535, 7790, 7791, 8046, 8047, 8302, 8303})
+        {
+            assertTrue(String.valueOf(region), PohDetector.isPohRegion(region));
+        }
     }
 
     @Test
-    public void decodesKnownPohRegion()
+    public void rejectsTheOldGuessedRegionsAndOrdinaryRegions()
     {
-        // Inverse of WorldPoint#getRegionID's ((x >> 6) << 8) | (y >> 6): region 7513 is
-        // regionX=29, regionY=25, i.e. chunkX=29*8, chunkY=25*8.
-        int regionX = 7513 >> 8;
-        int regionY = 7513 & 0xFF;
-        int chunkData = ((regionX * 8) << 14) | ((regionY * 8) << 3);
-
-        assertEquals(7513, PohDetector.regionIdFromChunkData(chunkData));
+        assertFalse(PohDetector.isPohRegion(7513));
+        assertFalse(PohDetector.isPohRegion(12850)); // Lumbridge
     }
 }
