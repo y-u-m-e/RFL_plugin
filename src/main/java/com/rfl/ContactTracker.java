@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Pair state machine over per-tick player boxes. Names are expected to already be
+ * Pair state machine over per-tick player bodies. Names are expected to already be
  * {@code Text.sanitize}d by the caller (Task 4) so two clients derive the identical pair key
  * regardless of non-breaking spaces in the raw RSN.
  *
@@ -18,9 +18,9 @@ final class ContactTracker
     // pairKey -> max overlap depth seen since the pair became active.
     private final Map<String, Integer> active = new HashMap<>();
 
-    List<RflEvent> update(Map<String, Box> boxes, long now, int tick)
+    List<RflEvent> update(Map<String, Cylinder> bodies, long now, int tick)
     {
-        Map<String, Integer> currentDepths = currentOverlaps(boxes);
+        Map<String, Integer> currentDepths = currentOverlaps(bodies);
         List<RflEvent> events = new ArrayList<>();
 
         for (Map.Entry<String, Integer> entry : currentDepths.entrySet())
@@ -63,10 +63,10 @@ final class ContactTracker
         active.clear();
     }
 
-    private static Map<String, Integer> currentOverlaps(Map<String, Box> boxes)
+    private static Map<String, Integer> currentOverlaps(Map<String, Cylinder> bodies)
     {
         Map<String, Integer> depths = new HashMap<>();
-        List<String> names = new ArrayList<>(boxes.keySet());
+        List<String> names = new ArrayList<>(bodies.keySet());
 
         for (int i = 0; i < names.size(); i++)
         {
@@ -77,7 +77,7 @@ final class ContactTracker
                 String a = x.compareTo(y) <= 0 ? x : y;
                 String b = x.compareTo(y) <= 0 ? y : x;
 
-                int depth = Box.overlapDepth(boxes.get(a), boxes.get(b));
+                int depth = Cylinder.overlapDepth(bodies.get(a), bodies.get(b));
                 if (depth > 0)
                 {
                     depths.put(pairKey(a, b), depth);

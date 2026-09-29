@@ -33,7 +33,7 @@ Decisions made during design:
 | Storage | New D1: `rfl-db` (prod), `rfl-db-dev` (staging), binding `RFL_DB` |
 | Player identity | **RSN only, no auth.** Plus a per-install ID to flag duplicate senders |
 | When it runs | Plugin reporting whenever logged in; contact detection only inside a POH |
-| Contact precision | Model bounding boxes first; the test is isolated so a cylinder can replace it |
+| Contact precision | Upright cylinder per player (radius from the unrotated model bounds, so turning doesn't grow it). Replaced the first axis-aligned boxes, which touched on diagonals in-game |
 | Report interval | ~10 s |
 | Site | New read-only site at rfl.gg; **everything public**, no login |
 

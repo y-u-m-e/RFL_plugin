@@ -16,16 +16,16 @@ public class ContactTrackerTest
     public void startThenEndCarriesMaxDepth()
     {
         ContactTracker t = new ContactTracker();
-        Box p = new Box(0, 100, 0, 100, 0, 100);
+        Cylinder p = new Cylinder(50, 50, 50, 0, 100);
 
-        List<RflEvent> e1 = t.update(Map.of("Zed", p, "Amy", new Box(80, 180, 0, 100, 0, 100)), 1000, 1);
+        List<RflEvent> e1 = t.update(Map.of("Zed", p, "Amy", new Cylinder(130, 50, 50, 0, 100)), 1000, 1);
         assertEquals("contact_start", e1.get(0).type);
         assertEquals("Amy", e1.get(0).a);
         assertEquals(20, (int) e1.get(0).depth);
 
-        assertTrue(t.update(Map.of("Zed", p, "Amy", new Box(50, 150, 0, 100, 0, 100)), 1020, 1).isEmpty());
+        assertTrue(t.update(Map.of("Zed", p, "Amy", new Cylinder(100, 50, 50, 0, 100)), 1020, 1).isEmpty());
 
-        List<RflEvent> e3 = t.update(Map.of("Zed", p, "Amy", new Box(300, 400, 0, 100, 0, 100)), 1040, 2);
+        List<RflEvent> e3 = t.update(Map.of("Zed", p, "Amy", new Cylinder(350, 50, 50, 0, 100)), 1040, 2);
         assertEquals("contact_end", e3.get(0).type);
         assertEquals(50, (int) e3.get(0).depth);
     }
@@ -34,22 +34,22 @@ public class ContactTrackerTest
     public void playerLeavingViewEndsContact()
     {
         ContactTracker t = new ContactTracker();
-        t.update(Map.of("A", new Box(0, 100, 0, 100, 0, 100), "B", new Box(50, 150, 0, 100, 0, 100)), 0, 0);
-        assertEquals("contact_end", t.update(Map.of("A", new Box(0, 100, 0, 100, 0, 100)), 20, 0).get(0).type);
+        t.update(Map.of("A", new Cylinder(50, 50, 50, 0, 100), "B", new Cylinder(100, 50, 50, 0, 100)), 0, 0);
+        assertEquals("contact_end", t.update(Map.of("A", new Cylinder(50, 50, 50, 0, 100)), 20, 0).get(0).type);
     }
 
     @Test
     public void pairOrderIndependentOfInsertion()
     {
-        Box a = new Box(0, 100, 0, 100, 0, 100);
-        Box b = new Box(50, 150, 0, 100, 0, 100);
+        Cylinder a = new Cylinder(50, 50, 50, 0, 100);
+        Cylinder b = new Cylinder(100, 50, 50, 0, 100);
 
-        Map<String, Box> insertBFirst = new LinkedHashMap<>();
+        Map<String, Cylinder> insertBFirst = new LinkedHashMap<>();
         insertBFirst.put("Zed", b);
         insertBFirst.put("Amy", a);
         RflEvent fromBFirst = new ContactTracker().update(insertBFirst, 0, 0).get(0);
 
-        Map<String, Box> insertAFirst = new LinkedHashMap<>();
+        Map<String, Cylinder> insertAFirst = new LinkedHashMap<>();
         insertAFirst.put("Amy", a);
         insertAFirst.put("Zed", b);
         RflEvent fromAFirst = new ContactTracker().update(insertAFirst, 0, 0).get(0);
@@ -66,9 +66,9 @@ public class ContactTrackerTest
         ContactTracker t = new ContactTracker();
 
         // A overlaps both B and C; B and C don't overlap each other, so two pairs are open.
-        Box wide = new Box(0, 200, 0, 100, 0, 100);
-        Box left = new Box(-50, 50, 0, 100, 0, 100);
-        Box right = new Box(150, 250, 0, 100, 0, 100);
+        Cylinder wide = new Cylinder(100, 50, 100, 0, 100);
+        Cylinder left = new Cylinder(0, 50, 50, 0, 100);
+        Cylinder right = new Cylinder(200, 50, 50, 0, 100);
 
         List<RflEvent> started = t.update(Map.of("A", wide, "B", left, "C", right), 0, 0);
         assertEquals(2, started.size());

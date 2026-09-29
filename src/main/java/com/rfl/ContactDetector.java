@@ -16,7 +16,7 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.util.Text;
 
 /**
- * Turns the live players in view into {@link Box} instances for {@link ContactTracker} every
+ * Turns the live players in view into {@link Cylinder} bodies for {@link ContactTracker} every
  * client frame.
  *
  * Confirmed against runelite-api 1.12.39 via {@code javap} (the version {@code ./gradlew
@@ -48,7 +48,7 @@ final class ContactDetector
     List<RflEvent> onFrame(Client client)
     {
         WorldView worldView = client.getTopLevelWorldView();
-        Map<String, Box> boxes = new HashMap<>();
+        Map<String, Cylinder> bodies = new HashMap<>();
 
         if (worldView != null)
         {
@@ -59,24 +59,24 @@ final class ContactDetector
                     continue;
                 }
 
-                Box box = boxFor(player);
+                Cylinder body = bodyFor(player);
                 String name = sanitizedName(player);
-                if (box != null && name != null)
+                if (body != null && name != null)
                 {
-                    boxes.put(name, box);
+                    bodies.put(name, body);
                 }
             }
         }
 
         long now = System.currentTimeMillis();
-        List<RflEvent> events = tracker.update(boxes, now, client.getTickCount());
+        List<RflEvent> events = tracker.update(bodies, now, client.getTickCount());
         for (RflEvent event : events)
         {
-            Box a = boxes.get(event.a);
-            Box b = boxes.get(event.b);
+            Cylinder a = bodies.get(event.a);
+            Cylinder b = bodies.get(event.b);
             if ("contact_start".equals(event.type) && a != null && b != null)
             {
-                int[] center = Box.overlapCenter(a, b);
+                int[] center = Cylinder.overlapCenter(a, b);
                 highlights.add(center[0], center[1], now);
             }
         }
@@ -129,7 +129,12 @@ final class ContactDetector
         highlights.clear();
     }
 
-    private static Box boxFor(Player player)
+    /**
+     * The player's body as an upright cylinder. The radius comes from the model's unrotated
+     * bounds (average of its half-width and half-depth), so it doesn't grow when the player turns;
+     * the centre and height come from the bounds at the current orientation.
+     */
+    private static Cylinder bodyFor(Player player)
     {
         Model model = player.getModel();
         LocalPoint localPoint = player.getLocalLocation();
@@ -138,24 +143,20 @@ final class ContactDetector
             return null;
         }
 
-        AABB aabb = model.getAABB(player.getCurrentOrientation());
-        if (aabb == null)
+        AABB rotated = model.getAABB(player.getCurrentOrientation());
+        AABB upright = model.getAABB(0);
+        if (rotated == null || upright == null)
         {
             return null;
         }
 
-        int minX = localPoint.getX() + aabb.getCenterX() - aabb.getExtremeX();
-        int maxX = localPoint.getX() + aabb.getCenterX() + aabb.getExtremeX();
-        int minY = localPoint.getY() + aabb.getCenterZ() - aabb.getExtremeZ();
-        int maxY = localPoint.getY() + aabb.getCenterZ() + aabb.getExtremeZ();
+        int radius = (upright.getExtremeX() + upright.getExtremeZ()) / 2;
+        int x = localPoint.getX() + rotated.getCenterX();
+        int y = localPoint.getY() + rotated.getCenterZ();
 
-        // Model Y is vertical and negative-up, so the box's up-positive Z center is -centerY;
-        // the extreme is a symmetric half-extent so the sign flip alone is what matters.
-        int zCenter = -aabb.getCenterY();
-        int minZ = zCenter - aabb.getExtremeY();
-        int maxZ = zCenter + aabb.getExtremeY();
-
-        return new Box(minX, maxX, minY, maxY, minZ, maxZ);
+        // Model Y is vertical and negative-up, so the up-positive centre is -centerY.
+        int zCenter = -rotated.getCenterY();
+        return new Cylinder(x, y, radius, zCenter - rotated.getExtremeY(), zCenter + rotated.getExtremeY());
     }
 
     private static String sanitizedName(Player player)
