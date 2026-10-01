@@ -43,6 +43,9 @@ final class ContactDetector
         this.bareBody = bareBody;
     }
 
+    @Inject
+    private ModelDumper modelDumper;
+
     List<RflEvent> onFrame(Client client)
     {
         WorldView worldView = client.getTopLevelWorldView();
@@ -60,7 +63,7 @@ final class ContactDetector
                     continue;
                 }
 
-                Body body = bodyFor(player, bare);
+                Body body = bodyFor(client, player, bare);
                 String name = sanitizedName(player);
                 if (body != null && name != null)
                 {
@@ -218,7 +221,7 @@ final class ContactDetector
     }
 
     /** Body from the player's drawn model, or their bare body per the Hitbox source setting. */
-    private Body bodyFor(Player player, boolean bare)
+    private Body bodyFor(Client client, Player player, boolean bare)
     {
         Model model = bare ? bareBody.posed(player) : player.getModel();
         LocalPoint localPoint = player.getLocalLocation();
@@ -226,8 +229,15 @@ final class ContactDetector
         {
             return null;
         }
-        return Body.from(model.getVerticesX(), model.getVerticesY(), model.getVerticesZ(), model.getVerticesCount(),
-            player.getCurrentOrientation(), localPoint.getX(), localPoint.getY());
+        Body body = Body.from(model.getVerticesX(), model.getVerticesY(), model.getVerticesZ(),
+            model.getVerticesCount(), player.getCurrentOrientation(), localPoint.getX(), localPoint.getY());
+        if (config.debugLogging() && player == client.getLocalPlayer())
+        {
+            modelDumper.maybeDump(client.getTickCount(), sanitizedName(player), bare, player.getCurrentOrientation(),
+                player.getAnimation(), player.getPoseAnimation(), model.getVerticesX(), model.getVerticesY(),
+                model.getVerticesZ(), model.getVerticesCount(), localPoint.getX(), localPoint.getY(), body);
+        }
+        return body;
     }
 
     private static String sanitizedName(Player player)
