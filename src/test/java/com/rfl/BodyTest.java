@@ -157,18 +157,18 @@ public class BodyTest
         assertTrue(Math.min(thigh.az, thigh.bz) > Math.max(shin.az, shin.bz) - 6);
         assertEquals(16, Math.min(shin.az, shin.bz), 1e-3);
         assertEquals(85, Math.max(thigh.az, thigh.bz), 1e-3);
-        assertEquals(5, thigh.radius, 0.5);
+        assertEquals(Body.radiusFor("leftThigh", 200), thigh.radius, 1e-9);
         assertEquals(1020, part(body, "rightThigh").ax, 1);
 
         Capsule torso = part(body, "torso");
         assertEquals(1000, torso.ax, 1e-6);
         assertEquals(100, Math.min(torso.az, torso.bz), 1e-6);
         assertEquals(160, Math.max(torso.az, torso.bz), 1e-6);
-        assertEquals(15, torso.radius, 1e-6);
+        assertEquals(Body.radiusFor("torso", 200), torso.radius, 1e-9);
 
         Capsule head = part(body, "head");
         assertEquals(175, Math.min(head.az, head.bz), 1e-6);
-        assertEquals(10, head.radius, 1e-6);
+        assertEquals(Body.radiusFor("head", 200), head.radius, 1e-9);
 
         assertEquals(1000, body.centreX);
         assertEquals(2000, body.centreY);
@@ -185,9 +185,9 @@ public class BodyTest
             for (Capsule c : new Capsule[]{upper, fore})
             {
                 assertTrue(c.name + " horizontal", angleTo(c, new double[]{1, 0, 0}) < 2);
-                assertEquals(c.name, 150, c.az, 0.5);
-                assertEquals(c.name, 150, c.bz, 0.5);
-                assertEquals(c.name, 5, c.radius, 0.5);
+                assertEquals(c.name, 150, c.az, 1);
+                assertEquals(c.name, 150, c.bz, 1);
+                assertEquals(c.name, Body.radiusFor(c.name, 200), c.radius, 1e-9);
             }
             // Upper arm is the half nearer the torso centre line (x = 1000).
             double upperMid = Math.abs((upper.ax + upper.bx) / 2 - 1000);
@@ -220,21 +220,31 @@ public class BodyTest
             // Slice means blur a sharp synthetic knee (about 13 degrees here); the fit is tuned for
             // real low-poly OSRS legs, which RealModelBodyTest checks directly.
             angleTo(shin, new double[]{foot[0] - knee[0], foot[2] - knee[2], foot[1] - knee[1]}) < 15);
-        assertTrue("thigh radius " + thigh.radius, thigh.radius <= 6);
-        assertTrue("shin radius " + shin.radius, shin.radius <= 8);
+        // Rings around the slanted shin dip just below 0, so the figure is about 202 tall.
+        assertEquals(Body.radiusFor("leftThigh", 200), thigh.radius, 0.2);
+        assertEquals(Body.radiusFor("leftShin", 200), shin.radius, 0.2);
         assertTrue(Math.max(thigh.az, thigh.bz) > Math.max(shin.az, shin.bz));
     }
 
     @Test
-    public void radiusIsClampedToTheLimits()
+    public void radiusIsFixedPerPartNotFittedToTheVertices()
     {
+        // A thin leg and a thick leg get the same thigh: thickness comes from the model height.
         Body thin = new Figure()
-            .limb(new double[]{-20, 0, 0}, new double[]{-20, 85, 0}, 0.5)
-            .limb(new double[]{20, 0, 0}, new double[]{20, 85, 0}, 0.5)
+            .limb(new double[]{-20, 16, 0}, new double[]{-20, 85, 0}, 0.5)
+            .limb(new double[]{20, 16, 0}, new double[]{20, 85, 0}, 0.5)
             .box(-20, 20, 100, 160, -10, 10)
             .box(-10, 10, 175, 200, -10, 10)
             .body(0);
-        assertEquals(Body.MIN_LIMB_RADIUS, part(thin, "leftShin").radius, 1e-9);
+        Body thick = new Figure()
+            .limb(new double[]{-20, 16, 0}, new double[]{-20, 85, 0}, 9)
+            .limb(new double[]{20, 16, 0}, new double[]{20, 85, 0}, 9)
+            .box(-20, 20, 100, 160, -10, 10)
+            .box(-10, 10, 175, 200, -10, 10)
+            .body(0);
+        assertEquals(part(thin, "leftThigh").radius, part(thick, "leftThigh").radius, 1e-9);
+        // The figure spans heights 16 to 200, so it is 184 tall.
+        assertEquals(Body.radiusFor("leftThigh", 184), part(thin, "leftThigh").radius, 1e-9);
     }
 
     @Test
@@ -265,11 +275,9 @@ public class BodyTest
             .limb(new double[]{20, 0, 0}, new double[]{20, 85, 0}, 5)
             .box(-20, 20, 100, 160, -10, 10)
             .box(-10, 10, 175, 200, -10, 10);
-        // Four points out at the left: two per segment, below the three a segment needs.
+        // Two points out at the left: below the three even a single arm segment needs.
         f.verts.add(new double[]{-40, 150, 0});
         f.verts.add(new double[]{-50, 150, 0});
-        f.verts.add(new double[]{-60, 150, 0});
-        f.verts.add(new double[]{-70, 150, 0});
         Body body = f.body(0);
         assertNull(part(body, "leftUpperArm"));
         assertNull(part(body, "leftForearm"));

@@ -135,4 +135,40 @@ public class RealModelBodyTest
             }
         }
     }
+
+    @Test
+    public void partThicknessDoesNotChangeWithThePose()
+    {
+        Dump standing = new Dump("standing");
+        for (String pose : new String[]{"running", "walking"})
+        {
+            Dump moving = new Dump(pose);
+            for (Capsule c : standing.body.parts)
+            {
+                Capsule m = moving.part(c.name);
+                if (m != null)
+                {
+                    assertTrue(pose + " " + c.name + " radius " + c.radius + " vs " + m.radius,
+                        Math.abs(c.radius - m.radius) < 0.5);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void standingArmsHangDown()
+    {
+        Dump d = new Dump("standing");
+        for (String side : new String[]{"left", "right"})
+        {
+            for (String part : new String[]{"UpperArm", "Forearm"})
+            {
+                Capsule c = d.part(side + part);
+                assertNotNull(side + part, c);
+                assertTrue(side + part + " tilt " + tilt(c), tilt(c) < 35);
+            }
+            assertTrue(side + " upper arm above forearm",
+                top(d.part(side + "UpperArm")) > top(d.part(side + "Forearm")));
+        }
+    }
 }

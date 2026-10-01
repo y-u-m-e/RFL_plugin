@@ -21,8 +21,6 @@ final class Body
      * so it lies flat heel to toe, and the shin stops at the ankle.
      */
     static final double FOOT_TOP = 16;
-    /** Vertices this far beyond a leg segment's height span still count toward its radius. */
-    static final double LEG_RADIUS_MARGIN = 4;
     /** Vertices above this fraction of the model height are the head. */
     static final double HEAD_BOTTOM = 0.85;
     /**
@@ -30,11 +28,19 @@ final class Body
      * x are torso; the rest are arms. Initial value; tune against the hitbox overlay in game.
      */
     static final double TORSO_HALF_WIDTH = 0.15;
-    /** Limb segment radius = this percentile of the vertices' distances from the segment axis. */
-    static final double LIMB_RADIUS_PERCENTILE = 0.8;
-    /** Limb segment radius clamp (local units). */
-    static final double MIN_LIMB_RADIUS = 4;
-    static final double MAX_LIMB_RADIUS = 30;
+    /**
+     * Fixed thickness of each part as a fraction of model height, measured from a standing
+     * bare-body model 202 units tall (radii 12.8, 7.5, 9.2, 21.7, 6.9, 5.0, 11.5). Fixed rather
+     * than refitted per frame, so a part moves with the model instead of swelling mid-stride.
+     */
+    private static final double MODEL_HEIGHT_REF = 202;
+    private static final double THIGH_RADIUS = 12.8 / MODEL_HEIGHT_REF;
+    private static final double SHIN_RADIUS = 7.5 / MODEL_HEIGHT_REF;
+    private static final double FOOT_RADIUS = 9.2 / MODEL_HEIGHT_REF;
+    private static final double TORSO_RADIUS = 21.7 / MODEL_HEIGHT_REF;
+    private static final double UPPER_ARM_RADIUS = 6.9 / MODEL_HEIGHT_REF;
+    private static final double FOREARM_RADIUS = 5.0 / MODEL_HEIGHT_REF;
+    private static final double HEAD_RADIUS = 11.5 / MODEL_HEIGHT_REF;
     /** A limb segment with fewer vertices than this is skipped. */
     static final int MIN_SEGMENT_VERTICES = 3;
     /** Power-iteration steps for a principal axis; ample for 3x3. */
@@ -112,6 +118,19 @@ final class Body
      * @param baseX scene X of the player (LocalPoint)
      * @param baseY scene Y of the player (LocalPoint)
      */
+    /** Fixed radius of the named part for a model of the given height (see THIGH_RADIUS etc.). */
+    static double radiusFor(String name, double height)
+    {
+        double fraction = name.endsWith("Thigh") ? THIGH_RADIUS
+            : name.endsWith("Shin") ? SHIN_RADIUS
+            : name.endsWith("Foot") ? FOOT_RADIUS
+            : name.endsWith("UpperArm") ? UPPER_ARM_RADIUS
+            : name.endsWith("Forearm") ? FOREARM_RADIUS
+            : name.equals("head") ? HEAD_RADIUS
+            : TORSO_RADIUS;
+        return fraction * height;
+    }
+
     static Body from(float[] xs, float[] ys, float[] zs, int count, int orientation, int baseX, int baseY)
     {
         if (count == 0)
@@ -187,7 +206,7 @@ final class Body
         }
 
         double angle = orientation * 2 * Math.PI / 2048;
-        Frame frame = new Frame(xs, h, zs, Math.sin(angle), Math.cos(angle), baseX, baseY);
+        Frame frame = new Frame(xs, h, zs, height, Math.sin(angle), Math.cos(angle), baseX, baseY);
         double torsoX = 0;
         double torsoZ = 0;
         for (int i : torso)
@@ -197,8 +216,9 @@ final class Body
         }
         double tx = torso.isEmpty() ? bandMean : torsoX / torso.size();
         double tz = torso.isEmpty() ? 0 : torsoZ / torso.size();
-        // Proximal half: higher for legs, nearer the torso's vertical centre line for arms.
-        IntToDoubleFunction armProximity = i -> -Math.hypot(xs[i] - tx, zs[i] - tz);
+        // Shoulders: top of the torso band, at the torso's side edges.
+        double[] leftShoulder = {tx - torsoHalfWidth, headBottom, tz};
+        double[] rightShoulder = {tx + torsoHalfWidth, headBottom, tz};
 
         List<Capsule> parts = new ArrayList<>();
         frame.leg("leftThigh", "leftShin", leftLeg, parts);
@@ -206,8 +226,8 @@ final class Body
         frame.leg("rightThigh", "rightShin", rightLeg, parts);
         frame.segment("rightFoot", rightFoot, parts);
         Capsule torsoPart = frame.upright("torso", torso, parts);
-        frame.limb("leftUpperArm", "leftForearm", leftArm, armProximity, parts);
-        frame.limb("rightUpperArm", "rightForearm", rightArm, armProximity, parts);
+        frame.arm("leftUpperArm", "leftForearm", leftArm, leftShoulder, parts);
+        frame.arm("rightUpperArm", "rightForearm", rightArm, rightShoulder, parts);
         frame.upright("head", head, parts);
 
         if (torsoPart == null)
@@ -223,16 +243,18 @@ final class Body
         final float[] xs;
         final float[] h;
         final float[] zs;
+        final double height;
         final double sin;
         final double cos;
         final int baseX;
         final int baseY;
 
-        Frame(float[] xs, float[] h, float[] zs, double sin, double cos, int baseX, int baseY)
+        Frame(float[] xs, float[] h, float[] zs, double height, double sin, double cos, int baseX, int baseY)
         {
             this.xs = xs;
             this.h = h;
             this.zs = zs;
+            this.height = height;
             this.sin = sin;
             this.cos = cos;
             this.baseX = baseX;
@@ -267,7 +289,7 @@ final class Body
             }
             double x = sumX / idx.size();
             double z = sumZ / idx.size();
-            double radius = ((maxX - minX) / 2.0 + (maxZ - minZ) / 2.0) / 2;
+            double radius = radiusFor(name, height);
             double sx = sceneX(x, z);
             double sy = sceneY(x, z);
             Capsule c = new Capsule(name, sx, sy, minH, sx, sy, maxH, radius);
@@ -297,8 +319,8 @@ final class Body
             // vertex, so the shin meets the foot and the thigh reaches the hip.
             double[] ankle = atHeight(knee, centre(sorted.subList(0, q)), h[sorted.get(0)]);
             double[] hip = atHeight(knee, centre(sorted.subList(n - q, n)), h[sorted.get(n - 1)]);
-            between(shin, ankle, knee, idx, out);
-            between(thigh, knee, hip, idx, out);
+            between(shin, ankle, knee, out);
+            between(thigh, knee, hip, out);
         }
 
         /** The point on the line from {@code from} through {@code to} at the given height. */
@@ -328,67 +350,74 @@ final class Body
             return new double[]{x / idx.size(), hh / idx.size(), z / idx.size()};
         }
 
-        /**
-         * Capsule from {@code a} to {@code b} (model x, height, z). Radius: the
-         * {@link #LIMB_RADIUS_PERCENTILE} distance from that line of the vertices within its height
-         * span, clamped.
-         */
-        private void between(String name, double[] a, double[] b, List<Integer> idx, List<Capsule> out)
+        /** Capsule from {@code a} to {@code b} (model x, height, z) with the part's fixed radius. */
+        private void between(String name, double[] a, double[] b, List<Capsule> out)
         {
-            double lo = Math.min(a[1], b[1]);
-            double hi = Math.max(a[1], b[1]);
-            double dx = b[0] - a[0];
-            double dh = b[1] - a[1];
-            double dz = b[2] - a[2];
-            double len2 = dx * dx + dh * dh + dz * dz;
-            List<Double> dist = new ArrayList<>();
-            for (int i : idx)
-            {
-                if (h[i] < lo - LEG_RADIUS_MARGIN || h[i] > hi + LEG_RADIUS_MARGIN)
-                {
-                    continue;
-                }
-                double t = len2 == 0 ? 0 : ((xs[i] - a[0]) * dx + (h[i] - a[1]) * dh + (zs[i] - a[2]) * dz) / len2;
-                t = Math.max(0, Math.min(1, t));
-                double px = xs[i] - (a[0] + t * dx);
-                double ph = h[i] - (a[1] + t * dh);
-                double pz = zs[i] - (a[2] + t * dz);
-                dist.add(Math.sqrt(px * px + ph * ph + pz * pz));
-            }
-            double radius = MIN_LIMB_RADIUS;
-            if (!dist.isEmpty())
-            {
-                dist.sort(null);
-                radius = dist.get((int) Math.ceil(LIMB_RADIUS_PERCENTILE * dist.size()) - 1);
-            }
-            radius = Math.max(MIN_LIMB_RADIUS, Math.min(MAX_LIMB_RADIUS, radius));
             out.add(new Capsule(name, sceneX(a[0], a[2]), sceneY(a[0], a[2]), a[1],
-                sceneX(b[0], b[2]), sceneY(b[0], b[2]), b[1], radius));
+                sceneX(b[0], b[2]), sceneY(b[0], b[2]), b[1], radiusFor(name, height)));
         }
 
         /**
-         * Splits the limb at the median projection on its principal axis and adds a capsule per
-         * half, proximal half first.
+         * An arm as upper arm and forearm from shoulder to elbow to wrist. Vertices are ordered by
+         * distance from the shoulder point (not by height), so a raised or outstretched arm fits
+         * as well as a hanging one; each joint is the mean of a slice: nearest quarter (shoulder),
+         * middle third (elbow), farthest quarter (wrist), extended to the nearest and farthest
+         * vertex along each segment.
          */
-        void limb(String proximal, String distal, List<Integer> idx, IntToDoubleFunction proximity, List<Capsule> out)
+        void arm(String upper, String fore, List<Integer> idx, double[] shoulder, List<Capsule> out)
         {
-            if (idx.isEmpty())
+            if (idx.size() < 4)
             {
+                segment(upper, idx, out);
                 return;
             }
-            double[] axis = axis(idx);
             List<Integer> sorted = new ArrayList<>(idx);
-            sorted.sort(Comparator.comparingDouble(i -> project(i, axis)));
-            List<Integer> lo = sorted.subList(0, sorted.size() / 2);
-            List<Integer> hi = sorted.subList(sorted.size() / 2, sorted.size());
-            boolean loProximal = mean(lo, proximity) >= mean(hi, proximity);
-            segment(proximal, loProximal ? lo : hi, out);
-            segment(distal, loProximal ? hi : lo, out);
+            sorted.sort(Comparator.comparingDouble(i -> distance(i, shoulder)));
+            int n = sorted.size();
+            int q = Math.max(1, n / 4);
+            double[] elbow = centre(sorted.subList(n / 3, Math.max(n / 3 + 1, 2 * n / 3)));
+            double[] near = extend(elbow, centre(sorted.subList(0, q)), sorted.subList(0, q));
+            double[] far = extend(elbow, centre(sorted.subList(n - q, n)), sorted.subList(n - q, n));
+            between(upper, near, elbow, out);
+            between(fore, elbow, far, out);
+        }
+
+        private double distance(int i, double[] p)
+        {
+            double dx = xs[i] - p[0];
+            double dh = h[i] - p[1];
+            double dz = zs[i] - p[2];
+            return Math.sqrt(dx * dx + dh * dh + dz * dz);
+        }
+
+        /**
+         * The point on the ray from {@code from} through {@code to}, pushed out to the furthest
+         * projection of the given vertices along that ray.
+         */
+        private double[] extend(double[] from, double[] to, List<Integer> idx)
+        {
+            double dx = to[0] - from[0];
+            double dh = to[1] - from[1];
+            double dz = to[2] - from[2];
+            double len = Math.sqrt(dx * dx + dh * dh + dz * dz);
+            if (len < 1e-6)
+            {
+                return to;
+            }
+            dx /= len;
+            dh /= len;
+            dz /= len;
+            double t = len;
+            for (int i : idx)
+            {
+                t = Math.max(t, (xs[i] - from[0]) * dx + (h[i] - from[1]) * dh + (zs[i] - from[2]) * dz);
+            }
+            return new double[]{from[0] + t * dx, from[1] + t * dh, from[2] + t * dz};
         }
 
         /**
          * Capsule along the segment's own principal axis: endpoints at the min/max projection,
-         * radius = {@link #LIMB_RADIUS_PERCENTILE} of the distances from that axis, clamped.
+         * with the part's fixed radius.
          */
         void segment(String name, List<Integer> idx, List<Capsule> out)
         {
@@ -411,9 +440,7 @@ final class Body
                 double pz = zs[i] - axis[2] - t * axis[5];
                 dist[k] = Math.sqrt(px * px + ph * ph + pz * pz);
             }
-            Arrays.sort(dist);
-            double radius = dist[(int) Math.ceil(LIMB_RADIUS_PERCENTILE * dist.length) - 1];
-            radius = Math.max(MIN_LIMB_RADIUS, Math.min(MAX_LIMB_RADIUS, radius));
+            double radius = radiusFor(name, height);
             double ax = axis[0] + min * axis[3];
             double ah = axis[1] + min * axis[4];
             double az = axis[2] + min * axis[5];
