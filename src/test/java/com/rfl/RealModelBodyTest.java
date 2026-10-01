@@ -92,7 +92,8 @@ public class RealModelBodyTest
             assertTrue(side + " shin tilt " + tilt(shin), tilt(shin) < 35);
             assertTrue(side + " thigh above shin", top(thigh) > top(shin));
             assertTrue(side + " thigh reaches the hips " + top(thigh), top(thigh) > 55);
-            assertTrue(side + " shin reaches the ankle " + bottom(shin), bottom(shin) < 25);
+            // The foot covers the lowest part of the leg; the shin reaches down to meet it.
+            assertTrue(side + " shin reaches the ankle " + bottom(shin), bottom(shin) < 30);
         }
     }
 
@@ -120,19 +121,16 @@ public class RealModelBodyTest
     }
 
     @Test
-    public void feetLieFlat()
+    public void standingFeetLieFlat()
     {
-        for (String pose : new String[]{"standing", "running", "walking"})
+        // Only standing feet are flat: walking lifts the heel (about 38 degrees in the real dump)
+        // and running kicks the rear foot back sole-up.
+        Dump d = new Dump("standing");
+        for (String side : new String[]{"left", "right"})
         {
-            Dump d = new Dump(pose);
-            for (String side : new String[]{"left", "right"})
-            {
-                Capsule foot = d.part(side + "Foot");
-                if (foot != null)
-                {
-                    assertTrue(pose + " " + side + " foot tilt " + tilt(foot), tilt(foot) > 60);
-                }
-            }
+            Capsule foot = d.part(side + "Foot");
+            assertNotNull(side + "Foot", foot);
+            assertTrue(side + " foot tilt " + tilt(foot), tilt(foot) > 60);
         }
     }
 
@@ -180,5 +178,17 @@ public class RealModelBodyTest
         double total = length(foot) + 2 * foot.radius; // the rounded caps add a radius at each end
         assertTrue("foot total length " + total, total > 30 && total < 42);
         assertTrue("foot radius " + foot.radius, foot.radius <= 6.5);
+    }
+
+    @Test
+    public void raisedFootStillGetsAFootPart()
+    {
+        // In the real running dump the right foot is kicked up behind, well off the ground.
+        Dump d = new Dump("running");
+        Capsule foot = d.part("rightFoot");
+        assertNotNull("rightFoot", foot);
+        assertTrue("raised foot is off the ground " + bottom(foot), bottom(foot) > 20);
+        Capsule shin = d.part("rightShin");
+        assertTrue("shin sits above the raised foot", top(shin) > top(foot));
     }
 }

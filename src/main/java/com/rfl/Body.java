@@ -17,10 +17,11 @@ final class Body
     /** Vertices below this fraction of the model height are legs. */
     static final double LEG_TOP = 0.45;
     /**
-     * Leg vertices lower than this (local units above the soles) are the foot: fitted on its own
-     * so it lies flat heel to toe, and the shin stops at the ankle.
+     * A leg's vertices within this many local units of its furthest reach from the hip are its
+     * foot: fitted on its own so it lies flat heel to toe, and the shin stops at the ankle.
+     * Measured from the hip, so a foot raised or kicked back mid-stride is still the foot.
      */
-    static final double FOOT_TOP = 16;
+    static final double FOOT_REACH = 20;
     /** Vertices above this fraction of the model height are the head. */
     static final double HEAD_BOTTOM = 0.85;
     /**
@@ -179,19 +180,13 @@ final class Body
 
         List<Integer> leftLeg = new ArrayList<>();
         List<Integer> rightLeg = new ArrayList<>();
-        List<Integer> leftFoot = new ArrayList<>();
-        List<Integer> rightFoot = new ArrayList<>();
         List<Integer> torso = new ArrayList<>();
         List<Integer> leftArm = new ArrayList<>();
         List<Integer> rightArm = new ArrayList<>();
         List<Integer> head = new ArrayList<>();
         for (int i = 0; i < count; i++)
         {
-            if (h[i] < FOOT_TOP)
-            {
-                (xs[i] < legMean ? leftFoot : rightFoot).add(i);
-            }
-            else if (h[i] < legTop)
+            if (h[i] < legTop)
             {
                 (xs[i] < legMean ? leftLeg : rightLeg).add(i);
             }
@@ -205,6 +200,10 @@ final class Body
                 (off < -torsoHalfWidth ? leftArm : off > torsoHalfWidth ? rightArm : torso).add(i);
             }
         }
+
+        // A planted foot's inner edge can cross the centre line: settle near-midline vertices by
+        // their nearest clearly-sided neighbour at a similar height.
+        settleMidline(leftLeg, rightLeg, xs, h, zs, legMean);
 
         double angle = orientation * 2 * Math.PI / 2048;
         Frame frame = new Frame(xs, h, zs, height, Math.sin(angle), Math.cos(angle), baseX, baseY);
@@ -222,10 +221,8 @@ final class Body
         double[] rightShoulder = {tx + torsoHalfWidth, headBottom, tz};
 
         List<Capsule> parts = new ArrayList<>();
-        frame.leg("leftThigh", "leftShin", leftLeg, parts);
-        frame.segment("leftFoot", leftFoot, parts);
-        frame.leg("rightThigh", "rightShin", rightLeg, parts);
-        frame.segment("rightFoot", rightFoot, parts);
+        frame.leg("leftThigh", "leftShin", "leftFoot", leftLeg, parts);
+        frame.leg("rightThigh", "rightShin", "rightFoot", rightLeg, parts);
         Capsule torsoPart = frame.upright("torso", torso, parts);
         frame.arm("leftUpperArm", "leftForearm", leftArm, leftShoulder, parts);
         frame.arm("rightUpperArm", "rightForearm", rightArm, rightShoulder, parts);
@@ -236,6 +233,66 @@ final class Body
             return new Body(parts, baseX, baseY);
         }
         return new Body(parts, (int) Math.round(torsoPart.ax), (int) Math.round(torsoPart.ay));
+    }
+
+    /** Leg vertices this close to the centre line (local units) are settled by their neighbours. */
+    private static final double LEG_MIDLINE_BAND = 8;
+    /** Only neighbours within this height of an ambiguous vertex are considered (local units). */
+    private static final double LEG_NEIGHBOUR_HEIGHT = 15;
+
+    /**
+     * Reassigns leg vertices within LEG_MIDLINE_BAND of the centre line to the side of their
+     * nearest clearly-sided leg vertex within LEG_NEIGHBOUR_HEIGHT of their height. With no such
+     * neighbour on either side, the centre-line split stands.
+     */
+    private static void settleMidline(List<Integer> left, List<Integer> right, float[] xs, float[] h, float[] zs,
+        double centre)
+    {
+        List<Integer> clearLeft = new ArrayList<>();
+        List<Integer> clearRight = new ArrayList<>();
+        List<Integer> ambiguous = new ArrayList<>();
+        for (int i : left)
+        {
+            (Math.abs(xs[i] - centre) < LEG_MIDLINE_BAND ? ambiguous : clearLeft).add(i);
+        }
+        for (int i : right)
+        {
+            (Math.abs(xs[i] - centre) < LEG_MIDLINE_BAND ? ambiguous : clearRight).add(i);
+        }
+        if (ambiguous.isEmpty())
+        {
+            return;
+        }
+        List<Integer> newLeft = new ArrayList<>(clearLeft);
+        List<Integer> newRight = new ArrayList<>(clearRight);
+        for (int i : ambiguous)
+        {
+            double dl = nearest(i, clearLeft, xs, h, zs);
+            double dr = nearest(i, clearRight, xs, h, zs);
+            boolean toLeft = dl == Double.MAX_VALUE && dr == Double.MAX_VALUE ? xs[i] < centre : dl <= dr;
+            (toLeft ? newLeft : newRight).add(i);
+        }
+        left.clear();
+        left.addAll(newLeft);
+        right.clear();
+        right.addAll(newRight);
+    }
+
+    private static double nearest(int i, List<Integer> candidates, float[] xs, float[] h, float[] zs)
+    {
+        double best = Double.MAX_VALUE;
+        for (int j : candidates)
+        {
+            if (Math.abs(h[j] - h[i]) > LEG_NEIGHBOUR_HEIGHT)
+            {
+                continue;
+            }
+            double dx = xs[j] - xs[i];
+            double dh = h[j] - h[i];
+            double dz = zs[j] - zs[i];
+            best = Math.min(best, Math.sqrt(dx * dx + dh * dh + dz * dz));
+        }
+        return best;
     }
 
     /** Model-space vertices (with height above the soles) plus the transform into scene space. */
@@ -299,41 +356,51 @@ final class Body
         }
 
         /**
-         * A leg as shin and thigh from ankle to knee to hip, where each point is the mean of a
-         * height slice of the leg: lowest quarter (ankle), middle third (knee), highest quarter
-         * (hip). OSRS legs are a handful of vertices, so single rings sit off-centre; averaging
-         * slices keeps the shin and thigh along the leg instead of across the hips.
+         * A leg as thigh, shin and foot, ordered outward from the hip so it works whichever way the
+         * leg points (standing, mid-stride, kicked back). The hip is the mean of the leg's highest
+         * quarter. The foot is the vertices within FOOT_REACH of the leg's furthest reach from the
+         * hip. The rest runs hip -> knee -> ankle through slice means: nearest quarter, middle
+         * third, farthest quarter, each end pushed out to the nearest / farthest vertex. OSRS legs
+         * are a handful of vertices, so means of slices keep the parts along the leg.
          */
-        void leg(String thigh, String shin, List<Integer> idx, List<Capsule> out)
+        void leg(String thigh, String shin, String foot, List<Integer> idx, List<Capsule> out)
         {
             if (idx.size() < 4)
             {
                 segment(thigh, idx, out);
                 return;
             }
-            List<Integer> sorted = new ArrayList<>(idx);
-            sorted.sort(Comparator.comparingDouble(i -> h[i]));
-            int n = sorted.size();
-            int q = Math.max(1, n / 4);
-            double[] knee = centre(sorted.subList(n / 3, Math.max(n / 3 + 1, 2 * n / 3)));
-            // Extend each slice mean out along its segment to the leg's lowest and highest
-            // vertex, so the shin meets the foot and the thigh reaches the hip.
-            double[] ankle = atHeight(knee, centre(sorted.subList(0, q)), h[sorted.get(0)]);
-            double[] hip = atHeight(knee, centre(sorted.subList(n - q, n)), h[sorted.get(n - 1)]);
-            between(shin, ankle, knee, out);
-            between(thigh, knee, hip, out);
-        }
+            List<Integer> byHeight = new ArrayList<>(idx);
+            byHeight.sort(Comparator.comparingDouble(i -> h[i]));
+            int n = byHeight.size();
+            double[] hip = centre(byHeight.subList(n - Math.max(1, n / 4), n));
+            hip[1] = h[byHeight.get(n - 1)];
 
-        /** The point on the line from {@code from} through {@code to} at the given height. */
-        private static double[] atHeight(double[] from, double[] to, double height)
-        {
-            double dh = to[1] - from[1];
-            if (Math.abs(dh) < 1e-6)
+            List<Integer> byReach = new ArrayList<>(idx);
+            byReach.sort(Comparator.comparingDouble(i -> distance(i, hip)));
+            double furthest = distance(byReach.get(byReach.size() - 1), hip);
+            List<Integer> leg = new ArrayList<>();
+            List<Integer> footIdx = new ArrayList<>();
+            for (int i : byReach)
             {
-                return to;
+                (distance(i, hip) >= furthest - FOOT_REACH ? footIdx : leg).add(i);
             }
-            double t = (height - from[1]) / dh;
-            return new double[]{from[0] + t * (to[0] - from[0]), height, from[2] + t * (to[2] - from[2])};
+
+            if (leg.size() >= 4)
+            {
+                int m = leg.size();
+                int q = Math.max(1, m / 4);
+                double[] knee = centre(leg.subList(m / 3, Math.max(m / 3 + 1, 2 * m / 3)));
+                double[] top = extend(knee, centre(leg.subList(0, q)), leg.subList(0, q));
+                double[] ankle = extend(knee, centre(leg.subList(m - q, m)), leg.subList(m - q, m));
+                between(thigh, top, knee, out);
+                between(shin, knee, ankle, out);
+            }
+            else
+            {
+                segment(thigh, leg, out);
+            }
+            segment(foot, footIdx, out);
         }
 
         /** Mean (x, height, z) of the vertices. */
