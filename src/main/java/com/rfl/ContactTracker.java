@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Pair state machine over per-tick player bodies. Names are expected to already be
+ * Pair state machine over per-frame player bodies (see {@link Body}). Names are expected to already be
  * {@code Text.sanitize}d by the caller (Task 4) so two clients derive the identical pair key
  * regardless of non-breaking spaces in the raw RSN.
  *
@@ -16,25 +16,33 @@ import java.util.Map;
 final class ContactTracker
 {
     /**
-     * Overlap (local units, 128 = one tile) a pair must reach before it counts as a contact.
-     * Measured in game (2026-09-29): edge cases peak at depth 16-27, real contacts at 81-107, with
-     * nothing between. Once started, a contact holds until the bodies fully separate, so it
-     * doesn't flicker around the threshold.
+     * Penetration (local units, 128 = one tile) of a pair's deepest part pair before it counts as
+     * a contact. PROVISIONAL: the old whole-body cylinder used 40 (measured 2026-09-29), but body
+     * parts are thinner so depths shrink. Must be re-measured in game from the per-tick
+     * "[RFL debug] ... depth" lines. Once started, a contact holds until every part separates, so
+     * it doesn't flicker around the threshold.
      */
-    static final int START_DEPTH = 40;
+    static final int START_DEPTH = 12;
 
-    /** One overlapping pair from the latest update; {@code contact} once it passed START_DEPTH. */
+    /**
+     * One overlapping pair from the latest update; {@code contact} once it passed START_DEPTH.
+     * {@code partA}/{@code partB} name the deepest part pair (partA belongs to a).
+     */
     static final class Overlap
     {
         final String a;
         final String b;
+        final String partA;
+        final String partB;
         final int depth;
         final boolean contact;
 
-        Overlap(String a, String b, int depth, boolean contact)
+        Overlap(String a, String b, String partA, String partB, int depth, boolean contact)
         {
             this.a = a;
             this.b = b;
+            this.partA = partA;
+            this.partB = partB;
             this.depth = depth;
             this.contact = contact;
         }
@@ -43,19 +51,19 @@ final class ContactTracker
     // pairKey -> max overlap depth seen since the pair became active.
     private final Map<String, Integer> active = new HashMap<>();
 
-    // pairKey -> overlap depth in the latest update (every pair with depth > 0).
-    private Map<String, Integer> latest = new HashMap<>();
+    // pairKey -> deepest part pair in the latest update (every pair with penetration > 0).
+    private Map<String, Body.Contact> latest = new HashMap<>();
 
-    List<RflEvent> update(Map<String, Cylinder> bodies, long now, int tick)
+    List<RflEvent> update(Map<String, Body> bodies, long now, int tick)
     {
-        Map<String, Integer> currentDepths = currentOverlaps(bodies);
+        Map<String, Body.Contact> currentDepths = currentOverlaps(bodies);
         latest = currentDepths;
         List<RflEvent> events = new ArrayList<>();
 
-        for (Map.Entry<String, Integer> entry : currentDepths.entrySet())
+        for (Map.Entry<String, Body.Contact> entry : currentDepths.entrySet())
         {
             String key = entry.getKey();
-            int depth = entry.getValue();
+            int depth = depth(entry.getValue());
             Integer maxSoFar = active.get(key);
 
             if (maxSoFar == null)
@@ -101,10 +109,12 @@ final class ContactTracker
     List<Overlap> overlaps()
     {
         List<Overlap> result = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : latest.entrySet())
+        for (Map.Entry<String, Body.Contact> entry : latest.entrySet())
         {
             String[] pair = splitKey(entry.getKey());
-            result.add(new Overlap(pair[0], pair[1], entry.getValue(), active.containsKey(entry.getKey())));
+            Body.Contact c = entry.getValue();
+            result.add(new Overlap(pair[0], pair[1], c.partA.name, c.partB.name, depth(c),
+                active.containsKey(entry.getKey())));
         }
         return result;
     }
@@ -122,9 +132,14 @@ final class ContactTracker
         return result;
     }
 
-    private static Map<String, Integer> currentOverlaps(Map<String, Cylinder> bodies)
+    private static int depth(Body.Contact contact)
     {
-        Map<String, Integer> depths = new HashMap<>();
+        return (int) Math.round(contact.depth);
+    }
+
+    private static Map<String, Body.Contact> currentOverlaps(Map<String, Body> bodies)
+    {
+        Map<String, Body.Contact> depths = new HashMap<>();
         List<String> names = new ArrayList<>(bodies.keySet());
 
         for (int i = 0; i < names.size(); i++)
@@ -136,10 +151,10 @@ final class ContactTracker
                 String a = x.compareTo(y) <= 0 ? x : y;
                 String b = x.compareTo(y) <= 0 ? y : x;
 
-                int depth = Cylinder.overlapDepth(bodies.get(a), bodies.get(b));
-                if (depth > 0)
+                Body.Contact contact = Body.contact(bodies.get(a), bodies.get(b));
+                if (contact != null && contact.depth > 0)
                 {
-                    depths.put(pairKey(a, b), depth);
+                    depths.put(pairKey(a, b), contact);
                 }
             }
         }

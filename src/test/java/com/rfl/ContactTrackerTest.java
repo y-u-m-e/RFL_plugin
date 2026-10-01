@@ -12,20 +12,26 @@ import org.junit.Test;
 
 public class ContactTrackerTest
 {
+    /** One upright part, like the old whole-body cylinder: two of these at distance d overlap by 2r - d. */
+    private static Body upright(int x, int y, int r)
+    {
+        return new Body(List.of(new Capsule("torso", x, y, 0, x, y, 100, r)), x, y);
+    }
+
     @Test
     public void startThenEndCarriesMaxDepth()
     {
         ContactTracker t = new ContactTracker();
-        Cylinder p = new Cylinder(50, 50, 50, 0, 100);
+        Body p = upright(50, 50, 50);
 
-        List<RflEvent> e1 = t.update(Map.of("Zed", p, "Amy", new Cylinder(110, 50, 50, 0, 100)), 1000, 1);
+        List<RflEvent> e1 = t.update(Map.of("Zed", p, "Amy", upright(110, 50, 50)), 1000, 1);
         assertEquals("contact_start", e1.get(0).type);
         assertEquals("Amy", e1.get(0).a);
         assertEquals(40, (int) e1.get(0).depth);
 
-        assertTrue(t.update(Map.of("Zed", p, "Amy", new Cylinder(100, 50, 50, 0, 100)), 1020, 1).isEmpty());
+        assertTrue(t.update(Map.of("Zed", p, "Amy", upright(100, 50, 50)), 1020, 1).isEmpty());
 
-        List<RflEvent> e3 = t.update(Map.of("Zed", p, "Amy", new Cylinder(350, 50, 50, 0, 100)), 1040, 2);
+        List<RflEvent> e3 = t.update(Map.of("Zed", p, "Amy", upright(350, 50, 50)), 1040, 2);
         assertEquals("contact_end", e3.get(0).type);
         assertEquals(50, (int) e3.get(0).depth);
     }
@@ -34,22 +40,22 @@ public class ContactTrackerTest
     public void playerLeavingViewEndsContact()
     {
         ContactTracker t = new ContactTracker();
-        t.update(Map.of("A", new Cylinder(50, 50, 50, 0, 100), "B", new Cylinder(100, 50, 50, 0, 100)), 0, 0);
-        assertEquals("contact_end", t.update(Map.of("A", new Cylinder(50, 50, 50, 0, 100)), 20, 0).get(0).type);
+        t.update(Map.of("A", upright(50, 50, 50), "B", upright(100, 50, 50)), 0, 0);
+        assertEquals("contact_end", t.update(Map.of("A", upright(50, 50, 50)), 20, 0).get(0).type);
     }
 
     @Test
     public void pairOrderIndependentOfInsertion()
     {
-        Cylinder a = new Cylinder(50, 50, 50, 0, 100);
-        Cylinder b = new Cylinder(100, 50, 50, 0, 100);
+        Body a = upright(50, 50, 50);
+        Body b = upright(100, 50, 50);
 
-        Map<String, Cylinder> insertBFirst = new LinkedHashMap<>();
+        Map<String, Body> insertBFirst = new LinkedHashMap<>();
         insertBFirst.put("Zed", b);
         insertBFirst.put("Amy", a);
         RflEvent fromBFirst = new ContactTracker().update(insertBFirst, 0, 0).get(0);
 
-        Map<String, Cylinder> insertAFirst = new LinkedHashMap<>();
+        Map<String, Body> insertAFirst = new LinkedHashMap<>();
         insertAFirst.put("Amy", a);
         insertAFirst.put("Zed", b);
         RflEvent fromAFirst = new ContactTracker().update(insertAFirst, 0, 0).get(0);
@@ -66,9 +72,9 @@ public class ContactTrackerTest
         ContactTracker t = new ContactTracker();
 
         // A overlaps both B and C; B and C don't overlap each other, so two pairs are open.
-        Cylinder wide = new Cylinder(100, 50, 100, 0, 100);
-        Cylinder left = new Cylinder(0, 50, 50, 0, 100);
-        Cylinder right = new Cylinder(200, 50, 50, 0, 100);
+        Body wide = upright(100, 50, 100);
+        Body left = upright(0, 50, 50);
+        Body right = upright(200, 50, 50);
 
         List<RflEvent> started = t.update(Map.of("A", wide, "B", left, "C", right), 0, 0);
         assertEquals(2, started.size());
@@ -78,9 +84,6 @@ public class ContactTrackerTest
         assertEquals("update(emptyMap) should close every open pair, one contact_end each", 2, ended.size());
         assertTrue(ended.stream().allMatch(e -> "contact_end".equals(e.type)));
 
-        // Same overlap after the pairs already closed re-fires immediately (active is empty) --
-        // reset() only matters when a pair is still open. Start one again without closing it,
-        // then prove reset() (not another update) is what clears it for a fresh start.
         List<RflEvent> restartedBeforeReset = t.update(Map.of("A", wide, "B", left), 40, 2);
         assertEquals(1, restartedBeforeReset.size());
         assertEquals("contact_start", restartedBeforeReset.get(0).type);
@@ -96,31 +99,32 @@ public class ContactTrackerTest
     public void grazesBelowTheStartDepthAreNotContactsButAStartedContactHoldsUntilSeparated()
     {
         ContactTracker t = new ContactTracker();
-        Cylinder amy = new Cylinder(0, 0, 50, 0, 100);
+        Body amy = upright(0, 0, 50);
+        int start = ContactTracker.START_DEPTH;
 
-        // Overlap 27 (< 40): the deepest edge-case graze measured in game, no contact.
-        assertTrue(t.update(Map.of("Amy", amy, "Zed", new Cylinder(73, 0, 50, 0, 100)), 0, 0).isEmpty());
+        // Just under the start depth: a graze, no contact.
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", upright(100 - start + 1, 0, 50)), 0, 0).isEmpty());
 
-        // Overlap 40: contact starts.
-        List<RflEvent> start = t.update(Map.of("Amy", amy, "Zed", new Cylinder(60, 0, 50, 0, 100)), 20, 1);
-        assertEquals("contact_start", start.get(0).type);
+        // Exactly the start depth: contact starts.
+        List<RflEvent> started = t.update(Map.of("Amy", amy, "Zed", upright(100 - start, 0, 50)), 20, 1);
+        assertEquals("contact_start", started.get(0).type);
 
         // Back to overlap 5: still the same contact, no flicker.
-        assertTrue(t.update(Map.of("Amy", amy, "Zed", new Cylinder(95, 0, 50, 0, 100)), 40, 1).isEmpty());
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", upright(95, 0, 50)), 40, 1).isEmpty());
 
         // Fully apart: ends, carrying the max depth.
-        List<RflEvent> end = t.update(Map.of("Amy", amy, "Zed", new Cylinder(120, 0, 50, 0, 100)), 60, 2);
+        List<RflEvent> end = t.update(Map.of("Amy", amy, "Zed", upright(120, 0, 50)), 60, 2);
         assertEquals("contact_end", end.get(0).type);
-        assertEquals(40, (int) end.get(0).depth);
+        assertEquals(start, (int) end.get(0).depth);
     }
 
     @Test
     public void exposesOverlapsAndWhoIsInContact()
     {
         ContactTracker t = new ContactTracker();
-        Cylinder amy = new Cylinder(0, 0, 50, 0, 100);
+        Body amy = upright(0, 0, 50);
         // Zed overlaps Amy by 50 (contact); Bo overlaps Amy by 10 (graze).
-        t.update(Map.of("Amy", amy, "Zed", new Cylinder(50, 0, 50, 0, 100), "Bo", new Cylinder(0, 90, 50, 0, 100)), 0, 0);
+        t.update(Map.of("Amy", amy, "Zed", upright(50, 0, 50), "Bo", upright(0, 90, 50)), 0, 0);
 
         List<ContactTracker.Overlap> overlaps = t.overlaps();
         assertEquals(2, overlaps.size());
@@ -130,5 +134,38 @@ public class ContactTrackerTest
         assertEquals(List.of("Zed"), t.contactsByPlayer().get("Amy"));
         assertEquals(List.of("Amy"), t.contactsByPlayer().get("Zed"));
         assertEquals(null, t.contactsByPlayer().get("Bo"));
+    }
+
+    /** Torso at x, plus (for Amy) an arm reaching from x+20 to x+80 at shoulder height. */
+    private static Body withArm(int x)
+    {
+        return new Body(List.of(
+            new Capsule("torso", x, 0, 100, x, 0, 160, 15),
+            new Capsule("rightArm", x + 20, 0, 150, x + 80, 0, 150, Body.ARM_RADIUS)), x, 0);
+    }
+
+    private static Body torsoOnly(int x)
+    {
+        return new Body(List.of(new Capsule("torso", x, 0, 100, x, 0, 160, 15)), x, 0);
+    }
+
+    @Test
+    public void armReachingNearATorsoIsOnlyAContactPastTheStartDepth()
+    {
+        // Torsos are 100 / 90 apart (no overlap); only Amy's arm reaches Zed's torso.
+        // Arm tip to Zed's axis 20 -> penetration 25 - 20 = 5: a graze.
+        ContactTracker t = new ContactTracker();
+        assertTrue(t.update(Map.of("Amy", withArm(0), "Zed", torsoOnly(100)), 0, 0).isEmpty());
+        ContactTracker.Overlap graze = t.overlaps().get(0);
+        assertEquals(5, graze.depth);
+        assertEquals(false, graze.contact);
+        assertEquals("rightArm", graze.partA);
+        assertEquals("torso", graze.partB);
+
+        // Arm tip 10 from the axis -> penetration 15 >= START_DEPTH: a contact.
+        List<RflEvent> start = t.update(Map.of("Amy", withArm(0), "Zed", torsoOnly(90)), 20, 1);
+        assertTrue(15 >= ContactTracker.START_DEPTH);
+        assertEquals("contact_start", start.get(0).type);
+        assertEquals(15, (int) start.get(0).depth);
     }
 }

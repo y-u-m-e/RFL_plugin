@@ -33,7 +33,7 @@ Decisions made during design:
 | Storage | New D1: `rfl-db` (prod), `rfl-db-dev` (staging), binding `RFL_DB` |
 | Player identity | **RSN only, no auth.** Plus a per-install ID to flag duplicate senders |
 | When it runs | Plugin reporting whenever logged in; contact detection only inside a POH |
-| Contact precision | Upright cylinder per player (radius from the unrotated model bounds, so turning doesn't grow it). Replaced the first axis-aligned boxes, which touched on diagonals in-game. A contact starts at depth ≥ 40 (edge cases measured 16-27, real contacts 81-107) and holds until fully separated |
+| Contact precision | Body-part capsules per player (two legs, torso, two arms, head) from the posed model vertices; depth is the deepest part pair's penetration. Replaced the whole-body cylinder (2026-09-30), which widened on catch animations and gave false contacts on the catch tick; that replaced the first axis-aligned boxes. A contact starts at depth ≥ 12 (provisional, to be re-measured in game) and holds until fully separated |
 | Report interval | ~10 s |
 | Site | New read-only site at rfl.gg; **everything public**, no login |
 

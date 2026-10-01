@@ -81,6 +81,9 @@ public class RflPlugin extends Plugin
     private ContactOverlapOverlay contactOverlapOverlay;
 
     @Inject
+    private HitboxOverlay hitboxOverlay;
+
+    @Inject
     private ContactHighlights contactHighlights;
 
     private final InterceptionDetector interceptionDetector = new InterceptionDetector();
@@ -118,6 +121,7 @@ public class RflPlugin extends Plugin
         }
         overlayManager.add(contactHighlightOverlay);
         overlayManager.add(contactOverlapOverlay);
+        overlayManager.add(hitboxOverlay);
     }
 
     @Override
@@ -125,6 +129,7 @@ public class RflPlugin extends Plugin
     {
         overlayManager.remove(contactHighlightOverlay);
         overlayManager.remove(contactOverlapOverlay);
+        overlayManager.remove(hitboxOverlay);
         interceptionDetector.reset();
         contactDetector.reset();
     }
@@ -154,6 +159,15 @@ public class RflPlugin extends Plugin
             {
                 log.info("[RFL debug] tick {} gate: {}", tick, gate);
                 lastGateLog = gate;
+            }
+        }
+        if (debug && watching)
+        {
+            // Every overlapping pair's deepest part pair, every tick: what START_DEPTH is measured from.
+            for (final ContactTracker.Overlap o : contactDetector.overlaps())
+            {
+                log.info("[RFL debug] tick {} depth {}.{}~{}.{}={} ({})", tick, o.a, o.partA, o.b, o.partB, o.depth,
+                    o.contact ? "contact" : "graze");
             }
         }
         if (!watching || !config.detectInterceptions())
@@ -199,10 +213,10 @@ public class RflPlugin extends Plugin
                     label + " " + interception.receiver + " caught the handegg in contact with "
                         + String.join(", ", interception.contacts), null);
             }
-            final Cylinder body = contactDetector.bodies().get(interception.receiver);
+            final Body body = contactDetector.bodies().get(interception.receiver);
             if (config.highlightInterceptions() && body != null)
             {
-                contactHighlights.addInterception(body.x, body.y, System.currentTimeMillis());
+                contactHighlights.addInterception(body.centreX, body.centreY, System.currentTimeMillis());
             }
         }
     }

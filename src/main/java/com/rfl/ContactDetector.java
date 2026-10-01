@@ -10,7 +10,6 @@ import java.util.Set;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
-import net.runelite.api.AABB;
 import net.runelite.api.Client;
 import net.runelite.api.Model;
 import net.runelite.api.Player;
@@ -21,30 +20,16 @@ import net.runelite.api.kit.KitType;
 import net.runelite.client.util.Text;
 
 /**
- * Turns the live players in view into {@link Cylinder} bodies for {@link ContactTracker} every
- * client frame.
- *
- * Confirmed against runelite-api 1.12.39 via {@code javap} (the version {@code ./gradlew
- * dependencies --configuration compileClasspath} resolves for {@code latest.release}):
- * {@code Client#getTopLevelWorldView()}, {@code Client#getTickCount()},
- * {@code WorldView#players()}, {@code Actor#getModel()} (declared on {@code Renderable}, which
- * {@code Actor} extends), {@code Actor#getCurrentOrientation()}, {@code Actor#getLocalLocation()},
- * {@code Model#getAABB(int)} returning {@code AABB} with {@code getCenterX/Y/Z} and
- * {@code getExtremeX/Y/Z}.
- *
- * AABB semantics come from {@code net.runelite.api.Perspective#calculateAABB}, the one place in
- * the client jar that consumes an AABB: each axis is {@code center +/- extreme} (extreme is a
- * symmetric half-extent, not an absolute max). Model Y is vertical and negative-up; model X/Z
- * are the horizontal axes and match scene X/Y, so a player's box is built by adding
- * {@code LocalPoint.getX()/getY()} to the model's X/Z center-extreme and negating the model's Y
- * center-extreme into the box's Z.
+ * Turns the live players in view into {@link Body} part capsules for {@link ContactTracker} every
+ * client frame, from each player's posed model vertices (same reading and rotation as
+ * {@link Feet}).
  */
 @Singleton
 final class ContactDetector
 {
     private final ContactTracker tracker = new ContactTracker();
     private final ContactHighlights highlights;
-    private Map<String, Cylinder> latestBodies = Collections.emptyMap();
+    private Map<String, Body> latestBodies = Collections.emptyMap();
     private Map<String, Player> latestPlayers = Collections.emptyMap();
 
     @Inject
@@ -56,7 +41,7 @@ final class ContactDetector
     List<RflEvent> onFrame(Client client)
     {
         WorldView worldView = client.getTopLevelWorldView();
-        Map<String, Cylinder> bodies = new HashMap<>();
+        Map<String, Body> bodies = new HashMap<>();
         Map<String, Player> players = new HashMap<>();
 
         if (worldView != null)
@@ -68,7 +53,7 @@ final class ContactDetector
                     continue;
                 }
 
-                Cylinder body = bodyFor(player);
+                Body body = bodyFor(player);
                 String name = sanitizedName(player);
                 if (body != null && name != null)
                 {
@@ -84,12 +69,13 @@ final class ContactDetector
         List<RflEvent> events = tracker.update(bodies, now, client.getTickCount());
         for (RflEvent event : events)
         {
-            Cylinder a = bodies.get(event.a);
-            Cylinder b = bodies.get(event.b);
-            if ("contact_start".equals(event.type) && a != null && b != null)
+            Body a = bodies.get(event.a);
+            Body b = bodies.get(event.b);
+            Body.Contact contact = "contact_start".equals(event.type) && a != null && b != null
+                ? Body.contact(a, b) : null;
+            if (contact != null)
             {
-                int[] center = Cylinder.overlapCenter(a, b);
-                highlights.add(center[0], center[1], now);
+                highlights.add(contact.x, contact.y, now);
             }
         }
         return events;
@@ -132,6 +118,8 @@ final class ContactDetector
      */
     List<RflEvent> endAll(Client client)
     {
+        latestBodies = Collections.emptyMap();
+        latestPlayers = Collections.emptyMap();
         return tracker.update(Collections.emptyMap(), System.currentTimeMillis(), client.getTickCount());
     }
 
@@ -150,7 +138,7 @@ final class ContactDetector
     }
 
     /** Bodies from the latest frame, by sanitized name. */
-    Map<String, Cylinder> bodies()
+    Map<String, Body> bodies()
     {
         return latestBodies;
     }
@@ -200,12 +188,7 @@ final class ContactDetector
         return holders;
     }
 
-    /**
-     * The player's body as an upright cylinder. The radius comes from the model's unrotated
-     * bounds (average of its half-width and half-depth), so it doesn't grow when the player turns;
-     * the centre and height come from the bounds at the current orientation.
-     */
-    private static Cylinder bodyFor(Player player)
+    private static Body bodyFor(Player player)
     {
         Model model = player.getModel();
         LocalPoint localPoint = player.getLocalLocation();
@@ -213,21 +196,8 @@ final class ContactDetector
         {
             return null;
         }
-
-        AABB rotated = model.getAABB(player.getCurrentOrientation());
-        AABB upright = model.getAABB(0);
-        if (rotated == null || upright == null)
-        {
-            return null;
-        }
-
-        int radius = (upright.getExtremeX() + upright.getExtremeZ()) / 2;
-        int x = localPoint.getX() + rotated.getCenterX();
-        int y = localPoint.getY() + rotated.getCenterZ();
-
-        // Model Y is vertical and negative-up, so the up-positive centre is -centerY.
-        int zCenter = -rotated.getCenterY();
-        return new Cylinder(x, y, radius, zCenter - rotated.getExtremeY(), zCenter + rotated.getExtremeY());
+        return Body.from(model.getVerticesX(), model.getVerticesY(), model.getVerticesZ(), model.getVerticesCount(),
+            player.getCurrentOrientation(), localPoint.getX(), localPoint.getY());
     }
 
     private static String sanitizedName(Player player)

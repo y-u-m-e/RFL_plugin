@@ -23,7 +23,7 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  * While two players' bodies overlap, outlines each of their feet (from the posed model) on the
  * ground and fills where a foot of one crosses a foot of the other. Faint below the contact
  * threshold, the contact colour once the pair counts as a contact. Display only; contacts are
- * still detected from the body cylinder.
+ * detected from {@link Body} parts.
  */
 final class ContactOverlapOverlay extends Overlay
 {

@@ -201,6 +201,38 @@ public interface RflConfig extends Config
         return false;
     }
 
+    /**
+     * @return true to draw every player's body-part hitboxes
+     */
+    @ConfigItem(
+        keyName = "showHitboxes",
+        name = "Show hitboxes",
+        description = "Draws the body parts (legs, torso, arms, head) contacts are detected from, for every "
+            + "player in view while contact detection runs. Parts in a contact use the contact colour.",
+        section = DISPLAY_SECTION,
+        position = 13
+    )
+    default boolean showHitboxes()
+    {
+        return false;
+    }
+
+    /**
+     * @return colour of the hitbox outlines, including transparency
+     */
+    @Alpha
+    @ConfigItem(
+        keyName = "hitboxColor",
+        name = "Hitbox colour",
+        description = "Colour of hitbox outlines not in a contact.",
+        section = DISPLAY_SECTION,
+        position = 14
+    )
+    default Color hitboxColor()
+    {
+        return new Color(255, 255, 255, 115);
+    }
+
     @ConfigSection(
         name = "Interceptions",
         description = "A player catching a thrown handegg while in contact with another player. Shown on "
