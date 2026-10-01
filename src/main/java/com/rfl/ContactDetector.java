@@ -21,8 +21,8 @@ import net.runelite.client.util.Text;
 
 /**
  * Turns the live players in view into {@link Body} part capsules for {@link ContactTracker} every
- * client frame, from each player's posed model vertices (same reading and rotation as
- * {@link Feet}): the drawn model, or the bare body ({@link BareBody}) per the Hitbox source setting.
+ * client frame, from each player's posed model vertices: the drawn model, or the bare body
+ * ({@link BareBody}) per the Hitbox source setting.
  */
 @Singleton
 final class ContactDetector
