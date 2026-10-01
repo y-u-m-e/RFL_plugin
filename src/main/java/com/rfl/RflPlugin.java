@@ -86,6 +86,9 @@ public class RflPlugin extends Plugin
     @Inject
     private ContactHighlights contactHighlights;
 
+    @Inject
+    private BareBody bareBody;
+
     private final InterceptionDetector interceptionDetector = new InterceptionDetector();
 
     // Debug logging state: only log what changed, so the log stays readable.
@@ -122,6 +125,8 @@ public class RflPlugin extends Plugin
         overlayManager.add(contactHighlightOverlay);
         overlayManager.add(contactOverlapOverlay);
         overlayManager.add(hitboxOverlay);
+        // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
+        bareBody.load();
     }
 
     @Override

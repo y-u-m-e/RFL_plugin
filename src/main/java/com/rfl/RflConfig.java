@@ -233,6 +233,30 @@ public interface RflConfig extends Config
         return new Color(255, 255, 255, 115);
     }
 
+    /** Which model body-part hitboxes are built from. */
+    enum HitboxSource
+    {
+        EQUIPPED,
+        BARE_BODY
+    }
+
+    /**
+     * @return the model hitboxes are built from
+     */
+    @ConfigItem(
+        keyName = "hitboxSource",
+        name = "Hitbox source",
+        description = "Experimental. Equipped: hitboxes from the model you see, including armour, capes and "
+            + "the handegg. Bare body: from the player's body without equipment. Also changes which "
+            + "contacts are detected.",
+        section = DISPLAY_SECTION,
+        position = 15
+    )
+    default HitboxSource hitboxSource()
+    {
+        return HitboxSource.EQUIPPED;
+    }
+
     @ConfigSection(
         name = "Interceptions",
         description = "A player catching a thrown handegg while in contact with another player. Shown on "

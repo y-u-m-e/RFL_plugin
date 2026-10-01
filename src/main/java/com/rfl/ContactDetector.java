@@ -22,20 +22,24 @@ import net.runelite.client.util.Text;
 /**
  * Turns the live players in view into {@link Body} part capsules for {@link ContactTracker} every
  * client frame, from each player's posed model vertices (same reading and rotation as
- * {@link Feet}).
+ * {@link Feet}): the drawn model, or the bare body ({@link BareBody}) per the Hitbox source setting.
  */
 @Singleton
 final class ContactDetector
 {
     private final ContactTracker tracker = new ContactTracker();
     private final ContactHighlights highlights;
+    private final RflConfig config;
+    private final BareBody bareBody;
     private Map<String, Body> latestBodies = Collections.emptyMap();
     private Map<String, Player> latestPlayers = Collections.emptyMap();
 
     @Inject
-    ContactDetector(ContactHighlights highlights)
+    ContactDetector(ContactHighlights highlights, RflConfig config, BareBody bareBody)
     {
         this.highlights = highlights;
+        this.config = config;
+        this.bareBody = bareBody;
     }
 
     List<RflEvent> onFrame(Client client)
@@ -43,6 +47,7 @@ final class ContactDetector
         WorldView worldView = client.getTopLevelWorldView();
         Map<String, Body> bodies = new HashMap<>();
         Map<String, Player> players = new HashMap<>();
+        boolean bare = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY;
 
         if (worldView != null)
         {
@@ -53,7 +58,7 @@ final class ContactDetector
                     continue;
                 }
 
-                Body body = bodyFor(player);
+                Body body = bodyFor(player, bare);
                 String name = sanitizedName(player);
                 if (body != null && name != null)
                 {
@@ -61,6 +66,11 @@ final class ContactDetector
                     players.put(name, player);
                 }
             }
+        }
+
+        if (bare)
+        {
+            bareBody.endFrame();
         }
 
         long now = System.currentTimeMillis();
@@ -127,6 +137,7 @@ final class ContactDetector
     {
         tracker.reset();
         highlights.clear();
+        bareBody.reset();
         latestBodies = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
     }
@@ -188,9 +199,10 @@ final class ContactDetector
         return holders;
     }
 
-    private static Body bodyFor(Player player)
+    /** Body from the player's drawn model, or their bare body per the Hitbox source setting. */
+    private Body bodyFor(Player player, boolean bare)
     {
-        Model model = player.getModel();
+        Model model = bare ? bareBody.posed(player) : player.getModel();
         LocalPoint localPoint = player.getLocalLocation();
         if (model == null || localPoint == null)
         {
