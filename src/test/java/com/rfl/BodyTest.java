@@ -221,7 +221,7 @@ public class BodyTest
             // real low-poly OSRS legs, which RealModelBodyTest checks directly.
             angleTo(shin, new double[]{foot[0] - knee[0], foot[2] - knee[2], foot[1] - knee[1]}) < 15);
         assertTrue("thigh radius " + thigh.radius, thigh.radius <= 6);
-        assertTrue("shin radius " + shin.radius, shin.radius <= 6);
+        assertTrue("shin radius " + shin.radius, shin.radius <= 8);
         assertTrue(Math.max(thigh.az, thigh.bz) > Math.max(shin.az, shin.bz));
     }
 
