@@ -141,7 +141,7 @@ public class ContactTrackerTest
     {
         return new Body(List.of(
             new Capsule("torso", x, 0, 100, x, 0, 160, 15),
-            new Capsule("rightArm", x + 20, 0, 150, x + 80, 0, 150, Body.ARM_RADIUS)), x, 0);
+            new Capsule("rightForearm", x + 20, 0, 150, x + 80, 0, 150, 10)), x, 0);
     }
 
     private static Body torsoOnly(int x)
@@ -159,7 +159,7 @@ public class ContactTrackerTest
         ContactTracker.Overlap graze = t.overlaps().get(0);
         assertEquals(5, graze.depth);
         assertEquals(false, graze.contact);
-        assertEquals("rightArm", graze.partA);
+        assertEquals("rightForearm", graze.partA);
         assertEquals("torso", graze.partB);
 
         // Arm tip 10 from the axis -> penetration 15 >= START_DEPTH: a contact.

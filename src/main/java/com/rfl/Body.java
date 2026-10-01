@@ -1,13 +1,16 @@
 package com.rfl;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.function.IntToDoubleFunction;
 
 /**
- * A player's posed model split into capsules: two legs, torso, two arms, head. Replaces the old
- * whole-body cylinder, which widened whenever a catch animation stretched the arms and so touched
- * neighbours who weren't touching.
+ * A player's posed model split into capsules: thigh and shin per leg, torso, upper arm and forearm
+ * per arm, head. Limb segments follow the bone direction (principal axis of their vertices), so a
+ * striding leg or swinging arm stays thin instead of becoming one fat vertical capsule.
  */
 final class Body
 {
@@ -20,8 +23,15 @@ final class Body
      * x are torso; the rest are arms. Initial value; tune against the hitbox overlay in game.
      */
     static final double TORSO_HALF_WIDTH = 0.15;
-    /** Arm radius (local units); an arm's vertex spread says little about its thickness. */
-    static final double ARM_RADIUS = 10;
+    /** Limb segment radius = this percentile of the vertices' distances from the segment axis. */
+    static final double LIMB_RADIUS_PERCENTILE = 0.8;
+    /** Limb segment radius clamp (local units). */
+    static final double MIN_LIMB_RADIUS = 4;
+    static final double MAX_LIMB_RADIUS = 30;
+    /** A limb segment with fewer vertices than this is skipped. */
+    static final int MIN_SEGMENT_VERTICES = 3;
+    /** Power-iteration steps for a principal axis; ample for 3x3. */
+    private static final int AXIS_ITERATIONS = 32;
 
     /** The deepest part pair between two bodies. */
     static final class Contact
@@ -165,12 +175,25 @@ final class Body
 
         double angle = orientation * 2 * Math.PI / 2048;
         Frame frame = new Frame(xs, h, zs, Math.sin(angle), Math.cos(angle), baseX, baseY);
+        double torsoX = 0;
+        double torsoZ = 0;
+        for (int i : torso)
+        {
+            torsoX += xs[i];
+            torsoZ += zs[i];
+        }
+        double tx = torso.isEmpty() ? bandMean : torsoX / torso.size();
+        double tz = torso.isEmpty() ? 0 : torsoZ / torso.size();
+        // Proximal half: higher for legs, nearer the torso's vertical centre line for arms.
+        IntToDoubleFunction legProximity = i -> h[i];
+        IntToDoubleFunction armProximity = i -> -Math.hypot(xs[i] - tx, zs[i] - tz);
+
         List<Capsule> parts = new ArrayList<>();
-        frame.upright("leftLeg", leftLeg, parts);
-        frame.upright("rightLeg", rightLeg, parts);
+        frame.limb("leftThigh", "leftShin", leftLeg, legProximity, parts);
+        frame.limb("rightThigh", "rightShin", rightLeg, legProximity, parts);
         Capsule torsoPart = frame.upright("torso", torso, parts);
-        frame.arm("leftArm", leftArm, parts);
-        frame.arm("rightArm", rightArm, parts);
+        frame.limb("leftUpperArm", "leftForearm", leftArm, armProximity, parts);
+        frame.limb("rightUpperArm", "rightForearm", rightArm, armProximity, parts);
         frame.upright("head", head, parts);
 
         if (torsoPart == null)
@@ -239,45 +262,140 @@ final class Body
         }
 
         /**
-         * Capsule between the arm's two farthest-apart vertices, approximated as the vertex
-         * farthest from the centroid, then the vertex farthest from that one.
+         * Splits the limb at the median projection on its principal axis and adds a capsule per
+         * half, proximal half first.
          */
-        void arm(String name, List<Integer> idx, List<Capsule> out)
+        void limb(String proximal, String distal, List<Integer> idx, IntToDoubleFunction proximity, List<Capsule> out)
         {
             if (idx.isEmpty())
             {
                 return;
             }
-            double cx = 0;
-            double ch = 0;
-            double cz = 0;
-            for (int i : idx)
-            {
-                cx += xs[i];
-                ch += h[i];
-                cz += zs[i];
-            }
-            int p = farthest(idx, cx / idx.size(), ch / idx.size(), cz / idx.size());
-            int q = farthest(idx, xs[p], h[p], zs[p]);
-            out.add(new Capsule(name,
-                sceneX(xs[p], zs[p]), sceneY(xs[p], zs[p]), h[p],
-                sceneX(xs[q], zs[q]), sceneY(xs[q], zs[q]), h[q], ARM_RADIUS));
+            double[] axis = axis(idx);
+            List<Integer> sorted = new ArrayList<>(idx);
+            sorted.sort(Comparator.comparingDouble(i -> project(i, axis)));
+            List<Integer> lo = sorted.subList(0, sorted.size() / 2);
+            List<Integer> hi = sorted.subList(sorted.size() / 2, sorted.size());
+            boolean loProximal = mean(lo, proximity) >= mean(hi, proximity);
+            segment(proximal, loProximal ? lo : hi, out);
+            segment(distal, loProximal ? hi : lo, out);
         }
 
-        private int farthest(List<Integer> idx, double x, double y, double z)
+        /**
+         * Capsule along the segment's own principal axis: endpoints at the min/max projection,
+         * radius = {@link #LIMB_RADIUS_PERCENTILE} of the distances from that axis, clamped.
+         */
+        private void segment(String name, List<Integer> idx, List<Capsule> out)
         {
-            int best = idx.get(0);
-            double bestD = -1;
+            if (idx.size() < MIN_SEGMENT_VERTICES)
+            {
+                return;
+            }
+            double[] axis = axis(idx);
+            double min = Double.MAX_VALUE;
+            double max = -Double.MAX_VALUE;
+            double[] dist = new double[idx.size()];
+            for (int k = 0; k < idx.size(); k++)
+            {
+                int i = idx.get(k);
+                double t = project(i, axis);
+                min = Math.min(min, t);
+                max = Math.max(max, t);
+                double px = xs[i] - axis[0] - t * axis[3];
+                double ph = h[i] - axis[1] - t * axis[4];
+                double pz = zs[i] - axis[2] - t * axis[5];
+                dist[k] = Math.sqrt(px * px + ph * ph + pz * pz);
+            }
+            Arrays.sort(dist);
+            double radius = dist[(int) Math.ceil(LIMB_RADIUS_PERCENTILE * dist.length) - 1];
+            radius = Math.max(MIN_LIMB_RADIUS, Math.min(MAX_LIMB_RADIUS, radius));
+            double ax = axis[0] + min * axis[3];
+            double ah = axis[1] + min * axis[4];
+            double az = axis[2] + min * axis[5];
+            double bx = axis[0] + max * axis[3];
+            double bh = axis[1] + max * axis[4];
+            double bz = axis[2] + max * axis[5];
+            out.add(new Capsule(name, sceneX(ax, az), sceneY(ax, az), ah, sceneX(bx, bz), sceneY(bx, bz), bh, radius));
+        }
+
+        /**
+         * Principal axis (PCA) of the vertices: their mean, then the largest eigenvector of their
+         * 3x3 covariance by power iteration, as {mx, mh, mz, dx, dh, dz} with a unit direction.
+         * Falls back to vertical when the points don't spread.
+         */
+        private double[] axis(List<Integer> idx)
+        {
+            int n = idx.size();
+            double mx = 0;
+            double mh = 0;
+            double mz = 0;
             for (int i : idx)
             {
-                double d = (xs[i] - x) * (xs[i] - x) + (h[i] - y) * (h[i] - y) + (zs[i] - z) * (zs[i] - z);
-                if (d > bestD)
+                mx += xs[i];
+                mh += h[i];
+                mz += zs[i];
+            }
+            mx /= n;
+            mh /= n;
+            mz /= n;
+            double[][] c = new double[3][3];
+            for (int i : idx)
+            {
+                double[] d = {xs[i] - mx, h[i] - mh, zs[i] - mz};
+                for (int r = 0; r < 3; r++)
                 {
-                    bestD = d;
-                    best = i;
+                    for (int k = 0; k < 3; k++)
+                    {
+                        c[r][k] += d[r] * d[k];
+                    }
                 }
             }
-            return best;
+            // Start from the covariance column with the largest variance rather than a fixed
+            // vector, which could be orthogonal to the dominant direction.
+            int col = c[0][0] >= c[1][1] && c[0][0] >= c[2][2] ? 0 : c[1][1] >= c[2][2] ? 1 : 2;
+            double[] v = {c[0][col], c[1][col], c[2][col]};
+            for (int it = 0; it < AXIS_ITERATIONS; it++)
+            {
+                double len = norm(v);
+                if (len < 1e-12)
+                {
+                    return new double[]{mx, mh, mz, 0, 1, 0};
+                }
+                double ux = v[0] / len;
+                double uh = v[1] / len;
+                double uz = v[2] / len;
+                v = new double[]{
+                    c[0][0] * ux + c[0][1] * uh + c[0][2] * uz,
+                    c[1][0] * ux + c[1][1] * uh + c[1][2] * uz,
+                    c[2][0] * ux + c[2][1] * uh + c[2][2] * uz};
+            }
+            double len = norm(v);
+            if (len < 1e-12)
+            {
+                return new double[]{mx, mh, mz, 0, 1, 0};
+            }
+            return new double[]{mx, mh, mz, v[0] / len, v[1] / len, v[2] / len};
+        }
+
+        /** Signed distance of vertex i along the axis from the axis' mean point. */
+        private double project(int i, double[] axis)
+        {
+            return (xs[i] - axis[0]) * axis[3] + (h[i] - axis[1]) * axis[4] + (zs[i] - axis[2]) * axis[5];
+        }
+
+        private static double norm(double[] v)
+        {
+            return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        }
+
+        private static double mean(List<Integer> idx, IntToDoubleFunction f)
+        {
+            double sum = 0;
+            for (int i : idx)
+            {
+                sum += f.applyAsDouble(i);
+            }
+            return idx.isEmpty() ? 0 : sum / idx.size();
         }
 
         // Same rotation the client applies to models: x' = x cos + z sin, z' = z cos - x sin.

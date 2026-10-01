@@ -8,7 +8,7 @@ final class Capsule
 {
     private static final double EPSILON = 1e-9;
 
-    /** leftLeg, rightLeg, torso, leftArm, rightArm or head. */
+    /** left/right Thigh, Shin, UpperArm or Forearm, torso, or head. */
     final String name;
     final double ax;
     final double ay;
