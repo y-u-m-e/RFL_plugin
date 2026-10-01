@@ -18,12 +18,24 @@ public class InterceptionDetectorTest
     public void catchAfterAThrowWhileInContactIsAnInterception()
     {
         InterceptionDetector d = new InterceptionDetector();
-        assertTrue(d.onTick(10, true, Set.of(), AMY_IN_CONTACT_WITH_ZED).isEmpty()); // ball in the air
+        d.onTick(9, false, Set.of("Bo"), AMY_IN_CONTACT_WITH_ZED); // Bo holds it
+        assertTrue(d.onTick(10, true, Set.of(), AMY_IN_CONTACT_WITH_ZED).isEmpty()); // thrown
         List<InterceptionDetector.Interception> found =
-            d.onTick(11, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED); // landed in Amy's hand
+            d.onTick(11, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED); // gone, in Amy's hand
         assertEquals(1, found.size());
         assertEquals("Amy", found.get(0).receiver);
         assertEquals(List.of("Zed"), found.get(0).contacts);
+    }
+
+    @Test
+    public void catcherHoldingWhileTheProjectileIsStillDrawnCountsOnceItDisappears()
+    {
+        InterceptionDetector d = new InterceptionDetector();
+        d.onTick(9, false, Set.of("Bo"), AMY_IN_CONTACT_WITH_ZED);
+        d.onTick(10, true, Set.of(), AMY_IN_CONTACT_WITH_ZED);
+        // Same tick the ball reaches Amy's hand, the projectile is still drawn.
+        assertTrue(d.onTick(11, true, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).isEmpty());
+        assertEquals(1, d.onTick(12, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).size());
     }
 
     @Test
@@ -56,7 +68,6 @@ public class InterceptionDetectorTest
     {
         InterceptionDetector d = new InterceptionDetector();
         d.onTick(10, true, Set.of(), AMY_IN_CONTACT_WITH_ZED);
-        // Someone else already holds a handegg while this one is still flying.
         assertTrue(d.onTick(11, true, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).isEmpty());
     }
 
@@ -71,11 +82,20 @@ public class InterceptionDetectorTest
     }
 
     @Test
-    public void alreadyHoldingIsNotANewCatch()
+    public void someoneHoldingBeforeTheThrowIsNotTheCatcher()
     {
         InterceptionDetector d = new InterceptionDetector();
         d.onTick(9, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED);
         d.onTick(10, true, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED);
         assertTrue(d.onTick(11, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).isEmpty());
+    }
+
+    @Test
+    public void aThrowIsCaughtOnlyOnce()
+    {
+        InterceptionDetector d = new InterceptionDetector();
+        d.onTick(10, true, Set.of(), AMY_IN_CONTACT_WITH_ZED);
+        assertEquals(1, d.onTick(11, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).size());
+        assertTrue(d.onTick(12, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).isEmpty());
     }
 }

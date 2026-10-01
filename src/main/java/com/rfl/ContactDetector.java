@@ -45,6 +45,7 @@ final class ContactDetector
     private final ContactTracker tracker = new ContactTracker();
     private final ContactHighlights highlights;
     private Map<String, Cylinder> latestBodies = Collections.emptyMap();
+    private Map<String, Player> latestPlayers = Collections.emptyMap();
 
     @Inject
     ContactDetector(ContactHighlights highlights)
@@ -56,6 +57,7 @@ final class ContactDetector
     {
         WorldView worldView = client.getTopLevelWorldView();
         Map<String, Cylinder> bodies = new HashMap<>();
+        Map<String, Player> players = new HashMap<>();
 
         if (worldView != null)
         {
@@ -71,12 +73,14 @@ final class ContactDetector
                 if (body != null && name != null)
                 {
                     bodies.put(name, body);
+                    players.put(name, player);
                 }
             }
         }
 
         long now = System.currentTimeMillis();
         latestBodies = bodies;
+        latestPlayers = players;
         List<RflEvent> events = tracker.update(bodies, now, client.getTickCount());
         for (RflEvent event : events)
         {
@@ -136,6 +140,13 @@ final class ContactDetector
         tracker.reset();
         highlights.clear();
         latestBodies = Collections.emptyMap();
+        latestPlayers = Collections.emptyMap();
+    }
+
+    /** Players from the latest frame, by sanitized name; read on the client thread only. */
+    Map<String, Player> players()
+    {
+        return latestPlayers;
     }
 
     /** Bodies from the latest frame, by sanitized name. */
@@ -154,23 +165,36 @@ final class ContactDetector
         return tracker.contactsByPlayer();
     }
 
-    /** Sanitized names of players with a handegg in the weapon slot. */
-    Set<String> handeggHolders(Client client)
+    /** Weapon-slot item id of every player in view, by sanitized name (-1 for empty). */
+    Map<String, Integer> weapons(Client client)
     {
         WorldView worldView = client.getTopLevelWorldView();
-        Set<String> holders = new HashSet<>();
+        Map<String, Integer> weapons = new HashMap<>();
         if (worldView == null)
         {
-            return holders;
+            return weapons;
         }
         for (Player player : worldView.players())
         {
             PlayerComposition composition = player == null ? null : player.getPlayerComposition();
             String name = player == null ? null : sanitizedName(player);
-            if (composition != null && name != null
-                && InterceptionDetector.HANDEGG_ITEMS.contains(composition.getEquipmentId(KitType.WEAPON)))
+            if (composition != null && name != null)
             {
-                holders.add(name);
+                weapons.put(name, composition.getEquipmentId(KitType.WEAPON));
+            }
+        }
+        return weapons;
+    }
+
+    /** Sanitized names of players with a handegg in the weapon slot. */
+    static Set<String> handeggHolders(Map<String, Integer> weapons)
+    {
+        Set<String> holders = new HashSet<>();
+        for (Map.Entry<String, Integer> entry : weapons.entrySet())
+        {
+            if (InterceptionDetector.HANDEGG_ITEMS.contains(entry.getValue()))
+            {
+                holders.add(entry.getKey());
             }
         }
         return holders;

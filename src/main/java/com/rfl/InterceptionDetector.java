@@ -41,6 +41,9 @@ final class InterceptionDetector
     }
 
     private Set<String> previousHolders = Collections.emptySet();
+    /** Who held a handegg just before the current throw; none of them can be its catcher. */
+    private Set<String> holdersBeforeThrow = Collections.emptySet();
+    private boolean wasInFlight;
     private int lastInFlightTick = Integer.MIN_VALUE;
 
     /**
@@ -54,18 +57,23 @@ final class InterceptionDetector
         List<Interception> found = new ArrayList<>();
         if (ballInFlight)
         {
+            if (!wasInFlight)
+            {
+                holdersBeforeThrow = previousHolders;
+            }
             lastInFlightTick = tick;
         }
         else if (lastInFlightTick != Integer.MIN_VALUE && tick - lastInFlightTick <= LANDING_WINDOW_TICKS)
         {
+            // The ball is no longer drawn: whoever holds one now and didn't before the throw caught
+            // it, even if it reached their hand on a tick the projectile was still drawn.
             for (String holder : holders)
             {
-                if (previousHolders.contains(holder))
+                if (holdersBeforeThrow.contains(holder))
                 {
                     continue;
                 }
-                // This throw is caught; whoever caught it, it can't be caught again.
-                lastInFlightTick = Integer.MIN_VALUE;
+                lastInFlightTick = Integer.MIN_VALUE; // a throw is caught once
                 List<String> with = contacts.getOrDefault(holder, Collections.emptyList());
                 if (!with.isEmpty())
                 {
@@ -74,6 +82,7 @@ final class InterceptionDetector
                 break;
             }
         }
+        wasInFlight = ballInFlight;
         previousHolders = new HashSet<>(holders);
         return found;
     }
@@ -81,6 +90,8 @@ final class InterceptionDetector
     void reset()
     {
         previousHolders = Collections.emptySet();
+        holdersBeforeThrow = Collections.emptySet();
+        wasInFlight = false;
         lastInFlightTick = Integer.MIN_VALUE;
     }
 }

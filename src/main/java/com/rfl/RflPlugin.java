@@ -1,13 +1,17 @@
 package com.rfl;
 
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.inject.Inject;
 
 import com.google.inject.Provides;
+import lombok.extern.slf4j.Slf4j;
 
 import okhttp3.OkHttpClient;
 
@@ -34,6 +38,7 @@ import net.runelite.client.util.Text;
  * RFL match audit plugin. Reports enabled plugins, RSN, world, nearby players and POH contact
  * events to the audit gateway every 10 s while logged in and reporting is enabled (spec §3).
  */
+@Slf4j
 @PluginDescriptor(
     name = "RFL Audit"
 )
@@ -79,6 +84,12 @@ public class RflPlugin extends Plugin
     private ContactHighlights contactHighlights;
 
     private final InterceptionDetector interceptionDetector = new InterceptionDetector();
+
+    // Debug logging state: only log what changed, so the log stays readable.
+    private String lastGateLog = "";
+    private String lastProjectileLog = "";
+    private Map<String, Integer> lastWeapons = Collections.emptyMap();
+    private String lastContactLog = "";
 
     /**
      * Cached each {@link GameTick}; {@link ClientTick} reads it rather than recomputing per
@@ -131,8 +142,20 @@ public class RflPlugin extends Plugin
      */
     private void checkInterceptions()
     {
+        final boolean debug = config.debugLogging();
+        final int tick = client.getTickCount();
         final boolean watching = config.enableReporting() && config.reportContacts()
             && client.getGameState() == GameState.LOGGED_IN && inPoh;
+        if (debug)
+        {
+            final String gate = "reporting=" + config.enableReporting() + " contacts=" + config.reportContacts()
+                + " inPoh=" + inPoh + " detectInterceptions=" + config.detectInterceptions();
+            if (!gate.equals(lastGateLog))
+            {
+                log.info("[RFL debug] tick {} gate: {}", tick, gate);
+                lastGateLog = gate;
+            }
+        }
         if (!watching || !config.detectInterceptions())
         {
             interceptionDetector.reset();
@@ -140,18 +163,32 @@ public class RflPlugin extends Plugin
         }
 
         boolean ballInFlight = false;
+        final List<String> projectiles = new ArrayList<>();
         for (Projectile projectile : client.getProjectiles())
         {
+            projectiles.add(projectile.getId() + "(" + projectile.getRemainingCycles() + ")");
             if (InterceptionDetector.HANDEGG_PROJECTILES.contains(projectile.getId()))
             {
                 ballInFlight = true;
-                break;
             }
         }
 
+        final Map<String, Integer> weapons = contactDetector.weapons(client);
+        final Map<String, List<String>> contacts = contactDetector.contactsByPlayer();
+        if (debug)
+        {
+            logDebugTick(tick, projectiles, ballInFlight, weapons, contacts);
+        }
+
         final List<InterceptionDetector.Interception> found = interceptionDetector.onTick(
-            client.getTickCount(), ballInFlight, contactDetector.handeggHolders(client),
-            contactDetector.contactsByPlayer());
+            tick, ballInFlight, ContactDetector.handeggHolders(weapons), contacts);
+        if (debug && !found.isEmpty())
+        {
+            for (final InterceptionDetector.Interception i : found)
+            {
+                log.info("[RFL debug] tick {} INTERCEPTION receiver={} contacts={}", tick, i.receiver, i.contacts);
+            }
+        }
 
         for (final InterceptionDetector.Interception interception : found)
         {
@@ -211,6 +248,34 @@ public class RflPlugin extends Plugin
      *
      * @param queueEnds true to queue contact_end events for open pairs; false to silently reset
      */
+    /** Logs projectiles while any are drawn, weapon-slot changes, and contact changes. */
+    private void logDebugTick(int tick, List<String> projectiles, boolean ballInFlight,
+        Map<String, Integer> weapons, Map<String, List<String>> contacts)
+    {
+        final String projectileLog = projectiles.toString();
+        if (!projectiles.isEmpty() || !projectileLog.equals(lastProjectileLog))
+        {
+            log.info("[RFL debug] tick {} projectiles={} handeggInFlight={}", tick, projectileLog, ballInFlight);
+            lastProjectileLog = projectileLog;
+        }
+        for (final Map.Entry<String, Integer> entry : weapons.entrySet())
+        {
+            final Integer before = lastWeapons.get(entry.getKey());
+            if (!entry.getValue().equals(before))
+            {
+                log.info("[RFL debug] tick {} weapon {}: {} -> {}{}", tick, entry.getKey(), before, entry.getValue(),
+                    InterceptionDetector.HANDEGG_ITEMS.contains(entry.getValue()) ? " (handegg)" : "");
+            }
+        }
+        lastWeapons = new HashMap<>(weapons);
+        final String contactLog = contacts.toString();
+        if (!contactLog.equals(lastContactLog))
+        {
+            log.info("[RFL debug] tick {} contacts={}", tick, contactLog);
+            lastContactLog = contactLog;
+        }
+    }
+
     private void closeOrResetTracking(final boolean queueEnds)
     {
         if (queueEnds)

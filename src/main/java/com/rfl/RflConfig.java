@@ -272,6 +272,22 @@ public interface RflConfig extends Config
     }
 
     /**
+     * @return true to log handegg projectiles, held weapons and contacts each tick
+     */
+    @ConfigItem(
+        keyName = "debugLogging",
+        name = "Debug logging",
+        description = "Writes handegg projectiles, weapon changes, contacts and interception checks to the "
+            + "RuneLite client log, for troubleshooting.",
+        section = INTERCEPTIONS_SECTION,
+        position = 18
+    )
+    default boolean debugLogging()
+    {
+        return false;
+    }
+
+    /**
      * Reads the stored install identifier used to correlate reports from this client.
      *
      * @return stored install id, or empty when not yet assigned
