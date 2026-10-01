@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.function.IntToDoubleFunction;
 
 /**
- * A player's posed model split into capsules: thigh and shin per leg, torso, upper arm and forearm
+ * A player's posed model split into capsules: thigh, shin and foot per leg, torso, upper arm and forearm
  * per arm, head. Limb segments follow the bone direction (principal axis of their vertices), so a
  * striding leg or swinging arm stays thin instead of becoming one fat vertical capsule.
  */
@@ -16,6 +16,11 @@ final class Body
 {
     /** Vertices below this fraction of the model height are legs. */
     static final double LEG_TOP = 0.45;
+    /**
+     * Leg vertices lower than this (local units above the soles) are the foot: fitted on its own
+     * so it lies flat heel to toe, and the shin stops at the ankle.
+     */
+    static final double FOOT_TOP = 16;
     /** Vertices above this fraction of the model height are the head. */
     static final double HEAD_BOTTOM = 0.85;
     /**
@@ -152,13 +157,19 @@ final class Body
 
         List<Integer> leftLeg = new ArrayList<>();
         List<Integer> rightLeg = new ArrayList<>();
+        List<Integer> leftFoot = new ArrayList<>();
+        List<Integer> rightFoot = new ArrayList<>();
         List<Integer> torso = new ArrayList<>();
         List<Integer> leftArm = new ArrayList<>();
         List<Integer> rightArm = new ArrayList<>();
         List<Integer> head = new ArrayList<>();
         for (int i = 0; i < count; i++)
         {
-            if (h[i] < legTop)
+            if (h[i] < FOOT_TOP)
+            {
+                (xs[i] < legMean ? leftFoot : rightFoot).add(i);
+            }
+            else if (h[i] < legTop)
             {
                 (xs[i] < legMean ? leftLeg : rightLeg).add(i);
             }
@@ -190,7 +201,9 @@ final class Body
 
         List<Capsule> parts = new ArrayList<>();
         frame.limb("leftThigh", "leftShin", leftLeg, legProximity, parts);
+        frame.segment("leftFoot", leftFoot, parts);
         frame.limb("rightThigh", "rightShin", rightLeg, legProximity, parts);
+        frame.segment("rightFoot", rightFoot, parts);
         Capsule torsoPart = frame.upright("torso", torso, parts);
         frame.limb("leftUpperArm", "leftForearm", leftArm, armProximity, parts);
         frame.limb("rightUpperArm", "rightForearm", rightArm, armProximity, parts);
@@ -285,7 +298,7 @@ final class Body
          * Capsule along the segment's own principal axis: endpoints at the min/max projection,
          * radius = {@link #LIMB_RADIUS_PERCENTILE} of the distances from that axis, clamped.
          */
-        private void segment(String name, List<Integer> idx, List<Capsule> out)
+        void segment(String name, List<Integer> idx, List<Capsule> out)
         {
             if (idx.size() < MIN_SEGMENT_VERTICES)
             {

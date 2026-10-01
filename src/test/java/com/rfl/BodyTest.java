@@ -12,7 +12,7 @@ import org.junit.Test;
 public class BodyTest
 {
     private static final String[] PARTS = {
-        "leftThigh", "leftShin", "rightThigh", "rightShin", "torso",
+        "leftThigh", "leftShin", "leftFoot", "rightThigh", "rightShin", "rightFoot", "torso",
         "leftUpperArm", "leftForearm", "rightUpperArm", "rightForearm", "head",
     };
 
@@ -80,12 +80,17 @@ public class BodyTest
         }
     }
 
-    /** Straight legs, torso box, head box, arms outstretched horizontally at shoulder height. */
+    /**
+     * Straight legs on flat feet pointing forward (+z), torso box, head box, arms outstretched
+     * horizontally at shoulder height.
+     */
     private static Figure standing()
     {
         return new Figure()
-            .limb(new double[]{-20, 0, 0}, new double[]{-20, 85, 0}, 5)
-            .limb(new double[]{20, 0, 0}, new double[]{20, 85, 0}, 5)
+            .limb(new double[]{-20, 16, 0}, new double[]{-20, 85, 0}, 5)
+            .limb(new double[]{20, 16, 0}, new double[]{20, 85, 0}, 5)
+            .limb(new double[]{-20, 4, -8}, new double[]{-20, 4, 28}, 4)
+            .limb(new double[]{20, 4, -8}, new double[]{20, 4, 28}, 4)
             .box(-20, 20, 100, 160, -10, 10)
             .box(-10, 10, 175, 200, -10, 10)
             .limb(new double[]{-35, 150, 0}, new double[]{-105, 150, 0}, 5)
@@ -133,7 +138,7 @@ public class BodyTest
     public void figureSplitsIntoTenNamedParts()
     {
         Body body = standing().body(0);
-        assertEquals(10, body.parts.size());
+        assertEquals(12, body.parts.size());
         for (String name : PARTS)
         {
             assertNotNull(name, part(body, name));
@@ -150,7 +155,7 @@ public class BodyTest
         assertEquals(2000, thigh.ay, 1e-3);
         // Thigh is the upper half of the leg, shin the lower.
         assertTrue(Math.min(thigh.az, thigh.bz) > Math.max(shin.az, shin.bz) - 6);
-        assertEquals(0, Math.min(shin.az, shin.bz), 1e-3);
+        assertEquals(16, Math.min(shin.az, shin.bz), 1e-3);
         assertEquals(85, Math.max(thigh.az, thigh.bz), 1e-3);
         assertEquals(5, thigh.radius, 1e-3);
         assertEquals(1020, part(body, "rightThigh").ax, 1e-3);
@@ -276,5 +281,21 @@ public class BodyTest
         assertTrue(body.parts.isEmpty());
         assertEquals(5, body.centreX);
         assertEquals(6, body.centreY);
+    }
+
+    @Test
+    public void feetLieFlatHeelToToeAndTheShinStopsAboveThem()
+    {
+        Body body = standing().body(0);
+        for (String side : new String[]{"left", "right"})
+        {
+            Capsule foot = part(body, side + "Foot");
+            // Orientation 0: model z (forward) is scene y.
+            assertTrue(side + " foot flat", angleTo(foot, new double[]{0, 1, 0}) < 5);
+            assertEquals(side + " foot length", 36, length(foot), 8);
+            assertTrue(side + " foot low", Math.max(foot.az, foot.bz) < Body.FOOT_TOP);
+            Capsule shin = part(body, side + "Shin");
+            assertTrue(side + " shin above foot", Math.min(shin.az, shin.bz) >= Body.FOOT_TOP - 1);
+        }
     }
 }
