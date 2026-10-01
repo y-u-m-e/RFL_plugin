@@ -30,13 +30,14 @@ final class Body
     static final double TORSO_HALF_WIDTH = 0.15;
     /**
      * Fixed thickness of each part as a fraction of model height, measured from a standing
-     * bare-body model 202 units tall (radii 12.8, 7.5, 9.2, 21.7, 6.9, 5.0, 11.5). Fixed rather
+     * bare-body model 202 units tall (radii 12.8, 7.5, 5.5, 21.7, 6.9, 5.0, 11.5). Fixed rather
      * than refitted per frame, so a part moves with the model instead of swelling mid-stride.
      */
     private static final double MODEL_HEIGHT_REF = 202;
     private static final double THIGH_RADIUS = 12.8 / MODEL_HEIGHT_REF;
     private static final double SHIN_RADIUS = 7.5 / MODEL_HEIGHT_REF;
-    private static final double FOOT_RADIUS = 9.2 / MODEL_HEIGHT_REF;
+    /** Half the height of the real foot vertices (about 12 units on a 202-tall model). */
+    private static final double FOOT_RADIUS = 5.5 / MODEL_HEIGHT_REF;
     private static final double TORSO_RADIUS = 21.7 / MODEL_HEIGHT_REF;
     private static final double UPPER_ARM_RADIUS = 6.9 / MODEL_HEIGHT_REF;
     private static final double FOREARM_RADIUS = 5.0 / MODEL_HEIGHT_REF;
@@ -441,6 +442,11 @@ final class Body
                 dist[k] = Math.sqrt(px * px + ph * ph + pz * pz);
             }
             double radius = radiusFor(name, height);
+            // The rounded caps add a radius past each end; pull the ends in so the capsule ends
+            // where the vertices do (collapsing to the middle if the part is shorter than that).
+            double inset = Math.min(radius, (max - min) / 2);
+            min += inset;
+            max -= inset;
             double ax = axis[0] + min * axis[3];
             double ah = axis[1] + min * axis[4];
             double az = axis[2] + min * axis[5];

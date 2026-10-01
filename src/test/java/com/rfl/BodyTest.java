@@ -302,7 +302,8 @@ public class BodyTest
             Capsule foot = part(body, side + "Foot");
             // Orientation 0: model z (forward) is scene y.
             assertTrue(side + " foot flat", angleTo(foot, new double[]{0, 1, 0}) < 5);
-            assertEquals(side + " foot length", 36, length(foot), 8);
+            // Including the rounded caps, which add a radius at each end.
+            assertEquals(side + " foot length", 36, length(foot) + 2 * foot.radius, 8);
             assertTrue(side + " foot low", Math.max(foot.az, foot.bz) < Body.FOOT_TOP);
             Capsule shin = part(body, side + "Shin");
             assertTrue(side + " shin above foot", Math.min(shin.az, shin.bz) >= Body.FOOT_TOP - 1);

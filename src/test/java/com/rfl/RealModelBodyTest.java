@@ -171,4 +171,14 @@ public class RealModelBodyTest
                 top(d.part(side + "UpperArm")) > top(d.part(side + "Forearm")));
         }
     }
+
+    @Test
+    public void feetAreAsLongAndThickAsTheFoot()
+    {
+        // Real standing right foot: vertices span about 37 units heel to toe and 12 high.
+        Capsule foot = new Dump("standing").part("rightFoot");
+        double total = length(foot) + 2 * foot.radius; // the rounded caps add a radius at each end
+        assertTrue("foot total length " + total, total > 30 && total < 42);
+        assertTrue("foot radius " + foot.radius, foot.radius <= 6.5);
+    }
 }
