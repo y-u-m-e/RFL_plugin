@@ -21,6 +21,8 @@ final class Body
      * so it lies flat heel to toe, and the shin stops at the ankle.
      */
     static final double FOOT_TOP = 16;
+    /** Vertices this far beyond a leg segment's height span still count toward its radius. */
+    static final double LEG_RADIUS_MARGIN = 4;
     /** Vertices above this fraction of the model height are the head. */
     static final double HEAD_BOTTOM = 0.85;
     /**
@@ -196,13 +198,12 @@ final class Body
         double tx = torso.isEmpty() ? bandMean : torsoX / torso.size();
         double tz = torso.isEmpty() ? 0 : torsoZ / torso.size();
         // Proximal half: higher for legs, nearer the torso's vertical centre line for arms.
-        IntToDoubleFunction legProximity = i -> h[i];
         IntToDoubleFunction armProximity = i -> -Math.hypot(xs[i] - tx, zs[i] - tz);
 
         List<Capsule> parts = new ArrayList<>();
-        frame.limb("leftThigh", "leftShin", leftLeg, legProximity, parts);
+        frame.leg("leftThigh", "leftShin", leftLeg, parts);
         frame.segment("leftFoot", leftFoot, parts);
-        frame.limb("rightThigh", "rightShin", rightLeg, legProximity, parts);
+        frame.leg("rightThigh", "rightShin", rightLeg, parts);
         frame.segment("rightFoot", rightFoot, parts);
         Capsule torsoPart = frame.upright("torso", torso, parts);
         frame.limb("leftUpperArm", "leftForearm", leftArm, armProximity, parts);
@@ -272,6 +273,97 @@ final class Body
             Capsule c = new Capsule(name, sx, sy, minH, sx, sy, maxH, radius);
             out.add(c);
             return c;
+        }
+
+        /**
+         * A leg as shin and thigh from ankle to knee to hip, where each point is the mean of a
+         * height slice of the leg: lowest quarter (ankle), middle third (knee), highest quarter
+         * (hip). OSRS legs are a handful of vertices, so single rings sit off-centre; averaging
+         * slices keeps the shin and thigh along the leg instead of across the hips.
+         */
+        void leg(String thigh, String shin, List<Integer> idx, List<Capsule> out)
+        {
+            if (idx.size() < 4)
+            {
+                segment(thigh, idx, out);
+                return;
+            }
+            List<Integer> sorted = new ArrayList<>(idx);
+            sorted.sort(Comparator.comparingDouble(i -> h[i]));
+            int n = sorted.size();
+            int q = Math.max(1, n / 4);
+            double[] knee = centre(sorted.subList(n / 3, Math.max(n / 3 + 1, 2 * n / 3)));
+            // Extend each slice mean out along its segment to the leg's lowest and highest
+            // vertex, so the shin meets the foot and the thigh reaches the hip.
+            double[] ankle = atHeight(knee, centre(sorted.subList(0, q)), h[sorted.get(0)]);
+            double[] hip = atHeight(knee, centre(sorted.subList(n - q, n)), h[sorted.get(n - 1)]);
+            between(shin, ankle, knee, idx, out);
+            between(thigh, knee, hip, idx, out);
+        }
+
+        /** The point on the line from {@code from} through {@code to} at the given height. */
+        private static double[] atHeight(double[] from, double[] to, double height)
+        {
+            double dh = to[1] - from[1];
+            if (Math.abs(dh) < 1e-6)
+            {
+                return to;
+            }
+            double t = (height - from[1]) / dh;
+            return new double[]{from[0] + t * (to[0] - from[0]), height, from[2] + t * (to[2] - from[2])};
+        }
+
+        /** Mean (x, height, z) of the vertices. */
+        private double[] centre(List<Integer> idx)
+        {
+            double x = 0;
+            double hh = 0;
+            double z = 0;
+            for (int i : idx)
+            {
+                x += xs[i];
+                hh += h[i];
+                z += zs[i];
+            }
+            return new double[]{x / idx.size(), hh / idx.size(), z / idx.size()};
+        }
+
+        /**
+         * Capsule from {@code a} to {@code b} (model x, height, z). Radius: the
+         * {@link #LIMB_RADIUS_PERCENTILE} distance from that line of the vertices within its height
+         * span, clamped.
+         */
+        private void between(String name, double[] a, double[] b, List<Integer> idx, List<Capsule> out)
+        {
+            double lo = Math.min(a[1], b[1]);
+            double hi = Math.max(a[1], b[1]);
+            double dx = b[0] - a[0];
+            double dh = b[1] - a[1];
+            double dz = b[2] - a[2];
+            double len2 = dx * dx + dh * dh + dz * dz;
+            List<Double> dist = new ArrayList<>();
+            for (int i : idx)
+            {
+                if (h[i] < lo - LEG_RADIUS_MARGIN || h[i] > hi + LEG_RADIUS_MARGIN)
+                {
+                    continue;
+                }
+                double t = len2 == 0 ? 0 : ((xs[i] - a[0]) * dx + (h[i] - a[1]) * dh + (zs[i] - a[2]) * dz) / len2;
+                t = Math.max(0, Math.min(1, t));
+                double px = xs[i] - (a[0] + t * dx);
+                double ph = h[i] - (a[1] + t * dh);
+                double pz = zs[i] - (a[2] + t * dz);
+                dist.add(Math.sqrt(px * px + ph * ph + pz * pz));
+            }
+            double radius = MIN_LIMB_RADIUS;
+            if (!dist.isEmpty())
+            {
+                dist.sort(null);
+                radius = dist.get((int) Math.ceil(LIMB_RADIUS_PERCENTILE * dist.size()) - 1);
+            }
+            radius = Math.max(MIN_LIMB_RADIUS, Math.min(MAX_LIMB_RADIUS, radius));
+            out.add(new Capsule(name, sceneX(a[0], a[2]), sceneY(a[0], a[2]), a[1],
+                sceneX(b[0], b[2]), sceneY(b[0], b[2]), b[1], radius));
         }
 
         /**

@@ -18,7 +18,7 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * Draws every body-part capsule of every player in view: a horizontal ring at each endpoint and
+ * Draws every body-part capsule of every player in view: a ring square to the part at each endpoint and
  * four lines joining them. Parts in a contact use the contact colour. Display only.
  */
 final class HitboxOverlay extends Overlay
@@ -67,8 +67,11 @@ final class HitboxOverlay extends Overlay
             {
                 graphics.setColor(inContact.contains(entry.getKey() + '\u0000' + part.name)
                     ? config.contactHighlightColor() : config.hitboxColor());
-                Point[] ringA = ring(worldView, plane, part.ax, part.ay, part.az, part.radius);
-                Point[] ringB = ring(worldView, plane, part.bx, part.by, part.bz, part.radius);
+                double[] axis = {part.bx - part.ax, part.by - part.ay, part.bz - part.az};
+                Point[] ringA = project(worldView, plane,
+                    ringPoints(new double[]{part.ax, part.ay, part.az}, axis, part.radius, RING_POINTS));
+                Point[] ringB = project(worldView, plane,
+                    ringPoints(new double[]{part.bx, part.by, part.bz}, axis, part.radius, RING_POINTS));
                 drawRing(graphics, ringA);
                 drawRing(graphics, ringB);
                 for (int i = 0; i < RING_POINTS; i += RING_POINTS / 4)
@@ -83,17 +86,52 @@ final class HitboxOverlay extends Overlay
         return null;
     }
 
-    private Point[] ring(WorldView worldView, int plane, double x, double y, double height, double radius)
+    /**
+     * Points of a circle of the given radius around {@code centre}, in the plane perpendicular to
+     * {@code axis}: an upright part gets flat rings, a lying part (a foot) gets standing ones.
+     * Coordinates are scene {x, y, height}.
+     */
+    static double[][] ringPoints(double[] centre, double[] axis, double radius, int count)
     {
-        Point[] points = new Point[RING_POINTS];
-        for (int i = 0; i < RING_POINTS; i++)
+        double len = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+        double[] d = len < 1e-9 ? new double[]{0, 0, 1} : new double[]{axis[0] / len, axis[1] / len, axis[2] / len};
+        double[] ref = Math.abs(d[2]) < 0.9 ? new double[]{0, 0, 1} : new double[]{1, 0, 0};
+        double[] u = unit(cross(d, ref));
+        double[] v = cross(d, u);
+        double[][] points = new double[count][3];
+        for (int i = 0; i < count; i++)
         {
-            double angle = 2 * Math.PI * i / RING_POINTS;
-            LocalPoint lp = new LocalPoint((int) Math.round(x + radius * Math.cos(angle)),
-                (int) Math.round(y + radius * Math.sin(angle)), worldView);
-            points[i] = Perspective.localToCanvas(client, lp, plane, (int) Math.round(height));
+            double angle = 2 * Math.PI * i / count;
+            double c = Math.cos(angle) * radius;
+            double s = Math.sin(angle) * radius;
+            for (int k = 0; k < 3; k++)
+            {
+                points[i][k] = centre[k] + c * u[k] + s * v[k];
+            }
         }
         return points;
+    }
+
+    private Point[] project(WorldView worldView, int plane, double[][] ring)
+    {
+        Point[] points = new Point[ring.length];
+        for (int i = 0; i < ring.length; i++)
+        {
+            LocalPoint lp = new LocalPoint((int) Math.round(ring[i][0]), (int) Math.round(ring[i][1]), worldView);
+            points[i] = Perspective.localToCanvas(client, lp, plane, (int) Math.round(ring[i][2]));
+        }
+        return points;
+    }
+
+    private static double[] cross(double[] a, double[] b)
+    {
+        return new double[]{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+    }
+
+    private static double[] unit(double[] a)
+    {
+        double len = Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+        return new double[]{a[0] / len, a[1] / len, a[2] / len};
     }
 
     private static void drawRing(Graphics2D graphics, Point[] ring)
