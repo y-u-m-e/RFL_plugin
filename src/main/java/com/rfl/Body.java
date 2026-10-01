@@ -110,7 +110,7 @@ final class Body
     }
 
     /**
-     * Same inputs and rotation as {@link Feet#footprints}.
+     * Model-space vertices of the posed player model, rotated into scene space by orientation.
      *
      * @param xs model-space vertex X (horizontal)
      * @param ys model-space vertex Y (vertical, negative-up)
