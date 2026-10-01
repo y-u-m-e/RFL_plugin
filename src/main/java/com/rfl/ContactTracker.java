@@ -119,6 +119,27 @@ final class ContactTracker
         return result;
     }
 
+    /**
+     * Name to the names they are colliding with in the latest update: overlap of at least
+     * START_DEPTH right now. Unlike {@link #contactsByPlayer}, a contact being held while the
+     * bodies separate does not count.
+     */
+    Map<String, List<String>> collidingNow()
+    {
+        Map<String, List<String>> result = new HashMap<>();
+        for (Map.Entry<String, Body.Contact> entry : latest.entrySet())
+        {
+            if (entry.getValue().depth < START_DEPTH)
+            {
+                continue;
+            }
+            String[] pair = splitKey(entry.getKey());
+            result.computeIfAbsent(pair[0], k -> new ArrayList<>()).add(pair[1]);
+            result.computeIfAbsent(pair[1], k -> new ArrayList<>()).add(pair[0]);
+        }
+        return result;
+    }
+
     /** Name to the names they are currently in contact with (pairs past START_DEPTH). */
     Map<String, List<String>> contactsByPlayer()
     {

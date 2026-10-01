@@ -168,4 +168,18 @@ public class ContactTrackerTest
         assertEquals("contact_start", start.get(0).type);
         assertEquals(15, (int) start.get(0).depth);
     }
+
+    @Test
+    public void collidingNowNeedsStartDepthThisFrameNotJustAHeldContact()
+    {
+        ContactTracker t = new ContactTracker();
+        int deep = ContactTracker.START_DEPTH + 10;
+        t.update(Map.of("Amy", upright(0, 0, 50), "Zed", upright(100 - deep, 0, 50)), 0, 0);
+        assertEquals(List.of("Zed"), t.collidingNow().get("Amy"));
+
+        // Still overlapping, but only a little: the contact is held, the collision is not.
+        t.update(Map.of("Amy", upright(0, 0, 50), "Zed", upright(98, 0, 50)), 20, 1);
+        assertEquals(List.of("Zed"), t.contactsByPlayer().get("Amy"));
+        assertEquals(null, t.collidingNow().get("Amy"));
+    }
 }

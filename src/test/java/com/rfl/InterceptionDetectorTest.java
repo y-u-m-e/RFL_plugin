@@ -39,12 +39,22 @@ public class InterceptionDetectorTest
     }
 
     @Test
-    public void allowsOneTickOfLagBetweenLandingAndHolding()
+    public void holdingOnlyAfterTheBallDisappearedIsNotAnInterception()
     {
+        // The check happens on the tick the projectile stops being drawn; nobody holds it then.
         InterceptionDetector d = new InterceptionDetector();
         d.onTick(10, true, Set.of(), AMY_IN_CONTACT_WITH_ZED);
         assertTrue(d.onTick(11, false, Set.of(), AMY_IN_CONTACT_WITH_ZED).isEmpty());
-        assertEquals(1, d.onTick(12, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).size());
+        assertTrue(d.onTick(12, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).isEmpty());
+    }
+
+    @Test
+    public void collisionThatEndedBeforeTheBallDisappearedDoesNotCount()
+    {
+        InterceptionDetector d = new InterceptionDetector();
+        d.onTick(10, true, Set.of(), AMY_IN_CONTACT_WITH_ZED); // colliding while it flies
+        d.onTick(11, true, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED);
+        assertTrue(d.onTick(12, false, Set.of("Amy"), Collections.emptyMap()).isEmpty()); // apart when it lands
     }
 
     @Test
@@ -71,15 +81,6 @@ public class InterceptionDetectorTest
         assertTrue(d.onTick(11, true, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).isEmpty());
     }
 
-    @Test
-    public void landingWindowExpiresAfterTwoTicks()
-    {
-        InterceptionDetector d = new InterceptionDetector();
-        d.onTick(10, true, Set.of(), AMY_IN_CONTACT_WITH_ZED);
-        d.onTick(11, false, Set.of(), AMY_IN_CONTACT_WITH_ZED);
-        d.onTick(12, false, Set.of(), AMY_IN_CONTACT_WITH_ZED);
-        assertTrue(d.onTick(13, false, Set.of("Amy"), AMY_IN_CONTACT_WITH_ZED).isEmpty());
-    }
 
     @Test
     public void someoneHoldingBeforeTheThrowIsNotTheCatcher()

@@ -33,6 +33,7 @@ final class ContactDetector
     private final BareBody bareBody;
     private Map<String, Body> latestBodies = Collections.emptyMap();
     private Map<String, Player> latestPlayers = Collections.emptyMap();
+    private List<String> latestMissing = Collections.emptyList();
 
     @Inject
     ContactDetector(ContactHighlights highlights, RflConfig config, BareBody bareBody)
@@ -47,6 +48,7 @@ final class ContactDetector
         WorldView worldView = client.getTopLevelWorldView();
         Map<String, Body> bodies = new HashMap<>();
         Map<String, Player> players = new HashMap<>();
+        List<String> missing = new ArrayList<>();
         boolean bare = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY;
 
         if (worldView != null)
@@ -65,6 +67,10 @@ final class ContactDetector
                     bodies.put(name, body);
                     players.put(name, player);
                 }
+                else if (name != null)
+                {
+                    missing.add(name);
+                }
             }
         }
 
@@ -76,6 +82,7 @@ final class ContactDetector
         long now = System.currentTimeMillis();
         latestBodies = bodies;
         latestPlayers = players;
+        latestMissing = missing;
         List<RflEvent> events = tracker.update(bodies, now, client.getTickCount());
         for (RflEvent event : events)
         {
@@ -157,6 +164,17 @@ final class ContactDetector
     List<ContactTracker.Overlap> overlaps()
     {
         return tracker.overlaps();
+    }
+
+    Map<String, List<String>> collidingNow()
+    {
+        return tracker.collidingNow();
+    }
+
+    /** Names of players in view whose body could not be built in the latest frame. */
+    List<String> missingBodies()
+    {
+        return latestMissing;
     }
 
     Map<String, List<String>> contactsByPlayer()

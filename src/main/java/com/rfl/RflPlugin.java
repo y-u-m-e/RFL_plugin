@@ -193,7 +193,7 @@ public class RflPlugin extends Plugin
         }
 
         final Map<String, Integer> weapons = contactDetector.weapons(client);
-        final Map<String, List<String>> contacts = contactDetector.contactsByPlayer();
+        final Map<String, List<String>> contacts = contactDetector.collidingNow();
         if (debug)
         {
             logDebugTick(tick, projectiles, ballInFlight, weapons, contacts);
@@ -201,6 +201,14 @@ public class RflPlugin extends Plugin
 
         final List<InterceptionDetector.Interception> found = interceptionDetector.onTick(
             tick, ballInFlight, ContactDetector.handeggHolders(weapons), contacts);
+        if (debug && interceptionDetector.lastCheck() != null)
+        {
+            log.info("[RFL debug] tick {} {}", tick, interceptionDetector.lastCheck());
+        }
+        if (debug && !contactDetector.missingBodies().isEmpty())
+        {
+            log.info("[RFL debug] tick {} no body built for {}", tick, contactDetector.missingBodies());
+        }
         if (debug && !found.isEmpty())
         {
             for (final InterceptionDetector.Interception i : found)

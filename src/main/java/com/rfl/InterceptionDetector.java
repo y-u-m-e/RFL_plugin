@@ -10,9 +10,10 @@ import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.SpotanimID;
 
 /**
- * Interception rule, evaluated once per game tick: a player who starts holding a handegg right
- * after a thrown handegg stopped being drawn in mid air, while in contact with another player,
- * intercepted it. Hand-to-hand passes without a throw and uncontested catches don't count.
+ * Interception rule, checked on exactly one tick per throw: the tick the thrown handegg (any of
+ * Holy, Peaceful or Chaotic) stops being drawn. On that tick, a player who has a handegg equipped
+ * (and did not before the throw) and is colliding with another player right then intercepted it.
+ * Hand-to-hand passes without a throw and uncontested catches do not count.
  */
 final class InterceptionDetector
 {
@@ -24,9 +25,6 @@ final class InterceptionDetector
     static final Set<Integer> HANDEGG_PROJECTILES = Set.of(
         SpotanimID.EASTER18_HANDEGG_TRAVEL_SARA, SpotanimID.EASTER18_HANDEGG_TRAVEL_GUTH,
         SpotanimID.EASTER18_HANDEGG_TRAVEL_ZAM);
-
-    /** Ticks after the projectile disappears in which a new holder still counts as the catch. */
-    static final int LANDING_WINDOW_TICKS = 2;
 
     static final class Interception
     {
@@ -44,47 +42,53 @@ final class InterceptionDetector
     /** Who held a handegg just before the current throw; none of them can be its catcher. */
     private Set<String> holdersBeforeThrow = Collections.emptySet();
     private boolean wasInFlight;
-    private int lastInFlightTick = Integer.MIN_VALUE;
+    /** What the last landing check saw and decided, for debug logging; null if none this tick. */
+    private String lastCheck;
 
     /**
      * @param tick game tick count
      * @param ballInFlight a handegg projectile is drawn this tick
-     * @param holders sanitized names of players holding a handegg this tick
-     * @param contacts sanitized name to the names they are in contact with right now
+     * @param holders sanitized names of players with a handegg equipped this tick
+     * @param colliding sanitized name to the names they are colliding with this tick
      */
-    List<Interception> onTick(int tick, boolean ballInFlight, Set<String> holders, Map<String, List<String>> contacts)
+    List<Interception> onTick(int tick, boolean ballInFlight, Set<String> holders, Map<String, List<String>> colliding)
     {
         List<Interception> found = new ArrayList<>();
-        if (ballInFlight)
+        lastCheck = null;
+        if (ballInFlight && !wasInFlight)
         {
-            if (!wasInFlight)
-            {
-                holdersBeforeThrow = previousHolders;
-            }
-            lastInFlightTick = tick;
+            holdersBeforeThrow = previousHolders;
         }
-        else if (lastInFlightTick != Integer.MIN_VALUE && tick - lastInFlightTick <= LANDING_WINDOW_TICKS)
+        else if (!ballInFlight && wasInFlight)
         {
-            // The ball is no longer drawn: whoever holds one now and didn't before the throw caught
-            // it, even if it reached their hand on a tick the projectile was still drawn.
+            // The tick the ball stops being drawn: the only tick this throw is checked.
+            String decision = "no new holder";
             for (String holder : holders)
             {
                 if (holdersBeforeThrow.contains(holder))
                 {
                     continue;
                 }
-                lastInFlightTick = Integer.MIN_VALUE; // a throw is caught once
-                List<String> with = contacts.getOrDefault(holder, Collections.emptyList());
+                List<String> with = colliding.getOrDefault(holder, Collections.emptyList());
                 if (!with.isEmpty())
                 {
                     found.add(new Interception(holder, with));
+                    decision = "INTERCEPTION " + holder + " with " + with;
+                    break;
                 }
-                break;
+                decision = "uncontested catch by " + holder;
             }
+            lastCheck = "landed: holders=" + holders + " beforeThrow=" + holdersBeforeThrow
+                + " colliding=" + colliding + " -> " + decision;
         }
         wasInFlight = ballInFlight;
         previousHolders = new HashSet<>(holders);
         return found;
+    }
+
+    String lastCheck()
+    {
+        return lastCheck;
     }
 
     void reset()
@@ -92,6 +96,6 @@ final class InterceptionDetector
         previousHolders = Collections.emptySet();
         holdersBeforeThrow = Collections.emptySet();
         wasInFlight = false;
-        lastInFlightTick = Integer.MIN_VALUE;
+        lastCheck = null;
     }
 }
