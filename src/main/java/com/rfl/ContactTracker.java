@@ -23,12 +23,33 @@ final class ContactTracker
      */
     static final int START_DEPTH = 40;
 
+    /** One overlapping pair from the latest update; {@code contact} once it passed START_DEPTH. */
+    static final class Overlap
+    {
+        final String a;
+        final String b;
+        final int depth;
+        final boolean contact;
+
+        Overlap(String a, String b, int depth, boolean contact)
+        {
+            this.a = a;
+            this.b = b;
+            this.depth = depth;
+            this.contact = contact;
+        }
+    }
+
     // pairKey -> max overlap depth seen since the pair became active.
     private final Map<String, Integer> active = new HashMap<>();
+
+    // pairKey -> overlap depth in the latest update (every pair with depth > 0).
+    private Map<String, Integer> latest = new HashMap<>();
 
     List<RflEvent> update(Map<String, Cylinder> bodies, long now, int tick)
     {
         Map<String, Integer> currentDepths = currentOverlaps(bodies);
+        latest = currentDepths;
         List<RflEvent> events = new ArrayList<>();
 
         for (Map.Entry<String, Integer> entry : currentDepths.entrySet())
@@ -73,6 +94,32 @@ final class ContactTracker
     void reset()
     {
         active.clear();
+        latest = new HashMap<>();
+    }
+
+    /** Every overlapping pair from the latest update, contacts and sub-threshold grazes alike. */
+    List<Overlap> overlaps()
+    {
+        List<Overlap> result = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : latest.entrySet())
+        {
+            String[] pair = splitKey(entry.getKey());
+            result.add(new Overlap(pair[0], pair[1], entry.getValue(), active.containsKey(entry.getKey())));
+        }
+        return result;
+    }
+
+    /** Name to the names they are currently in contact with (pairs past START_DEPTH). */
+    Map<String, List<String>> contactsByPlayer()
+    {
+        Map<String, List<String>> result = new HashMap<>();
+        for (String key : active.keySet())
+        {
+            String[] pair = splitKey(key);
+            result.computeIfAbsent(pair[0], k -> new ArrayList<>()).add(pair[1]);
+            result.computeIfAbsent(pair[1], k -> new ArrayList<>()).add(pair[0]);
+        }
+        return result;
     }
 
     private static Map<String, Integer> currentOverlaps(Map<String, Cylinder> bodies)

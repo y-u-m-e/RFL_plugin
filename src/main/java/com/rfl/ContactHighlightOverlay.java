@@ -37,19 +37,19 @@ final class ContactHighlightOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        if (!config.highlightContacts())
-        {
-            return null;
-        }
         WorldView worldView = client.getTopLevelWorldView();
         if (worldView == null)
         {
             return null;
         }
 
-        Color base = config.contactHighlightColor();
         for (ContactHighlights.Highlight h : highlights.active(System.currentTimeMillis(), config.highlightDurationMs()))
         {
+            if (!h.interception && !config.highlightContacts())
+            {
+                continue;
+            }
+            Color base = h.interception ? config.interceptionColor() : config.contactHighlightColor();
             Polygon tile = Perspective.getCanvasTilePoly(client, new LocalPoint(h.x, h.y, worldView));
             if (tile == null)
             {

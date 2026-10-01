@@ -186,6 +186,92 @@ public interface RflConfig extends Config
     }
 
     /**
+     * @return true to draw the feet cylinders of players whose bodies overlap
+     */
+    @ConfigItem(
+        keyName = "showOverlap",
+        name = "Show overlap",
+        description = "While two players' bodies overlap, draws the cylinder around each player's feet "
+            + "and fills where they cross: faint for a graze, the contact colour once it counts as a contact.",
+        section = DISPLAY_SECTION,
+        position = 12
+    )
+    default boolean showOverlap()
+    {
+        return false;
+    }
+
+    @ConfigSection(
+        name = "Interceptions",
+        description = "A player catching a thrown handegg while in contact with another player. Shown on "
+            + "your screen only; not reported yet.",
+        position = 13
+    )
+    String INTERCEPTIONS_SECTION = "interceptions";
+
+    /**
+     * @return true to detect interceptions
+     */
+    @ConfigItem(
+        keyName = "detectInterceptions",
+        name = "Detect interceptions",
+        description = "Detects a handegg caught after a throw by a player who is in contact with another "
+            + "player. Needs contact detection running.",
+        section = INTERCEPTIONS_SECTION,
+        position = 14
+    )
+    default boolean detectInterceptions()
+    {
+        return true;
+    }
+
+    /**
+     * @return true to post a chat message for each interception
+     */
+    @ConfigItem(
+        keyName = "interceptionChatMessage",
+        name = "Chat message",
+        description = "Posts a game message naming who intercepted and who they were in contact with.",
+        section = INTERCEPTIONS_SECTION,
+        position = 15
+    )
+    default boolean interceptionChatMessage()
+    {
+        return true;
+    }
+
+    /**
+     * @return true to highlight the receiver's tile on an interception
+     */
+    @ConfigItem(
+        keyName = "highlightInterceptions",
+        name = "Highlight interceptions",
+        description = "Briefly highlights the tile under the player who intercepted.",
+        section = INTERCEPTIONS_SECTION,
+        position = 16
+    )
+    default boolean highlightInterceptions()
+    {
+        return true;
+    }
+
+    /**
+     * @return colour of the interception highlight, including transparency
+     */
+    @Alpha
+    @ConfigItem(
+        keyName = "interceptionColor",
+        name = "Interception colour",
+        description = "Colour of the interception tile highlight and chat label.",
+        section = INTERCEPTIONS_SECTION,
+        position = 17
+    )
+    default Color interceptionColor()
+    {
+        return new Color(0, 200, 255, 180);
+    }
+
+    /**
      * Reads the stored install identifier used to correlate reports from this client.
      *
      * @return stored install id, or empty when not yet assigned

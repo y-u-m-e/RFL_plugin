@@ -113,4 +113,22 @@ public class ContactTrackerTest
         assertEquals("contact_end", end.get(0).type);
         assertEquals(40, (int) end.get(0).depth);
     }
+
+    @Test
+    public void exposesOverlapsAndWhoIsInContact()
+    {
+        ContactTracker t = new ContactTracker();
+        Cylinder amy = new Cylinder(0, 0, 50, 0, 100);
+        // Zed overlaps Amy by 50 (contact); Bo overlaps Amy by 10 (graze).
+        t.update(Map.of("Amy", amy, "Zed", new Cylinder(50, 0, 50, 0, 100), "Bo", new Cylinder(0, 90, 50, 0, 100)), 0, 0);
+
+        List<ContactTracker.Overlap> overlaps = t.overlaps();
+        assertEquals(2, overlaps.size());
+        assertTrue(overlaps.stream().anyMatch(o -> o.a.equals("Amy") && o.b.equals("Zed") && o.contact && o.depth == 50));
+        assertTrue(overlaps.stream().anyMatch(o -> o.a.equals("Amy") && o.b.equals("Bo") && !o.contact && o.depth == 10));
+
+        assertEquals(List.of("Zed"), t.contactsByPlayer().get("Amy"));
+        assertEquals(List.of("Amy"), t.contactsByPlayer().get("Zed"));
+        assertEquals(null, t.contactsByPlayer().get("Bo"));
+    }
 }

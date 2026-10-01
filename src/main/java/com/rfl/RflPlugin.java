@@ -11,9 +11,11 @@ import com.google.inject.Provides;
 
 import okhttp3.OkHttpClient;
 
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
+import net.runelite.api.Projectile;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
@@ -25,6 +27,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.task.Schedule;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.Text;
 
 /**
@@ -69,6 +72,14 @@ public class RflPlugin extends Plugin
     @Inject
     private ContactHighlightOverlay contactHighlightOverlay;
 
+    @Inject
+    private ContactOverlapOverlay contactOverlapOverlay;
+
+    @Inject
+    private ContactHighlights contactHighlights;
+
+    private final InterceptionDetector interceptionDetector = new InterceptionDetector();
+
     /**
      * Cached each {@link GameTick}; {@link ClientTick} reads it rather than recomputing per
      * frame since {@link PohDetector} only needs to run once per game tick.
@@ -95,12 +106,15 @@ public class RflPlugin extends Plugin
             config.installId(UUID.randomUUID().toString());
         }
         overlayManager.add(contactHighlightOverlay);
+        overlayManager.add(contactOverlapOverlay);
     }
 
     @Override
     protected void shutDown()
     {
         overlayManager.remove(contactHighlightOverlay);
+        overlayManager.remove(contactOverlapOverlay);
+        interceptionDetector.reset();
         contactDetector.reset();
     }
 
@@ -108,6 +122,52 @@ public class RflPlugin extends Plugin
     public void onGameTick(final GameTick event)
     {
         inPoh = pohDetector.inPoh(client);
+        checkInterceptions();
+    }
+
+    /**
+     * Once per game tick: a player who starts holding a handegg right after a thrown one stopped
+     * being drawn, while in contact with someone, intercepted it. Local display only for now.
+     */
+    private void checkInterceptions()
+    {
+        final boolean watching = config.enableReporting() && config.reportContacts()
+            && client.getGameState() == GameState.LOGGED_IN && inPoh;
+        if (!watching || !config.detectInterceptions())
+        {
+            interceptionDetector.reset();
+            return;
+        }
+
+        boolean ballInFlight = false;
+        for (Projectile projectile : client.getProjectiles())
+        {
+            if (InterceptionDetector.HANDEGG_PROJECTILES.contains(projectile.getId()))
+            {
+                ballInFlight = true;
+                break;
+            }
+        }
+
+        final List<InterceptionDetector.Interception> found = interceptionDetector.onTick(
+            client.getTickCount(), ballInFlight, contactDetector.handeggHolders(client),
+            contactDetector.contactsByPlayer());
+
+        for (final InterceptionDetector.Interception interception : found)
+        {
+            if (config.interceptionChatMessage())
+            {
+                final String label = ColorUtil.wrapWithColorTag("Interception:", config.interceptionColor());
+                client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+                    label + " " + interception.receiver + " caught the handegg in contact with "
+                        + String.join(", ", interception.contacts), null);
+            }
+            final Cylinder body = contactDetector.bodies().get(interception.receiver);
+            if (config.highlightInterceptions() && body != null)
+            {
+                contactHighlights.addInterception(body.x, body.y, System.currentTimeMillis());
+            }
+        }
     }
 
     @Subscribe

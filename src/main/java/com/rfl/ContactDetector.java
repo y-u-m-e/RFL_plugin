@@ -3,16 +3,21 @@ package com.rfl;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 
 import net.runelite.api.AABB;
 import net.runelite.api.Client;
 import net.runelite.api.Model;
 import net.runelite.api.Player;
+import net.runelite.api.PlayerComposition;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.kit.KitType;
 import net.runelite.client.util.Text;
 
 /**
@@ -34,10 +39,12 @@ import net.runelite.client.util.Text;
  * {@code LocalPoint.getX()/getY()} to the model's X/Z center-extreme and negating the model's Y
  * center-extreme into the box's Z.
  */
+@Singleton
 final class ContactDetector
 {
     private final ContactTracker tracker = new ContactTracker();
     private final ContactHighlights highlights;
+    private Map<String, Cylinder> latestBodies = Collections.emptyMap();
 
     @Inject
     ContactDetector(ContactHighlights highlights)
@@ -69,6 +76,7 @@ final class ContactDetector
         }
 
         long now = System.currentTimeMillis();
+        latestBodies = bodies;
         List<RflEvent> events = tracker.update(bodies, now, client.getTickCount());
         for (RflEvent event : events)
         {
@@ -127,6 +135,45 @@ final class ContactDetector
     {
         tracker.reset();
         highlights.clear();
+        latestBodies = Collections.emptyMap();
+    }
+
+    /** Bodies from the latest frame, by sanitized name. */
+    Map<String, Cylinder> bodies()
+    {
+        return latestBodies;
+    }
+
+    List<ContactTracker.Overlap> overlaps()
+    {
+        return tracker.overlaps();
+    }
+
+    Map<String, List<String>> contactsByPlayer()
+    {
+        return tracker.contactsByPlayer();
+    }
+
+    /** Sanitized names of players with a handegg in the weapon slot. */
+    Set<String> handeggHolders(Client client)
+    {
+        WorldView worldView = client.getTopLevelWorldView();
+        Set<String> holders = new HashSet<>();
+        if (worldView == null)
+        {
+            return holders;
+        }
+        for (Player player : worldView.players())
+        {
+            PlayerComposition composition = player == null ? null : player.getPlayerComposition();
+            String name = player == null ? null : sanitizedName(player);
+            if (composition != null && name != null
+                && InterceptionDetector.HANDEGG_ITEMS.contains(composition.getEquipmentId(KitType.WEAPON)))
+            {
+                holders.add(name);
+            }
+        }
+        return holders;
     }
 
     /**

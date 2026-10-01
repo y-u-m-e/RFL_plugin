@@ -18,12 +18,15 @@ final class ContactHighlights
         final int y;
         /** 1 when the contact starts, falling linearly to 0 at the end of the duration. */
         final float alpha;
+        /** Drawn in the interception colour instead of the contact colour. */
+        final boolean interception;
 
-        Highlight(int x, int y, float alpha)
+        Highlight(int x, int y, float alpha, boolean interception)
         {
             this.x = x;
             this.y = y;
             this.alpha = alpha;
+            this.interception = interception;
         }
     }
 
@@ -32,12 +35,14 @@ final class ContactHighlights
         final int x;
         final int y;
         final long startedAt;
+        final boolean interception;
 
-        Entry(int x, int y, long startedAt)
+        Entry(int x, int y, long startedAt, boolean interception)
         {
             this.x = x;
             this.y = y;
             this.startedAt = startedAt;
+            this.interception = interception;
         }
     }
 
@@ -45,7 +50,12 @@ final class ContactHighlights
 
     synchronized void add(int x, int y, long now)
     {
-        entries.add(new Entry(x, y, now));
+        entries.add(new Entry(x, y, now, false));
+    }
+
+    synchronized void addInterception(int x, int y, long now)
+    {
+        entries.add(new Entry(x, y, now, true));
     }
 
     /** Live highlights with their fade, dropping any older than {@code durationMs}. */
@@ -61,7 +71,7 @@ final class ContactHighlights
                 it.remove();
                 continue;
             }
-            live.add(new Highlight(e.x, e.y, 1f - (float) elapsed / durationMs));
+            live.add(new Highlight(e.x, e.y, 1f - (float) elapsed / durationMs, e.interception));
         }
         return live;
     }
