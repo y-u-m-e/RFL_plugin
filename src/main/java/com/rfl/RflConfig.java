@@ -234,11 +234,35 @@ public interface RflConfig extends Config
         name = "Hitbox colour",
         description = "Colour of hitbox outlines not in a contact.",
         section = DISPLAY_SECTION,
-        position = 14
+        position = 15
     )
     default Color hitboxColor()
     {
         return new Color(255, 255, 255, 115);
+    }
+
+    /** What Show hitboxes draws. */
+    enum HitboxView
+    {
+        CAPSULES,
+        MESH,
+        BOTH
+    }
+
+    /**
+     * @return whether Show hitboxes draws the capsules, the model mesh, or both
+     */
+    @ConfigItem(
+        keyName = "hitboxView",
+        name = "Hitbox view",
+        description = "Capsules: the body-part capsules. Mesh: a wireframe of the exact model triangles the "
+            + "mesh contact modes test. Both: the two together.",
+        section = DISPLAY_SECTION,
+        position = 14
+    )
+    default HitboxView hitboxView()
+    {
+        return HitboxView.BOTH;
     }
 
     /** Which model body-part hitboxes are built from. */
@@ -258,7 +282,7 @@ public interface RflConfig extends Config
             + "the handegg. Bare body: from the player's body without equipment. Also changes which "
             + "contacts are detected.",
         section = DISPLAY_SECTION,
-        position = 15
+        position = 16
     )
     default HitboxSource hitboxSource()
     {
@@ -299,7 +323,7 @@ public interface RflConfig extends Config
         description = "Adds an RFL Debug panel to the sidebar: what contact detection sees right now, "
             + "recent contact and interception decisions, and how long detection takes.",
         section = DISPLAY_SECTION,
-        position = 16
+        position = 17
     )
     default boolean showDebugPanel()
     {

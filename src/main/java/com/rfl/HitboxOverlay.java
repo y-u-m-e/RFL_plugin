@@ -64,8 +64,25 @@ final class HitboxOverlay extends Overlay
 
         graphics.setStroke(STROKE);
         int plane = worldView.getPlane();
+        RflConfig.HitboxView view = config.hitboxView();
+        if (view != RflConfig.HitboxView.CAPSULES)
+        {
+            Color base = config.hitboxColor();
+            graphics.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), Math.max(30, base.getAlpha() / 2)));
+            for (Body body : contactDetector.bodies().values())
+            {
+                if (body.mesh != null)
+                {
+                    drawMesh(graphics, worldView, plane, body.mesh);
+                }
+            }
+        }
         for (Map.Entry<String, Body> entry : contactDetector.bodies().entrySet())
         {
+            if (view == RflConfig.HitboxView.MESH)
+            {
+                break;
+            }
             for (Capsule part : entry.getValue().parts)
             {
                 graphics.setColor(inContact.contains(entry.getKey() + '\u0000' + part.name)
@@ -97,6 +114,37 @@ final class HitboxOverlay extends Overlay
             }
         }
         return null;
+    }
+
+    /** Outlines every triangle of the posed mesh: the exact surface the mesh contact modes test. */
+    private void drawMesh(Graphics2D graphics, WorldView worldView, int plane, PosedMesh mesh)
+    {
+        int[] xs = new int[3];
+        int[] ys = new int[3];
+        for (int t = 0; t < mesh.triangles; t++)
+        {
+            boolean visible = true;
+            for (int k = 0; k < 3 && visible; k++)
+            {
+                double[] c = mesh.corner(t, k);
+                Point p = Perspective.localToCanvas(client,
+                    new LocalPoint((int) Math.round(c[0]), (int) Math.round(c[1]), worldView), plane,
+                    (int) Math.round(c[2]));
+                if (p == null)
+                {
+                    visible = false;
+                }
+                else
+                {
+                    xs[k] = p.getX();
+                    ys[k] = p.getY();
+                }
+            }
+            if (visible)
+            {
+                graphics.drawPolygon(xs, ys, 3);
+            }
+        }
     }
 
     private void fillTriangle(Graphics2D graphics, WorldView worldView, int plane, PosedMesh mesh, int triangle)
