@@ -194,13 +194,17 @@ final class PosedMesh
     }
 
     /**
-     * Intersecting triangle pairs between a and b, up to {@link #MAX_HITS}. Broad phase: only
+     * Intersecting triangle pairs between a and b, up to {@code limit}. Broad phase: only
      * triangles whose box touches the overlap of the two meshes' bounds. Candidates are paired by
      * sort-and-sweep on x, then box-checked on y and z before the exact test.
      *
+     * <p>The sweep stops at {@code limit}, so a limit of 1 answers "touching at all?" for a
+     * fraction of the cost of a full count on heavily overlapping models.
+     *
+     * @param limit most pairs to collect, at most {@link #MAX_HITS}
      * @return the hits, or null when none
      */
-    static Hits intersect(PosedMesh a, PosedMesh b)
+    static Hits intersect(PosedMesh a, PosedMesh b, int limit)
     {
         float[] overlap = overlap(a.bounds, b.bounds);
         if (overlap == null)
@@ -235,11 +239,11 @@ final class PosedMesh
         int count = 0;
         for (long key : order)
         {
-            int e = (int) key;
-            if (count >= MAX_HITS)
+            if (count >= limit)
             {
                 break;
             }
+            int e = (int) key;
             boolean isA = e >= 0;
             int t = isA ? e : ~e;
             PosedMesh self = isA ? a : b;
@@ -257,7 +261,7 @@ final class PosedMesh
                     continue;
                 }
                 active[kept++] = u;
-                if (count < MAX_HITS && boxesOverlapYZ(self, t, other, u)
+                if (count < limit && boxesOverlapYZ(self, t, other, u)
                     && trianglesIntersect(self.corner(t, 0), self.corner(t, 1), self.corner(t, 2),
                     other.corner(u, 0), other.corner(u, 1), other.corner(u, 2)))
                 {

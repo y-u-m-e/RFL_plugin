@@ -93,7 +93,8 @@ final class ContactDetector
         latestMeshes = meshes;
         latestPlayers = players;
         latestMissing = missing;
-        List<RflEvent> events = tracker.update(meshes, now, client.getTickCount());
+        boolean detail = config.showHitboxes() || config.showDebugPanel() || config.debugLogging();
+        List<RflEvent> events = tracker.update(meshes, now, client.getTickCount(), detail);
         endMeshFrame(now);
         for (RflEvent event : events)
         {
@@ -147,7 +148,7 @@ final class ContactDetector
         latestMeshes = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
         latestMissing = Collections.emptyList();
-        return tracker.update(Collections.emptyMap(), System.currentTimeMillis(), client.getTickCount());
+        return tracker.update(Collections.emptyMap(), System.currentTimeMillis(), client.getTickCount(), false);
     }
 
     void reset()

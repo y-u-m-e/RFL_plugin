@@ -7,14 +7,20 @@ import java.util.Map;
 
 /**
  * Pair state machine over per-frame player meshes (see {@link PosedMesh}). A contact starts on the
- * first update any triangles of the two meshes touch and ends on the first update none do. Its
- * depth is the number of touching triangle pairs (capped at {@link PosedMesh#MAX_HITS}); the
- * contact_end carries the most seen during the contact.
+ * first update any triangles of the two meshes touch and ends on the first update none do.
  *
- * Names are expected to already be {@code Text.sanitize}d by the caller so two clients derive the
+ * <p>Depth is the number of touching triangle pairs, capped at {@link PosedMesh#MAX_HITS}. A full
+ * count is expensive on heavily overlapping models, so it is only taken when something uses it:
+ * the update a contact starts (the contact_start depth), the first update of each game tick (a
+ * depth sample), and every update while {@code detail} is on (the hitbox overlay, debug panel or
+ * debug log is showing the count). Other updates stop at the first touching pair. contact_end
+ * carries the largest of the start depth and the per-tick samples, so the reported value never
+ * depends on display settings.
+ *
+ * <p>Names are expected to already be {@code Text.sanitize}d by the caller so two clients derive the
  * identical pair key regardless of non-breaking spaces in the raw RSN. Pairwise over all keys: at
  * the Hub's own render-distance player cap this is at most 45 pairs, and each pair's whole-mesh
- * bounds are checked before any triangles.
+ * bounds are checked before any triangles. Client thread only.
  */
 final class ContactTracker
 {
@@ -39,17 +45,29 @@ final class ContactTracker
         }
     }
 
-    // pairKey -> max touching triangle count seen since the pair became active.
+    /** pairKey to the largest sampled depth since the pair's contact started. */
     private final Map<String, Integer> active = new HashMap<>();
 
-    // pairKey -> touching triangles in the latest update (null: bounds overlap, no triangles touch).
+    /** pairKey to touching triangles in the latest update; null when bounds overlap but nothing touches. */
     private Map<String, PosedMesh.Hits> latest = new HashMap<>();
+
+    /** Tick of the last depth sample; a new tick makes the next update sample. */
+    private int sampledTick = -1;
 
     private long meshNanos;
 
-    List<RflEvent> update(Map<String, PosedMesh> meshes, long now, int tick)
+    /**
+     * @param meshes this frame's meshes by sanitized name
+     * @param now    epoch ms stamped on any events
+     * @param tick   game tick count, stamped on events and used to sample depth once per tick
+     * @param detail true when a display needs the full touching count every update
+     * @return contact_start and contact_end events, in that order
+     */
+    List<RflEvent> update(Map<String, PosedMesh> meshes, long now, int tick, boolean detail)
     {
-        latest = currentPairs(meshes);
+        boolean sample = tick != sampledTick;
+        sampledTick = tick;
+        latest = currentPairs(meshes, sample || detail);
         List<RflEvent> events = new ArrayList<>();
 
         for (Map.Entry<String, PosedMesh.Hits> entry : latest.entrySet())
@@ -67,7 +85,7 @@ final class ContactTracker
                 events.add(RflEvent.contactStart(now, tick, names[0], names[1], hits.count));
                 active.put(key, hits.count);
             }
-            else if (hits.count > maxSoFar)
+            else if (sample && hits.count > maxSoFar)
             {
                 active.put(key, hits.count);
             }
@@ -94,6 +112,7 @@ final class ContactTracker
     {
         active.clear();
         latest = new HashMap<>();
+        sampledTick = -1;
     }
 
     /** Nanoseconds spent in triangle checks since the last call. */
@@ -139,7 +158,11 @@ final class ContactTracker
         return result;
     }
 
-    private Map<String, PosedMesh.Hits> currentPairs(Map<String, PosedMesh> meshes)
+    /**
+     * Every pair whose bounds overlap, with its touching triangles. A pair not yet in contact is
+     * always fully counted, since a start reports its depth.
+     */
+    private Map<String, PosedMesh.Hits> currentPairs(Map<String, PosedMesh> meshes, boolean fullCount)
     {
         Map<String, PosedMesh.Hits> pairs = new HashMap<>();
         List<String> names = new ArrayList<>(meshes.keySet());
@@ -157,7 +180,9 @@ final class ContactTracker
                 PosedMesh mb = meshes.get(b);
                 if (PosedMesh.overlap(ma.bounds, mb.bounds) != null)
                 {
-                    pairs.put(pairKey(a, b), PosedMesh.intersect(ma, mb));
+                    String key = pairKey(a, b);
+                    int limit = fullCount || !active.containsKey(key) ? PosedMesh.MAX_HITS : 1;
+                    pairs.put(key, PosedMesh.intersect(ma, mb, limit));
                 }
             }
         }

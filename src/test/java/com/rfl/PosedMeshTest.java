@@ -115,7 +115,7 @@ public class PosedMeshTest
             new int[]{0, 1, 2});
         PosedMesh through = new PosedMesh(new float[]{30, 50, 40}, new float[]{0, 0, 0}, new float[]{50, 50, 70},
             new int[]{0, 1, 2});
-        double[] c = PosedMesh.intersect(wall, through).centroid();
+        double[] c = PosedMesh.intersect(wall, through, PosedMesh.MAX_HITS).centroid();
         // Corners: wall (40,-20,40) (40,20,40) (40,0,80); through (30,0,50) (50,0,50) (40,0,70).
         assertEquals(40, c[0], 1e-9);
         assertEquals(0, c[1], 1e-9);
@@ -166,7 +166,7 @@ public class PosedMeshTest
                 }
             }
             assertTrue(expected < PosedMesh.MAX_HITS);
-            PosedMesh.Hits hits = PosedMesh.intersect(a, b);
+            PosedMesh.Hits hits = PosedMesh.intersect(a, b, PosedMesh.MAX_HITS);
             assertEquals("round " + round, expected, hits == null ? 0 : hits.count);
         }
     }
