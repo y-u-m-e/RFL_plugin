@@ -290,6 +290,22 @@ public interface RflConfig extends Config
         return ContactMode.CAPSULES_AND_MESH;
     }
 
+    /**
+     * @return true to show the RFL Debug sidebar panel
+     */
+    @ConfigItem(
+        keyName = "showDebugPanel",
+        name = "Show debug panel",
+        description = "Adds an RFL Debug panel to the sidebar: what contact detection sees right now, "
+            + "recent contact and interception decisions, and how long detection takes.",
+        section = DISPLAY_SECTION,
+        position = 16
+    )
+    default boolean showDebugPanel()
+    {
+        return false;
+    }
+
     @ConfigSection(
         name = "Interceptions",
         description = "A player catching a thrown handegg while in contact with another player. Shown on "

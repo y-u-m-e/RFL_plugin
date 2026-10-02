@@ -154,6 +154,7 @@ final class ContactDetector
     {
         latestBodies = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
+        latestMissing = Collections.emptyList();
         return tracker.update(Collections.emptyMap(), System.currentTimeMillis(), client.getTickCount());
     }
 
@@ -164,6 +165,7 @@ final class ContactDetector
         bareBody.reset();
         latestBodies = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
+        latestMissing = Collections.emptyList();
     }
 
     /** Players from the latest frame, by sanitized name; read on the client thread only. */

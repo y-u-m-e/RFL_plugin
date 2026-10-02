@@ -72,6 +72,7 @@ final class BareBody
     private int calls;
     private int frames;
     private long lastLog;
+    private volatile double msPerFrame;
 
     @Inject
     BareBody(Client client, Gson gson, RflConfig config)
@@ -191,15 +192,22 @@ final class BareBody
         {
             return;
         }
+        msPerFrame = nanos / 1e6 / frames;
         if (config.debugLogging() && lastLog != 0)
         {
             log.info("[RFL debug] bare bodies: {} ms/frame avg over {} frames ({} posed, {} outfits cached)",
-                String.format("%.3f", nanos / 1e6 / frames), frames, calls, models.size());
+                String.format("%.3f", msPerFrame), frames, calls, models.size());
         }
         nanos = 0;
         calls = 0;
         frames = 0;
         lastLog = now;
+    }
+
+    /** Average ms per frame spent posing bare bodies over the last ~10 s window. */
+    double msPerFrame()
+    {
+        return msPerFrame;
     }
 
     void reset()

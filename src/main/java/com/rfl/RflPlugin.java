@@ -1,14 +1,18 @@
 package com.rfl;
 
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 
 import javax.inject.Inject;
+import javax.swing.SwingUtilities;
 
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -26,10 +30,13 @@ import net.runelite.api.events.GameTick;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.PluginChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.task.Schedule;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.Text;
@@ -89,6 +96,20 @@ public class RflPlugin extends Plugin
     @Inject
     private BareBody bareBody;
 
+    @Inject
+    private ClientToolbar clientToolbar;
+
+    private static final int DEBUG_EVENTS = 30;
+    private static final long DEBUG_REFRESH_MS = 600;
+
+    // Debug panel: the panel and its button are touched on the Swing EDT only; the event list and
+    // refresh timer on the client thread only.
+    private DebugPanel debugPanel;
+    private NavigationButton debugButton;
+    private final Deque<String> debugEvents = new ArrayDeque<>();
+    private long debugRefreshAt;
+    private List<String> lastMissing = Collections.emptyList();
+
     private final InterceptionDetector interceptionDetector = new InterceptionDetector();
 
     // Debug logging state: only log what changed, so the log stays readable.
@@ -127,6 +148,7 @@ public class RflPlugin extends Plugin
         overlayManager.add(hitboxOverlay);
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
+        SwingUtilities.invokeLater(this::syncDebugPanel);
     }
 
     @Override
@@ -137,6 +159,159 @@ public class RflPlugin extends Plugin
         overlayManager.remove(hitboxOverlay);
         interceptionDetector.reset();
         contactDetector.reset();
+        SwingUtilities.invokeLater(this::removeDebugPanel);
+    }
+
+    @Subscribe
+    public void onConfigChanged(final ConfigChanged event)
+    {
+        if ("rfl".equals(event.getGroup()) && "showDebugPanel".equals(event.getKey()))
+        {
+            SwingUtilities.invokeLater(this::syncDebugPanel);
+        }
+    }
+
+    /** EDT: adds or removes the debug panel to match the setting. */
+    private void syncDebugPanel()
+    {
+        if (!config.showDebugPanel())
+        {
+            removeDebugPanel();
+            return;
+        }
+        if (debugButton != null)
+        {
+            return;
+        }
+        debugPanel = new DebugPanel();
+        debugButton = NavigationButton.builder()
+            .tooltip("RFL Debug")
+            .icon(DebugPanel.icon())
+            .priority(10)
+            .panel(debugPanel)
+            .build();
+        clientToolbar.addNavigation(debugButton);
+    }
+
+    /** EDT. */
+    private void removeDebugPanel()
+    {
+        if (debugButton != null)
+        {
+            clientToolbar.removeNavigation(debugButton);
+        }
+        debugButton = null;
+        debugPanel = null;
+    }
+
+    /** Client thread: adds a line to the debug panel's recent events (newest first). */
+    private void recordDebug(final String line)
+    {
+        if (!config.showDebugPanel())
+        {
+            return;
+        }
+        debugEvents.addFirst("tick " + client.getTickCount() + " " + line);
+        while (debugEvents.size() > DEBUG_EVENTS)
+        {
+            debugEvents.removeLast();
+        }
+    }
+
+    private void recordDebugEvent(final RflEvent event)
+    {
+        recordDebug(event.type + " " + event.a + " ~ " + event.b + " depth " + event.depth);
+    }
+
+    /** Client thread: about every 600 ms, snapshots detection state as text and hands it to the EDT. */
+    private void refreshDebugPanel()
+    {
+        final long now = System.currentTimeMillis();
+        if (!config.showDebugPanel() || now - debugRefreshAt < DEBUG_REFRESH_MS)
+        {
+            return;
+        }
+        debugRefreshAt = now;
+        final String text = debugText();
+        SwingUtilities.invokeLater(() ->
+        {
+            if (debugPanel != null)
+            {
+                debugPanel.show(text);
+            }
+        });
+    }
+
+    private String debugText()
+    {
+        final RflConfig.ContactMode mode = config.contactMode();
+        final String source = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY ? "bare" : "equipped";
+        final StringBuilder sb = new StringBuilder();
+        sb.append("GATE\n")
+            .append("logged in: ").append(yesNo(client.getGameState() == GameState.LOGGED_IN)).append('\n')
+            .append("reporting: ").append(yesNo(config.enableReporting())).append('\n')
+            .append("in POH: ").append(yesNo(inPoh)).append('\n')
+            .append("detect contacts: ").append(yesNo(config.reportContacts())).append('\n')
+            .append("contact mode: ").append(mode).append('\n')
+            .append("hitbox source: ").append(source).append("\n\n");
+
+        sb.append("PLAYERS IN VIEW\n");
+        final Map<String, Body> bodies = new TreeMap<>(contactDetector.bodies());
+        final List<String> missing = contactDetector.missingBodies();
+        if (bodies.isEmpty() && missing.isEmpty())
+        {
+            sb.append("none (or detection not running)\n");
+        }
+        for (final Map.Entry<String, Body> entry : bodies.entrySet())
+        {
+            sb.append(entry.getKey()).append(": body yes, ").append(source);
+            if (mode != RflConfig.ContactMode.CAPSULES)
+            {
+                final PosedMesh mesh = entry.getValue().mesh;
+                sb.append(mesh == null ? ", no mesh" : ", " + mesh.triangles + " triangles");
+            }
+            sb.append('\n');
+        }
+        for (final String name : missing)
+        {
+            sb.append(name).append(": body NO, ").append(source).append('\n');
+        }
+
+        sb.append("\nOVERLAPPING PAIRS\n");
+        final List<ContactTracker.Overlap> overlaps = contactDetector.overlaps();
+        if (overlaps.isEmpty())
+        {
+            sb.append("none\n");
+        }
+        for (final ContactTracker.Overlap o : overlaps)
+        {
+            sb.append(o.a).append(" ~ ").append(o.b).append('\n')
+                .append("  deepest ").append(o.partA).append(" / ").append(o.partB)
+                .append(", capsule depth ").append(o.depth).append('\n')
+                .append("  mesh touching: ").append(o.mesh == null ? "n/a" : yesNo(o.mesh)).append('\n')
+                .append("  ").append(o.contact ? "contact" : o.depth > 0 ? "graze" : "none")
+                .append(": ").append(o.why).append('\n');
+        }
+
+        sb.append("\nRECENT EVENTS (newest first)\n");
+        if (debugEvents.isEmpty())
+        {
+            sb.append("none\n");
+        }
+        for (final String line : debugEvents)
+        {
+            sb.append(line).append('\n');
+        }
+
+        sb.append("\nPERFORMANCE (10 s average)\n")
+            .append("bare body: ").append(String.format("%.3f", bareBody.msPerFrame())).append(" ms/frame\n")
+            .append("mesh: ").append(String.format("%.3f", contactDetector.meshMsPerFrame())).append(" ms/frame\n");
+        return sb.toString();
+    }
+
+    private static String yesNo(final boolean value)
+    {
+        return value ? "yes" : "no";
     }
 
     @Subscribe
@@ -201,9 +376,13 @@ public class RflPlugin extends Plugin
 
         final List<InterceptionDetector.Interception> found = interceptionDetector.onTick(
             tick, ballInFlight, ContactDetector.handeggHolders(weapons), contacts);
-        if (debug && interceptionDetector.lastCheck() != null)
+        if (interceptionDetector.lastCheck() != null)
         {
-            log.info("[RFL debug] tick {} {}", tick, interceptionDetector.lastCheck());
+            recordDebug(interceptionDetector.lastCheck());
+            if (debug)
+            {
+                log.info("[RFL debug] tick {} {}", tick, interceptionDetector.lastCheck());
+            }
         }
         if (debug && !contactDetector.missingBodies().isEmpty())
         {
@@ -237,6 +416,7 @@ public class RflPlugin extends Plugin
     @Subscribe
     public void onClientTick(final ClientTick event)
     {
+        refreshDebugPanel();
         final boolean reporting = config.enableReporting();
         final boolean watching = reporting && config.reportContacts()
             && client.getGameState() == GameState.LOGGED_IN && inPoh;
@@ -245,7 +425,17 @@ public class RflPlugin extends Plugin
         {
             for (final RflEvent contactEvent : contactDetector.onFrame(client))
             {
+                recordDebugEvent(contactEvent);
                 eventQueue.add(contactEvent);
+            }
+            final List<String> missing = contactDetector.missingBodies();
+            if (!missing.equals(lastMissing))
+            {
+                if (!missing.isEmpty())
+                {
+                    recordDebug("no body built for " + missing);
+                }
+                lastMissing = missing;
             }
             return;
         }
@@ -309,6 +499,7 @@ public class RflPlugin extends Plugin
         {
             for (final RflEvent endEvent : contactDetector.endAll(client))
             {
+                recordDebugEvent(endEvent);
                 eventQueue.add(endEvent);
             }
         }
