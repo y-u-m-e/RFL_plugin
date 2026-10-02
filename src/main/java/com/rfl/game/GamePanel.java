@@ -83,6 +83,8 @@ public final class GamePanel extends PluginPanel
     private boolean busy;
     private String notice = "";
     private String actionError = "";
+    /** {@link System#nanoTime} when {@link #actionError} was set. */
+    private long actionErrorAt;
     /** The passphrase we hosted/joined with; the API never returns it. */
     private String passphrase = "";
     private String rendered;
@@ -212,6 +214,7 @@ public final class GamePanel extends PluginPanel
      */
     private void poll(final int gen)
     {
+        final long started = System.nanoTime();
         final AtomicBoolean rescheduled = new AtomicBoolean();
         final Runnable next = () ->
         {
@@ -232,13 +235,12 @@ public final class GamePanel extends PluginPanel
                         if (r.isOk())
                         {
                             listPoller.onSuccess(r.value());
-                            pollSucceeded();
                         }
                         else
                         {
                             listPoller.onFailure(r.error());
-                            refresh();
                         }
+                        pollAnswered(started);
                     }
                     catch (final RuntimeException e)
                     {
@@ -257,7 +259,7 @@ public final class GamePanel extends PluginPanel
                     try
                     {
                         onLobby(id, r);
-                        refresh();
+                        pollAnswered(started);
                     }
                     catch (final RuntimeException e)
                     {
@@ -277,12 +279,18 @@ public final class GamePanel extends PluginPanel
         }
     }
 
-    /** Any thread. A successful poll clears a stale action error so poll errors/recovery show. */
-    private void pollSucceeded()
+    /**
+     * Any thread. A poll started after the action error was shown retires it, so a newer poll
+     * error (or recovery) shows instead of a stale "Wrong passphrase".
+     */
+    private void pollAnswered(final long startedNanos)
     {
         SwingUtilities.invokeLater(() ->
         {
-            actionError = "";
+            if (startedNanos - actionErrorAt > 0)
+            {
+                actionError = "";
+            }
             render();
         });
     }
@@ -314,7 +322,6 @@ public final class GamePanel extends PluginPanel
         }
         lobbyPoller.onSuccess(r.value());
         session.update(r.value());
-        pollSucceeded();
     }
 
     private void exitGame(final String why)
@@ -529,17 +536,13 @@ public final class GamePanel extends PluginPanel
         SwingUtilities.invokeLater(() ->
         {
             actionError = error == null ? "Something went wrong" : error;
+            actionErrorAt = System.nanoTime();
             busy = false;
             render();
         });
     }
 
     // ---------------------------------------------------------------- rendering (EDT)
-
-    private void refresh()
-    {
-        SwingUtilities.invokeLater(this::render);
-    }
 
     /**
      * Rebuilds only when what's shown changed, and never while the host is mid-edit (a typed but
