@@ -20,7 +20,7 @@ final class PosedMesh
     private static final double EPSILON = 1e-6;
     /** Triangles with a squared normal length below this have no area and never intersect. */
     private static final double DEGENERATE = 1e-12;
-    /** At most this many intersecting triangle pairs are kept per body pair (for the overlay). */
+    /** At most this many intersecting triangle pairs are collected per body pair for the overlay. */
     static final int MAX_HITS = 512;
 
     /** Scene-space vertex positions. */
@@ -184,9 +184,10 @@ final class PosedMesh
      * one of the regions (null: the overlap of the two meshes' bounds). Candidates are paired by
      * sort-and-sweep on x, then box-checked on y and z before the exact test.
      *
+     * @param maxHits stop after this many hits (1 when only "touching or not" matters)
      * @return the hits, or null when none
      */
-    static Hits intersect(PosedMesh a, PosedMesh b, List<float[]> regions)
+    static Hits intersect(PosedMesh a, PosedMesh b, List<float[]> regions, int maxHits)
     {
         if (regions == null)
         {
@@ -209,17 +210,18 @@ final class PosedMesh
             return null;
         }
 
-        // One list of both sides sorted by min x; b's entries are stored as ~t (negative).
-        Integer[] order = new Integer[ta.length + tb.length];
+        // One list of both sides sorted by min x: sortable float bits of min x in the high half,
+        // the entry in the low half (b's entries stored as ~t, negative). Primitive sort, no boxing.
+        long[] order = new long[ta.length + tb.length];
         for (int i = 0; i < ta.length; i++)
         {
-            order[i] = ta[i];
+            order[i] = sortKey(a.boxes[ta[i] * 6], ta[i]);
         }
         for (int i = 0; i < tb.length; i++)
         {
-            order[ta.length + i] = ~tb[i];
+            order[ta.length + i] = sortKey(b.boxes[tb[i] * 6], ~tb[i]);
         }
-        Arrays.sort(order, (p, q) -> Float.compare(minX(a, b, p), minX(a, b, q)));
+        Arrays.sort(order);
 
         int[] activeA = new int[ta.length];
         int[] activeB = new int[tb.length];
@@ -227,8 +229,13 @@ final class PosedMesh
         int nb = 0;
         int[] pairs = new int[16];
         int count = 0;
-        for (int e : order)
+        for (long key : order)
         {
+            int e = (int) key;
+            if (count >= maxHits)
+            {
+                break;
+            }
             boolean isA = e >= 0;
             int t = isA ? e : ~e;
             PosedMesh self = isA ? a : b;
@@ -246,7 +253,7 @@ final class PosedMesh
                     continue;
                 }
                 active[kept++] = u;
-                if (count < MAX_HITS && boxesOverlapYZ(self, t, other, u)
+                if (count < maxHits && boxesOverlapYZ(self, t, other, u)
                     && trianglesIntersect(self.corner(t, 0), self.corner(t, 1), self.corner(t, 2),
                     other.corner(u, 0), other.corner(u, 1), other.corner(u, 2)))
                 {
@@ -273,9 +280,12 @@ final class PosedMesh
         return count == 0 ? null : new Hits(a, b, pairs, count);
     }
 
-    private static float minX(PosedMesh a, PosedMesh b, int e)
+    /** Orders by min x (float bits flipped so negative values sort below positive), then entry. */
+    private static long sortKey(float minX, int entry)
     {
-        return e >= 0 ? a.boxes[e * 6] : b.boxes[~e * 6];
+        int bits = Float.floatToIntBits(minX);
+        bits ^= (bits >> 31) & 0x7fffffff;
+        return (long) bits << 32 | (entry & 0xffffffffL);
     }
 
     private static boolean boxesOverlapYZ(PosedMesh p, int t, PosedMesh q, int u)

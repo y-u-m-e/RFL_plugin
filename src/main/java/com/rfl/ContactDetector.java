@@ -66,6 +66,8 @@ final class ContactDetector
         RflConfig.ContactMode mode = config.contactMode();
         boolean withMesh = mode != RflConfig.ContactMode.CAPSULES;
         tracker.setMode(mode);
+        // Only the hitbox overlay draws every touching triangle; detection needs just one.
+        tracker.setMaxMeshHits(config.showHitboxes() ? PosedMesh.MAX_HITS : 1);
 
         if (worldView != null)
         {

@@ -104,6 +104,58 @@ public class PosedMeshTest
         assertEquals(-10, quarter.y[1], 1e-3);
     }
 
+    private static PosedMesh randomMesh(java.util.Random random, int triangles)
+    {
+        float[] x = new float[triangles * 3];
+        float[] y = new float[triangles * 3];
+        float[] z = new float[triangles * 3];
+        int[] faces = new int[triangles * 3];
+        for (int t = 0; t < triangles; t++)
+        {
+            float cx = random.nextFloat() * 100 - 50;
+            float cy = random.nextFloat() * 100 - 50;
+            float cz = random.nextFloat() * 100 - 50;
+            for (int k = 0; k < 3; k++)
+            {
+                int v = t * 3 + k;
+                x[v] = cx + random.nextFloat() * 20 - 10;
+                y[v] = cy + random.nextFloat() * 20 - 10;
+                z[v] = cz + random.nextFloat() * 20 - 10;
+                faces[v] = v;
+            }
+        }
+        return new PosedMesh(x, y, z, faces);
+    }
+
+    @Test
+    public void sweepFindsExactlyTheBruteForcePairs()
+    {
+        java.util.Random random = new java.util.Random(7);
+        for (int round = 0; round < 20; round++)
+        {
+            PosedMesh a = randomMesh(random, 60);
+            PosedMesh b = randomMesh(random, 60);
+            int expected = 0;
+            for (int i = 0; i < a.triangles; i++)
+            {
+                for (int j = 0; j < b.triangles; j++)
+                {
+                    if (PosedMesh.trianglesIntersect(a.corner(i, 0), a.corner(i, 1), a.corner(i, 2),
+                        b.corner(j, 0), b.corner(j, 1), b.corner(j, 2)))
+                    {
+                        expected++;
+                    }
+                }
+            }
+            PosedMesh.Hits hits = PosedMesh.intersect(a, b, null, Integer.MAX_VALUE);
+            assertEquals("round " + round, expected, hits == null ? 0 : hits.count);
+            if (expected > 0)
+            {
+                assertEquals(1, PosedMesh.intersect(a, b, null, 1).count);
+            }
+        }
+    }
+
     @Test
     public void fullyTransparentFacesAreSkipped()
     {

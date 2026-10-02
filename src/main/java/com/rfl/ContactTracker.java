@@ -92,10 +92,17 @@ final class ContactTracker
     private Map<String, Pair> latest = new HashMap<>();
 
     private long meshNanos;
+    private int maxMeshHits = PosedMesh.MAX_HITS;
 
     void setMode(RflConfig.ContactMode mode)
     {
         this.mode = mode;
+    }
+
+    /** Triangle pairs collected per body pair: 1 is enough to decide; more only for the overlay. */
+    void setMaxMeshHits(int maxMeshHits)
+    {
+        this.maxMeshHits = maxMeshHits;
     }
 
     /**
@@ -195,7 +202,7 @@ final class ContactTracker
         String depth = "depth " + p.depth;
         if (mode == RflConfig.ContactMode.MESH)
         {
-            return p.hits != null ? p.hits.count + " triangle pairs touching" : "no triangles touching";
+            return p.hits != null ? "triangles touching" : "no triangles touching";
         }
         if (p.depth < START_DEPTH)
         {
@@ -207,7 +214,7 @@ final class ContactTracker
         }
         if (p.hits != null)
         {
-            return depth + " >= " + START_DEPTH + ", " + p.hits.count + " triangle pairs touching";
+            return depth + " >= " + START_DEPTH + ", triangles touching";
         }
         return contact ? "held; no triangles touching" : "no triangles touching";
     }
@@ -286,7 +293,7 @@ final class ContactTracker
                     if (ba.mesh != null && bb.mesh != null)
                     {
                         hits = PosedMesh.intersect(ba.mesh, bb.mesh,
-                            mode == RflConfig.ContactMode.MESH ? null : capsuleRegions(ba, bb));
+                            mode == RflConfig.ContactMode.MESH ? null : capsuleRegions(ba, bb), maxMeshHits);
                     }
                     meshNanos += System.nanoTime() - start;
                     mesh = hits != null;
