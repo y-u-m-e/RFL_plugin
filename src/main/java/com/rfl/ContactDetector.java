@@ -21,7 +21,11 @@ import net.runelite.client.util.Text;
 /**
  * Turns the live players in view into {@link PosedMesh} triangles for {@link ContactTracker} every
  * client frame, from each player's posed model: the drawn model, or the bare body
- * ({@link BareBody}) per the Hitbox source setting.
+ * ({@link BareBody}) per the Hitbox source setting. Keeps the latest frame's meshes and pairs for
+ * the overlays and the debug panel, adds the contact tile highlight, and measures mesh cost.
+ *
+ * <p>Client thread only: written from {@code ClientTick}, read by overlays (which render on the
+ * client thread) and game-tick handlers. The latest-frame maps are replaced, never mutated.
  */
 @Slf4j
 @Singleton
@@ -38,6 +42,7 @@ final class ContactDetector
     private List<String> latestMissing = Collections.emptyList();
 
     // Mesh cost (building the posed triangles plus checking them), averaged every ~10 s.
+    // meshMsPerFrame is volatile only so a stale read is harmless; everything else is client thread.
     private long meshNanos;
     private int meshFrames;
     private long meshLogAt;
@@ -51,6 +56,11 @@ final class ContactDetector
         this.bareBody = bareBody;
     }
 
+    /**
+     * Builds this frame's meshes and runs the tracker over them.
+     *
+     * @return contact events this frame
+     */
     List<RflEvent> onFrame(Client client)
     {
         WorldView worldView = client.getTopLevelWorldView();
@@ -106,6 +116,7 @@ final class ContactDetector
         return events;
     }
 
+    /** Sanitized names of the other players in view, for the report's {@code seen} list. */
     List<String> seen(Client client)
     {
         WorldView worldView = client.getTopLevelWorldView();
@@ -149,6 +160,7 @@ final class ContactDetector
         return tracker.update(Collections.emptyMap(), System.currentTimeMillis(), client.getTickCount(), false);
     }
 
+    /** Drops every open pair without events, plus highlights and the bare-body model cache. */
     void reset()
     {
         tracker.reset();
@@ -171,6 +183,7 @@ final class ContactDetector
         return latestMeshes;
     }
 
+    /** Pairs from the latest frame whose mesh bounds overlap, touching or not. */
     List<ContactTracker.Overlap> overlaps()
     {
         return tracker.overlaps();
@@ -201,6 +214,7 @@ final class ContactDetector
         meshLogAt = now;
     }
 
+    /** Name to the names whose triangles touched theirs in the latest frame. */
     Map<String, List<String>> collidingNow()
     {
         return tracker.collidingNow();

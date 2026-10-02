@@ -26,7 +26,8 @@ final class ContactTracker
 {
     /**
      * One pair from the latest update whose whole-mesh bounds overlap. {@code triangles} is the
-     * number of touching triangle pairs: above 0 means a contact.
+     * number of touching triangle pairs: above 0 means a contact. On an update that stopped at the
+     * first touching pair (see the class doc) it is 1 while in contact.
      */
     static final class Overlap
     {
@@ -115,7 +116,7 @@ final class ContactTracker
         sampledTick = -1;
     }
 
-    /** Nanoseconds spent in triangle checks since the last call. */
+    /** Nanoseconds spent in triangle checks since the last call; resets the counter. */
     long takeMeshNanos()
     {
         long n = meshNanos;

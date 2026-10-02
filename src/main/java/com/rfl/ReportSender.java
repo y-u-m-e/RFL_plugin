@@ -20,7 +20,7 @@ import okhttp3.Response;
  * POSTs a {@link RflReport} to the audit gateway off the client thread via the injected
  * {@link OkHttpClient}, and requeues the batch's events when the server didn't settle them.
  *
- * <p>Requeue rule (spec Review Focus item 3): a network failure, {@code 429}, or {@code 5xx}
+ * <p>Requeue rule: a network failure, {@code 429}, or {@code 5xx}
  * means "try again with the next batch". A {@code 2xx} accept or a {@code 400} malformed
  * rejection both mean the batch is settled — a {@code 400} will never succeed, so it is
  * dropped rather than retried forever.
@@ -28,7 +28,7 @@ import okhttp3.Response;
 @Singleton
 public final class ReportSender
 {
-    /** Visible to {@code com.rfl.game} (Task 4) so GameClient shares the same gateway host. */
+    /** Gateway host; public so {@code com.rfl.game.GameClient} talks to the same one. */
     public static final String BASE_URL = "https://dev-api.ironforged.gg";
 
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");

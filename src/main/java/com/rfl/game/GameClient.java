@@ -45,7 +45,7 @@ public final class GameClient
 
     /** Shown when a call is made before {@link #setIdentitySupplier} has an identity to give. */
     private static final String NOT_READY = "Not ready yet";
-    /** Review Focus item 5: the API being unreachable gets this one line, not a stack trace. */
+    /** Every transport or parse failure is shown as this one line, never a stack trace. */
     private static final String NETWORK_ERROR = "Can't reach the RFL API";
     private static final String GAME_NOT_FOUND = "game not found";
     private static final String NO_SUCH_PASSPHRASE = "No game with that passphrase";
@@ -63,9 +63,8 @@ public final class GameClient
     }
 
     /**
-     * Sets where RSN/install id/world come from. {@code RflPlugin} (Task 5/6) should read the
-     * current identity itself (on the client thread, where that live state is safe to read) and
-     * supply it here; this class never reads {@code Client} or {@code ClientThread} directly.
+     * Sets where RSN/install id/world come from. {@code RflPlugin} reads them on the client thread
+     * and supplies a snapshot here; this class never reads {@code Client} directly.
      *
      * @param identitySupplier supplies the current identity, or returns null when not yet known
      */
@@ -226,7 +225,7 @@ public final class GameClient
      * Shared send/parse/error-map plumbing. Never blocks the calling thread: the request is
      * handed to OkHttp's own dispatcher, and every outcome — success, non-2xx, malformed body,
      * or no connection at all — ends in exactly one {@code callback.accept} call, so a caller
-     * (the panel's poller, Task 6) is never left hanging (Review Focus item 5).
+     * (the panel's poll loop) is never left hanging.
      */
     private <T> void enqueue(final Request request, final Consumer<Result<T>> callback,
         final Function<String, T> parseBody)
@@ -289,9 +288,8 @@ public final class GameClient
     }
 
     /**
-     * Normalizes the two API error strings task-4-brief.md calls out by name; every other
-     * error (404 not found, 429 rate limited, host-only 403, etc.) is shown exactly as the API
-     * phrased it.
+     * Capitalizes the two passphrase errors the panel shows as-is; every other error (404 not
+     * found, 429 rate limited, host-only 403, etc.) is shown exactly as the API phrased it.
      *
      * @param apiError the server's own {@code error} message
      * @return "Wrong passphrase" / "Passphrase already in use" for those two, else {@code apiError}

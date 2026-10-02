@@ -26,10 +26,9 @@ import okio.BufferedSource;
 /**
  * {@link GameClient} exercised against a fake OkHttp application interceptor — the same
  * no-request-leaves-the-process technique {@code ReportSenderTest} uses, rather than a real
- * server. Optional per task-4-brief.md, but covers the two things it calls out by name: the
- * lobby GET's {@code X-RFL-Install} header (so a host's poll keeps their game alive), and the
- * join 403 -> "Wrong passphrase" mapping (Review Focus item 5: errors always reach the
- * callback, never a hang).
+ * server. Covers the lobby GET's {@code X-RFL-Install} header (so a host's poll keeps their
+ * game alive), the join 403 -> "Wrong passphrase" mapping, and that every error reaches the
+ * callback rather than hanging.
  */
 public class GameClientTest
 {

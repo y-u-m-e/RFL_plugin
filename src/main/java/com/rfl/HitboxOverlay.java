@@ -17,7 +17,9 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
  * Draws a wireframe of every player's posed mesh (the exact triangles contacts are detected from)
- * and fills the triangles where two meshes touch in the contact colour. Display only.
+ * and fills the triangles where two meshes touch in the contact colour. Display only. Reads the
+ * detector's latest frame; while this overlay is on, the tracker counts every touching pair each
+ * frame so the fill is complete.
  */
 final class HitboxOverlay extends Overlay
 {

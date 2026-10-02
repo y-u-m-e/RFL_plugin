@@ -10,7 +10,8 @@ import net.runelite.client.config.Range;
 import net.runelite.client.config.Units;
 
 /**
- * User configuration for the RFL audit plugin.
+ * User configuration for the RFL audit plugin. Key names are stored settings: rename only with a
+ * migration.
  */
 @ConfigGroup(RflConfig.GROUP)
 public interface RflConfig extends Config

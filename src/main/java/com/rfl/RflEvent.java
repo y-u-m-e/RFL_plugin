@@ -1,8 +1,9 @@
 package com.rfl;
 
 /**
- * Wire event value type. Nullable fields are left {@code null} for the event kinds that
- * don't use them so an injected Gson (Task 5) omits them from the serialized JSON.
+ * Wire event value type: {@code contact_start}, {@code contact_end} or {@code plugin_toggle}.
+ * Fields an event kind doesn't use stay {@code null}, so Gson leaves them out of the JSON.
+ * {@code depth} is the touching triangle-pair count (see {@link ContactTracker}).
  */
 final class RflEvent
 {

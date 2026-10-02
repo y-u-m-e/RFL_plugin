@@ -7,7 +7,8 @@ import javax.inject.Singleton;
 /**
  * The plugin's view of "the game I'm in, if any" — the last {@link GameDetail} seen from a
  * successful lobby poll, join, or create. Thread-safe: a lobby poll response lands on an OkHttp
- * callback thread while the panel (Task 6) reads it from the Swing EDT.
+ * callback thread while the panel reads it from the Swing EDT, and the report heartbeat reads
+ * {@link #gameId()} on the client thread.
  */
 @Singleton
 public final class GameSession
@@ -52,8 +53,8 @@ public final class GameSession
     }
 
     /**
-     * Leaves the game (also used to drop a stale game after being removed from it —
-     * Review Focus item 4: a removed player's {@code gameId} must go back to empty).
+     * Leaves the game. Also used after being removed from a game or switching accounts, so a
+     * removed player's reports go back to an empty {@code gameId}.
      */
     public void clear()
     {

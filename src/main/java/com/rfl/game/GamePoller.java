@@ -2,12 +2,13 @@ package com.rfl.game;
 
 /**
  * Poll cadence plus last-known-good state for one polling loop (the active-games list, or the
- * current lobby). Holds no network code and does no IO (Task 6 drives it from {@link GameClient}
- * callbacks), so it is plain, fast, unit-testable logic.
+ * current lobby). Holds no network code and does no IO ({@link GamePanel} drives it from
+ * {@link GameClient} callbacks), so it is plain, unit-testable logic. Thread-safe: written on
+ * OkHttp threads, read on the EDT.
  *
  * <p>On a failed poll the previous data is kept and {@link #lastError()} is set instead of
  * cleared, so the panel can keep showing the last known state plus a one-line error rather than
- * freezing or going blank while the API is unreachable (spec Review Focus item 5).
+ * freezing or going blank while the API is unreachable.
  *
  * @param <T> the polled data's type ({@code List<GameSummary>} or {@link GameDetail})
  */
