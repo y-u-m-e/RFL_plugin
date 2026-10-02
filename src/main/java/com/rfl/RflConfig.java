@@ -151,22 +151,6 @@ public interface RflConfig extends Config
     }
 
     /**
-     * @return true to draw the feet cylinders of players whose bodies overlap
-     */
-    @ConfigItem(
-        keyName = "showOverlap",
-        name = "Show overlap",
-        description = "While two players' bodies overlap, fills the model triangles where they touch: "
-            + "faint for a graze, the contact colour once it counts as a contact.",
-        section = DISPLAY_SECTION,
-        position = 12
-    )
-    default boolean showOverlap()
-    {
-        return false;
-    }
-
-    /**
      * @return true to draw every player's mesh wireframe and touching triangles
      */
     @ConfigItem(

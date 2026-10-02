@@ -53,7 +53,7 @@ final class HitboxOverlay extends Overlay
         {
             for (int t = 0; t < mesh.triangles; t++)
             {
-                Polygon triangle = triangle(client, worldView, plane, mesh, t);
+                Polygon triangle = triangle(worldView, plane, mesh, t);
                 if (triangle != null)
                 {
                     graphics.drawPolygon(triangle);
@@ -68,15 +68,15 @@ final class HitboxOverlay extends Overlay
             PosedMesh.Hits hits = overlap.hits;
             for (int i = 0; hits != null && i < hits.count; i++)
             {
-                fill(graphics, triangle(client, worldView, plane, hits.a, hits.pairs[i * 2]), base, fill);
-                fill(graphics, triangle(client, worldView, plane, hits.b, hits.pairs[i * 2 + 1]), base, fill);
+                fill(graphics, triangle(worldView, plane, hits.a, hits.pairs[i * 2]), base, fill);
+                fill(graphics, triangle(worldView, plane, hits.b, hits.pairs[i * 2 + 1]), base, fill);
             }
         }
         return null;
     }
 
     /** A mesh triangle on screen, or null when a corner is off screen. */
-    static Polygon triangle(Client client, WorldView worldView, int plane, PosedMesh mesh, int triangle)
+    private Polygon triangle(WorldView worldView, int plane, PosedMesh mesh, int triangle)
     {
         Polygon polygon = new Polygon();
         for (int k = 0; k < 3; k++)

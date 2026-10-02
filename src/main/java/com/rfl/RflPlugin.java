@@ -93,9 +93,6 @@ public class RflPlugin extends Plugin
     private ContactHighlightOverlay contactHighlightOverlay;
 
     @Inject
-    private ContactOverlapOverlay contactOverlapOverlay;
-
-    @Inject
     private HitboxOverlay hitboxOverlay;
 
     @Inject
@@ -180,7 +177,6 @@ public class RflPlugin extends Plugin
         // per RuneScape account (RS profile). Drop the old global value.
         executor.execute(() -> configManager.unsetConfiguration(RflConfig.GROUP, INSTALL_ID_KEY));
         overlayManager.add(contactHighlightOverlay);
-        overlayManager.add(contactOverlapOverlay);
         overlayManager.add(hitboxOverlay);
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
@@ -193,7 +189,6 @@ public class RflPlugin extends Plugin
     protected void shutDown()
     {
         overlayManager.remove(contactHighlightOverlay);
-        overlayManager.remove(contactOverlapOverlay);
         overlayManager.remove(hitboxOverlay);
         interceptionDetector.reset();
         contactDetector.reset();
