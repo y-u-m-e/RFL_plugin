@@ -27,7 +27,7 @@
 
 ## Review Focus
 
-1. **The host presses Leave** instead of End: the game must end, not sit orphaned until the 10-minute timeout → test in Task 2.
+1. **The host presses Leave** instead of End: hosting passes to the remaining member who joined earliest (host RSN and install ID move to them); the game ends only if nobody is left → test in Task 2.
 2. **A player joins a second game while still in one:** they must leave the first automatically, so they are never on two rosters → test in Task 2.
 3. **A passphrase from an ended game is reused:** joining by it must not find the ended game, and a new game may take it → test in Task 2.
 4. **A removed player keeps sending reports with the game's ID:** their `gameId` is treated as empty, their contacts are not the game's → test in Task 3.
@@ -63,10 +63,10 @@
 **Interfaces:**
 - Consumes: Task 1.
 - Produces (each `→ { status, body }`, `now` injectable for tests): `listGames(env, now)`, `createGame(request, env, now)`, `getGame(env, id, now)`, `joinByPassphrase(request, env, now)`, `joinGame(request, env, id, now)`, `leaveGame(request, env, id, now)`, `hostAction(request, env, id, now)`; `activeMembership(db, gameId, rsn) → { game, player } | null` (joined, not removed, game not ended) for Task 3; `touchHost(db, installId, now)`.
-- Rulings beyond the spec: host **Leave** ends the game; joining any game first leaves the player's current active game; an ended game frees its passphrase; the auto-close check runs in every function above before acting.
+- Rulings beyond the spec (confirmed by the user): host **Leave** passes hosting to the remaining member who joined earliest, ending the game only if nobody remains; joining any game first leaves the player's current active game; an ended game frees its passphrase for reuse; the auto-close check runs in every function above before acting.
 - Response shapes exactly as spec §4 (`GET /:id` → `{ game: {id, name, hostRsn, world, state, createdAt, startedAt, endedAt}, teams: [{key, name, color}], players: [{rsn, team, joinedAt}] }`).
 
-- [ ] **Step 1:** Failing route tests (requests to `https://dev-api.ironforged.gg/plugins/rfl/games...`): create → 200 with id, host on roster, defaults Red/Blue; second create by the same install while active → 409; create with a passphrase in use → 409; list shows it; `GET /:id` body never contains `passphrase`, `salt` or `installId`; join by passphrase (mixed case, spaces) → that id; wrong passphrase → 403, six wrong in a row → 429 until 60 s pass; non-host `assign` → 403; host `assign`/`team`/`start`/`end` work and change state; removed player re-joining → 403; host silent 600001 ms → next `GET` shows `ended`; Review Focus 1–3 (host leave ends game; joining game B leaves game A; ended game's passphrase can be reused and join-by-passphrase does not find the ended game).
+- [ ] **Step 1:** Failing route tests (requests to `https://dev-api.ironforged.gg/plugins/rfl/games...`): create → 200 with id, host on roster, defaults Red/Blue; second create by the same install while active → 409; create with a passphrase in use → 409; list shows it; `GET /:id` body never contains `passphrase`, `salt` or `installId`; join by passphrase (mixed case, spaces) → that id; wrong passphrase → 403, six wrong in a row → 429 until 60 s pass; non-host `assign` → 403; host `assign`/`team`/`start`/`end` work and change state; removed player re-joining → 403; host silent 600001 ms → next `GET` shows `ended`; Review Focus 1–3 (host leave passes hosting to the earliest-joined remaining member, and ends the game when the host was alone; joining game B leaves game A; ended game's passphrase can be reused and join-by-passphrase does not find the ended game).
 - [ ] **Step 2:** `npx vitest run test/rfl-games.spec.js` → FAIL.
 - [ ] **Step 3:** Implement. Rate limits: keep per-install timestamps/counters in a small `rfl_game_limits` table (install_id, game_id, last_join_at, wrong_count, wrong_until, last_host_action_at).
 - [ ] **Step 4:** Same command → PASS; `npm test`, `npm run lint` clean.

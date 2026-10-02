@@ -20,6 +20,9 @@ so spectators must not be flagged.
 | What joining decides | The hosted game is the match: its name, roster and teams |
 | Spectators | Ignored. A non-member is flagged only for a contact with a member (`nonmember_contact`) |
 | Start / end | Host presses Start and End; server ends a game whose host has been silent for 10 min |
+| Host leaves | Hosting passes to the remaining member who joined earliest; the game ends only if nobody is left |
+| One game at a time | Joining a game first leaves any other active game |
+| Passphrase reuse | An ended game frees its passphrase |
 | Teams | Two teams; host assigns players and sets each team's name and colour |
 | Transport | REST + polling on `yume-api`: list every 10 s while not in a game, lobby every 1.8 s in a game |
 | Joining | By passphrase alone (Party-style) or from the list; passphrases are unique among active games |
