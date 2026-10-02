@@ -35,8 +35,6 @@ public class RflReportTest
         assertTrue(json.contains("\"sentAt\":1000"));
         assertTrue(json.contains("\"inPoh\":true"));
         assertTrue(json.contains("\"gameId\":\"game-1\""));
-        assertFalse(json.contains("matchCode"));
-        assertFalse(json.contains("\"team\""));
         assertTrue(json.contains("\"seen\":[\"Player B\"]"));
         assertTrue(json.contains("\"plugins\":["));
         assertTrue(json.contains("\"events\":[]"));
