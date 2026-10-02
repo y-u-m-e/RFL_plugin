@@ -139,17 +139,31 @@ public final class GamePanel extends PluginPanel
         {
             return SWITCHED;
         }
+        for (final GameDetail.Player p : roster(detail))
+        {
+            if (rsn.equals(p.rsn))
+            {
+                return null;
+            }
+        }
+        return REMOVED;
+    }
+
+    /** @return the lobby's players, skipping entries without an RSN (the panel keys everything on it) */
+    static List<GameDetail.Player> roster(final GameDetail detail)
+    {
+        final List<GameDetail.Player> players = new ArrayList<>();
         if (detail.players != null)
         {
             for (final GameDetail.Player p : detail.players)
             {
-                if (rsn.equals(p.rsn))
+                if (p != null && p.rsn != null)
                 {
-                    return null;
+                    players.add(p);
                 }
             }
         }
-        return REMOVED;
+        return players;
     }
 
     /** @return the lobby's passphrase line: only the host sees it (members' copy could be stale) */
@@ -483,6 +497,10 @@ public final class GamePanel extends PluginPanel
     private void leave()
     {
         final String id = session.gameId();
+        if (id.isEmpty())
+        {
+            return;
+        }
         games.leave(id, r ->
         {
             if (!r.isOk())
@@ -739,7 +757,7 @@ public final class GamePanel extends PluginPanel
         addError(lobbyPoller.lastError());
 
         final List<GameDetail.Team> teams = d.teams == null ? List.of() : d.teams;
-        final List<GameDetail.Player> players = d.players == null ? List.of() : d.players;
+        final List<GameDetail.Player> players = roster(d);
         final JPanel columns = new JPanel(new GridLayout(1, 0, 4, 0));
         columns.setOpaque(false);
         for (final GameDetail.Team t : teams)

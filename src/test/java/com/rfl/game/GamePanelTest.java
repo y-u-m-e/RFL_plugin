@@ -99,4 +99,15 @@ public class GamePanelTest
         assertEquals(GamePanel.ASK_HOST, GamePanel.passphraseText(false, ""));
         assertEquals(GamePanel.HOST_NO_PASSPHRASE, GamePanel.passphraseText(true, ""));
     }
+
+    @Test
+    public void rosterSkipsPlayersWithoutAnRsn()
+    {
+        final GameDetail d = detail("lobby", "Host", "Me");
+        d.players.add(new GameDetail.Player(null, "A", 1L));
+        d.players.add(null);
+        assertEquals(2, GamePanel.roster(d).size());
+        d.players = null;
+        assertEquals(0, GamePanel.roster(d).size());
+    }
 }

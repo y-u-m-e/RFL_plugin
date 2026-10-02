@@ -190,8 +190,12 @@ public class RflPlugin extends Plugin
     {
         overlayManager.remove(contactHighlightOverlay);
         overlayManager.remove(hitboxOverlay);
-        interceptionDetector.reset();
-        contactDetector.reset();
+        // Detection state is client-thread only; a ClientTick may still be running right now.
+        clientThread.invoke(() ->
+        {
+            interceptionDetector.reset();
+            contactDetector.reset();
+        });
         SwingUtilities.invokeLater(this::removeDebugPanel);
         final GamePanel panel = gamePanel;
         if (panel != null)
