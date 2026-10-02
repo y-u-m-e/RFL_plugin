@@ -2,8 +2,6 @@ package com.rfl;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
@@ -14,6 +12,7 @@ import javax.swing.text.DefaultCaret;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.util.ImageUtil;
 
 /**
  * "RFL Debug" sidebar panel: a read-only text view of what contact detection sees. Swing EDT only;
@@ -61,18 +60,9 @@ final class DebugPanel extends PluginPanel
         }
     }
 
-    /** Small generated sidebar icon: an orange disc with a "D". */
+    /** Sidebar icon: the RFL football, scaled to the toolbar's 16 px. */
     static BufferedImage icon()
     {
-        BufferedImage image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setColor(ColorScheme.BRAND_ORANGE);
-        g.fillOval(0, 0, 16, 16);
-        g.setColor(Color.WHITE);
-        g.setFont(FontManager.getRunescapeBoldFont());
-        g.drawString("D", 4, 13);
-        g.dispose();
-        return image;
+        return ImageUtil.resizeImage(ImageUtil.loadImageResource(DebugPanel.class, "debug_icon.png"), 16, 16);
     }
 }
