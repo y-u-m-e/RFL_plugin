@@ -21,8 +21,8 @@ import net.runelite.api.kit.KitType;
 import net.runelite.client.util.Text;
 
 /**
- * Turns the live players in view into {@link Body} part capsules for {@link ContactTracker} every
- * client frame, from each player's posed model vertices: the drawn model, or the bare body
+ * Turns the live players in view into {@link PosedMesh} triangles for {@link ContactTracker} every
+ * client frame, from each player's posed model: the drawn model, or the bare body
  * ({@link BareBody}) per the Hitbox source setting.
  */
 @Slf4j
@@ -35,7 +35,7 @@ final class ContactDetector
     private final ContactHighlights highlights;
     private final RflConfig config;
     private final BareBody bareBody;
-    private Map<String, Body> latestBodies = Collections.emptyMap();
+    private Map<String, PosedMesh> latestMeshes = Collections.emptyMap();
     private Map<String, Player> latestPlayers = Collections.emptyMap();
     private List<String> latestMissing = Collections.emptyList();
 
@@ -56,18 +56,10 @@ final class ContactDetector
     List<RflEvent> onFrame(Client client)
     {
         WorldView worldView = client.getTopLevelWorldView();
-        Map<String, Body> bodies = new HashMap<>();
+        Map<String, PosedMesh> meshes = new HashMap<>();
         Map<String, Player> players = new HashMap<>();
         List<String> missing = new ArrayList<>();
         boolean bare = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY;
-        RflConfig.ContactMode mode = config.contactMode();
-        // Build meshes for the mesh contact modes, or to draw them (hitbox view, Show overlap).
-        boolean withMesh = mode != RflConfig.ContactMode.CAPSULES || config.showOverlap()
-            || (config.showHitboxes() && config.hitboxView() != RflConfig.HitboxView.CAPSULES);
-        tracker.setMode(mode);
-        tracker.setDisplayMesh(config.showOverlap());
-        // Only the overlays draw every touching triangle; detection needs just one.
-        tracker.setMaxMeshHits(config.showHitboxes() || config.showOverlap() ? PosedMesh.MAX_HITS : 1);
 
         if (worldView != null)
         {
@@ -78,11 +70,11 @@ final class ContactDetector
                     continue;
                 }
 
-                Body body = bodyFor(client, player, bare, withMesh);
+                PosedMesh mesh = meshFor(player, bare);
                 String name = sanitizedName(player);
-                if (body != null && name != null)
+                if (mesh != null && name != null)
                 {
-                    bodies.put(name, body);
+                    meshes.put(name, mesh);
                     players.put(name, player);
                 }
                 else if (name != null)
@@ -98,20 +90,18 @@ final class ContactDetector
         }
 
         long now = System.currentTimeMillis();
-        latestBodies = bodies;
+        latestMeshes = meshes;
         latestPlayers = players;
         latestMissing = missing;
-        List<RflEvent> events = tracker.update(bodies, now, client.getTickCount());
-        endMeshFrame(now, withMesh);
+        List<RflEvent> events = tracker.update(meshes, now, client.getTickCount());
+        endMeshFrame(now);
         for (RflEvent event : events)
         {
-            Body a = bodies.get(event.a);
-            Body b = bodies.get(event.b);
-            Body.Contact contact = "contact_start".equals(event.type) && a != null && b != null
-                ? Body.contact(a, b) : null;
-            if (contact != null)
+            PosedMesh.Hits hits = "contact_start".equals(event.type) ? tracker.hits(event.a, event.b) : null;
+            if (hits != null)
             {
-                highlights.add(contact.x, contact.y, now);
+                double[] c = hits.centroid();
+                highlights.add((int) Math.round(c[0]), (int) Math.round(c[1]), now);
             }
         }
         return events;
@@ -144,7 +134,7 @@ final class ContactDetector
     }
 
     /**
-     * Closes every currently open pair (an empty box map ends every active pair rather than
+     * Closes every currently open pair (an empty mesh map ends every active pair rather than
      * dropping it silently), for leaving the POH, a hop, or a logout while reporting is still
      * enabled. Callers that don't need the resulting {@code contact_end} events (reporting
      * disabled, plugin shutdown) should call {@link #reset()} instead.
@@ -154,7 +144,7 @@ final class ContactDetector
      */
     List<RflEvent> endAll(Client client)
     {
-        latestBodies = Collections.emptyMap();
+        latestMeshes = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
         latestMissing = Collections.emptyList();
         return tracker.update(Collections.emptyMap(), System.currentTimeMillis(), client.getTickCount());
@@ -165,7 +155,7 @@ final class ContactDetector
         tracker.reset();
         highlights.clear();
         bareBody.reset();
-        latestBodies = Collections.emptyMap();
+        latestMeshes = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
         latestMissing = Collections.emptyList();
     }
@@ -176,21 +166,15 @@ final class ContactDetector
         return latestPlayers;
     }
 
-    /** Bodies from the latest frame, by sanitized name. */
-    Map<String, Body> bodies()
+    /** Meshes from the latest frame, by sanitized name. */
+    Map<String, PosedMesh> meshes()
     {
-        return latestBodies;
+        return latestMeshes;
     }
 
     List<ContactTracker.Overlap> overlaps()
     {
         return tracker.overlaps();
-    }
-
-    /** Intersecting triangle pairs from the latest frame; client thread only. */
-    List<PosedMesh.Hits> meshHits()
-    {
-        return tracker.meshHits();
     }
 
     /** Average ms per frame spent on mesh work over the last ~10 s window. */
@@ -199,7 +183,7 @@ final class ContactDetector
         return meshMsPerFrame;
     }
 
-    private void endMeshFrame(long now, boolean withMesh)
+    private void endMeshFrame(long now)
     {
         meshNanos += tracker.takeMeshNanos();
         meshFrames++;
@@ -208,10 +192,10 @@ final class ContactDetector
             return;
         }
         meshMsPerFrame = meshNanos / 1e6 / meshFrames;
-        if (withMesh && config.debugLogging() && meshLogAt != 0)
+        if (config.debugLogging() && meshLogAt != 0)
         {
-            log.info("[RFL debug] mesh contacts: {} ms/frame avg over {} frames ({} bodies)",
-                String.format("%.3f", meshMsPerFrame), meshFrames, latestBodies.size());
+            log.info("[RFL debug] mesh contacts: {} ms/frame avg over {} frames ({} meshes)",
+                String.format("%.3f", meshMsPerFrame), meshFrames, latestMeshes.size());
         }
         meshNanos = 0;
         meshFrames = 0;
@@ -223,15 +207,10 @@ final class ContactDetector
         return tracker.collidingNow();
     }
 
-    /** Names of players in view whose body could not be built in the latest frame. */
-    List<String> missingBodies()
+    /** Names of players in view whose mesh could not be built in the latest frame. */
+    List<String> missingMeshes()
     {
         return latestMissing;
-    }
-
-    Map<String, List<String>> contactsByPlayer()
-    {
-        return tracker.contactsByPlayer();
     }
 
     /** Weapon-slot item id of every player in view, by sanitized name (-1 for empty). */
@@ -269,28 +248,23 @@ final class ContactDetector
         return holders;
     }
 
-    /** Body from the player's drawn model, or their bare body per the Hitbox source setting. */
-    private Body bodyFor(Client client, Player player, boolean bare, boolean withMesh)
+    /** Mesh of the player's drawn model, or their bare body per the Hitbox source setting. */
+    private PosedMesh meshFor(Player player, boolean bare)
     {
         Model model = bare ? bareBody.posed(player) : player.getModel();
         LocalPoint localPoint = player.getLocalLocation();
-        if (model == null || localPoint == null)
+        if (model == null || localPoint == null || model.getFaceIndices1() == null
+            || model.getFaceIndices2() == null || model.getFaceIndices3() == null)
         {
             return null;
         }
-        Body body = Body.from(model.getVerticesX(), model.getVerticesY(), model.getVerticesZ(),
-            model.getVerticesCount(), player.getCurrentOrientation(), localPoint.getX(), localPoint.getY());
-        if (withMesh && model.getFaceIndices1() != null && model.getFaceIndices2() != null
-            && model.getFaceIndices3() != null)
-        {
-            long start = System.nanoTime();
-            body = body.withMesh(PosedMesh.from(model.getVerticesX(), model.getVerticesY(), model.getVerticesZ(),
-                model.getVerticesCount(), model.getFaceIndices1(), model.getFaceIndices2(), model.getFaceIndices3(),
-                model.getFaceCount(), model.getFaceTransparencies(), model.getFaceColors3(),
-                player.getCurrentOrientation(), localPoint.getX(), localPoint.getY()));
-            meshNanos += System.nanoTime() - start;
-        }
-        return body;
+        long start = System.nanoTime();
+        PosedMesh mesh = PosedMesh.from(model.getVerticesX(), model.getVerticesY(), model.getVerticesZ(),
+            model.getVerticesCount(), model.getFaceIndices1(), model.getFaceIndices2(), model.getFaceIndices3(),
+            model.getFaceCount(), model.getFaceTransparencies(), model.getFaceColors3(),
+            player.getCurrentOrientation(), localPoint.getX(), localPoint.getY());
+        meshNanos += System.nanoTime() - start;
+        return mesh;
     }
 
     private static String sanitizedName(Player player)

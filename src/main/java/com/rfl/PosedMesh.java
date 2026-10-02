@@ -1,12 +1,10 @@
 package com.rfl;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 /**
- * A player's posed model triangles in scene space: the same transform as {@link Body} (x, y
- * horizontal, z height above the soles), plus per-triangle bounding boxes for the broad phase and
+ * A player's posed model triangles in scene space (x, y horizontal, z height above the soles),
+ * plus per-triangle bounding boxes for the broad phase and
  * a triangle-triangle intersection test (Möller 1997, "A Fast Triangle-Triangle Intersection
  * Test", interval overlap with the coplanar fallback). Pure: no client state.
  */
@@ -20,7 +18,10 @@ final class PosedMesh
     private static final double EPSILON = 1e-6;
     /** Triangles with a squared normal length below this have no area and never intersect. */
     private static final double DEGENERATE = 1e-12;
-    /** At most this many intersecting triangle pairs are collected per body pair for the overlay. */
+    /**
+     * At most this many intersecting triangle pairs are collected per player pair. The count is
+     * reported as a contact's depth, so a depth of MAX_HITS means "at least MAX_HITS".
+     */
     static final int MAX_HITS = 512;
 
     /** Scene-space vertex positions. */
@@ -50,6 +51,29 @@ final class PosedMesh
             this.b = b;
             this.pairs = pairs;
             this.count = count;
+        }
+
+        /** Scene {x, y, z} centroid of every touching triangle of both meshes. */
+        double[] centroid()
+        {
+            double[] sum = new double[3];
+            for (int i = 0; i < count; i++)
+            {
+                for (int k = 0; k < 3; k++)
+                {
+                    add(sum, a.corner(pairs[i * 2], k));
+                    add(sum, b.corner(pairs[i * 2 + 1], k));
+                }
+            }
+            int n = count * 6;
+            return new double[]{sum[0] / n, sum[1] / n, sum[2] / n};
+        }
+
+        private static void add(double[] sum, double[] p)
+        {
+            sum[0] += p[0];
+            sum[1] += p[1];
+            sum[2] += p[2];
         }
     }
 
@@ -87,15 +111,9 @@ final class PosedMesh
         box[o + 5] = Math.max(box[o + 5], pz);
     }
 
-    static PosedMesh from(float[] xs, float[] ys, float[] zs, int count, int[] f1, int[] f2, int[] f3, int faceCount,
-        int orientation, int baseX, int baseY)
-    {
-        return from(xs, ys, zs, count, f1, f2, f3, faceCount, null, null, orientation, baseX, baseY);
-    }
-
     /**
-     * Posed model vertices and faces into scene space, with Body's rotation and height above the
-     * lowest vertex. Copies everything, so the model may be reused afterwards.
+     * Posed model vertices and faces into scene space: rotated by the actor orientation (0-2047 for
+     * a full turn), with height above the lowest vertex. Copies everything, so the model may be reused afterwards.
      *
      * @param transparencies per-face transparency or null; fully transparent faces are skipped
      * @param colors3 per-face colour 3 or null; hidden faces (-2) are skipped
@@ -116,7 +134,7 @@ final class PosedMesh
         float[] z = new float[count];
         for (int i = 0; i < count; i++)
         {
-            // Same rotation as Body: x' = x cos + z sin, z' = z cos - x sin.
+            // Same rotation the client applies to models: x' = x cos + z sin, z' = z cos - x sin.
             x[i] = (float) (baseX + xs[i] * cos + zs[i] * sin);
             y[i] = (float) (baseY + zs[i] * cos - xs[i] * sin);
             z[i] = bottom - ys[i];
@@ -160,51 +178,37 @@ final class PosedMesh
             && boxes[o + 2] <= box[5] && boxes[o + 5] >= box[2];
     }
 
-    /** Triangles of this mesh whose box touches any of the regions. */
-    private int[] trianglesIn(List<float[]> regions)
+    /** Triangles of this mesh whose box touches the region. */
+    private int[] trianglesIn(float[] region)
     {
         int[] out = new int[triangles];
         int n = 0;
         for (int t = 0; t < triangles; t++)
         {
-            for (float[] r : regions)
+            if (boxTouches(t, region))
             {
-                if (boxTouches(t, r))
-                {
-                    out[n++] = t;
-                    break;
-                }
+                out[n++] = t;
             }
         }
         return Arrays.copyOf(out, n);
     }
 
     /**
-     * Intersecting triangle pairs between a and b, considering only triangles whose box touches
-     * one of the regions (null: the overlap of the two meshes' bounds). Candidates are paired by
+     * Intersecting triangle pairs between a and b, up to {@link #MAX_HITS}. Broad phase: only
+     * triangles whose box touches the overlap of the two meshes' bounds. Candidates are paired by
      * sort-and-sweep on x, then box-checked on y and z before the exact test.
      *
-     * @param maxHits stop after this many hits (1 when only "touching or not" matters)
      * @return the hits, or null when none
      */
-    static Hits intersect(PosedMesh a, PosedMesh b, List<float[]> regions, int maxHits)
+    static Hits intersect(PosedMesh a, PosedMesh b)
     {
-        if (regions == null)
-        {
-            float[] overlap = overlap(a.bounds, b.bounds, 0);
-            if (overlap == null)
-            {
-                return null;
-            }
-            regions = new ArrayList<>(1);
-            regions.add(overlap);
-        }
-        if (regions.isEmpty())
+        float[] overlap = overlap(a.bounds, b.bounds);
+        if (overlap == null)
         {
             return null;
         }
-        int[] ta = a.trianglesIn(regions);
-        int[] tb = b.trianglesIn(regions);
+        int[] ta = a.trianglesIn(overlap);
+        int[] tb = b.trianglesIn(overlap);
         if (ta.length == 0 || tb.length == 0)
         {
             return null;
@@ -232,7 +236,7 @@ final class PosedMesh
         for (long key : order)
         {
             int e = (int) key;
-            if (count >= maxHits)
+            if (count >= MAX_HITS)
             {
                 break;
             }
@@ -253,7 +257,7 @@ final class PosedMesh
                     continue;
                 }
                 active[kept++] = u;
-                if (count < maxHits && boxesOverlapYZ(self, t, other, u)
+                if (count < MAX_HITS && boxesOverlapYZ(self, t, other, u)
                     && trianglesIntersect(self.corner(t, 0), self.corner(t, 1), self.corner(t, 2),
                     other.corner(u, 0), other.corner(u, 1), other.corner(u, 2)))
                 {
@@ -296,14 +300,14 @@ final class PosedMesh
             && p.boxes[o + 2] <= q.boxes[r + 5] && p.boxes[o + 5] >= q.boxes[r + 2];
     }
 
-    /** Overlap of two {min.., max..} boxes grown by margin, or null when they don't overlap. */
-    static float[] overlap(float[] p, float[] q, float margin)
+    /** Overlap of two {min.., max..} boxes, or null when they don't overlap. */
+    static float[] overlap(float[] p, float[] q)
     {
         float[] r = new float[6];
         for (int k = 0; k < 3; k++)
         {
-            r[k] = Math.max(p[k], q[k]) - margin;
-            r[k + 3] = Math.min(p[k + 3], q[k + 3]) + margin;
+            r[k] = Math.max(p[k], q[k]);
+            r[k + 3] = Math.min(p[k + 3], q[k + 3]);
             if (r[k] > r[k + 3])
             {
                 return null;

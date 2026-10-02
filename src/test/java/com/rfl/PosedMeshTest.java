@@ -78,30 +78,48 @@ public class PosedMeshTest
     }
 
     @Test
-    public void transformMatchesBodyRotation()
+    public void transformRotatesByOrientationAndMeasuresHeightFromTheSoles()
     {
         // Sole vertex at the origin plus three head vertices at model (10, height 100, 3).
         float[] xs = {0, 10, 10, 10};
         float[] ys = {0, -100, -100, -100};
         float[] zs = {0, 3, 3, 3};
         int orientation = 300;
-        Body body = Body.from(xs, ys, zs, 4, orientation, 1000, 2000);
-        PosedMesh mesh = PosedMesh.from(xs, ys, zs, 4, new int[]{0}, new int[]{1}, new int[]{2}, 1,
-            orientation, 1000, 2000);
+        PosedMesh mesh = from(xs, ys, zs, orientation, 1000, 2000);
 
-        Capsule head = body.parts.get(body.parts.size() - 1);
-        assertEquals("head", head.name);
-        assertEquals(head.ax, mesh.x[1], 1e-3);
-        assertEquals(head.ay, mesh.y[1], 1e-3);
+        double angle = orientation * 2 * Math.PI / 2048;
+        assertEquals(1000 + 10 * Math.cos(angle) + 3 * Math.sin(angle), mesh.x[1], 1e-3);
+        assertEquals(2000 + 3 * Math.cos(angle) - 10 * Math.sin(angle), mesh.y[1], 1e-3);
         assertEquals(100, mesh.z[1], 1e-3);
         assertEquals(0, mesh.z[0], 1e-3);
         assertEquals(1000, mesh.x[0], 1e-3);
         assertEquals(2000, mesh.y[0], 1e-3);
 
         // A quarter turn: x' = z, y' = -x.
-        PosedMesh quarter = PosedMesh.from(xs, ys, zs, 4, new int[]{0}, new int[]{1}, new int[]{2}, 1, 512, 0, 0);
+        PosedMesh quarter = from(xs, ys, zs, 512, 0, 0);
         assertEquals(3, quarter.x[1], 1e-3);
         assertEquals(-10, quarter.y[1], 1e-3);
+    }
+
+    /** One triangle over vertices 0, 1, 2, no face filtering. */
+    private static PosedMesh from(float[] xs, float[] ys, float[] zs, int orientation, int baseX, int baseY)
+    {
+        return PosedMesh.from(xs, ys, zs, xs.length, new int[]{0}, new int[]{1}, new int[]{2}, 1, null, null,
+            orientation, baseX, baseY);
+    }
+
+    @Test
+    public void centroidIsTheMeanOfEveryTouchingTriangleCorner()
+    {
+        PosedMesh wall = new PosedMesh(new float[]{40, 40, 40}, new float[]{-20, 20, 0}, new float[]{40, 40, 80},
+            new int[]{0, 1, 2});
+        PosedMesh through = new PosedMesh(new float[]{30, 50, 40}, new float[]{0, 0, 0}, new float[]{50, 50, 70},
+            new int[]{0, 1, 2});
+        double[] c = PosedMesh.intersect(wall, through).centroid();
+        // Corners: wall (40,-20,40) (40,20,40) (40,0,80); through (30,0,50) (50,0,50) (40,0,70).
+        assertEquals(40, c[0], 1e-9);
+        assertEquals(0, c[1], 1e-9);
+        assertEquals(330 / 6.0, c[2], 1e-9);
     }
 
     private static PosedMesh randomMesh(java.util.Random random, int triangles)
@@ -147,12 +165,9 @@ public class PosedMeshTest
                     }
                 }
             }
-            PosedMesh.Hits hits = PosedMesh.intersect(a, b, null, Integer.MAX_VALUE);
+            assertTrue(expected < PosedMesh.MAX_HITS);
+            PosedMesh.Hits hits = PosedMesh.intersect(a, b);
             assertEquals("round " + round, expected, hits == null ? 0 : hits.count);
-            if (expected > 0)
-            {
-                assertEquals(1, PosedMesh.intersect(a, b, null, 1).count);
-            }
         }
     }
 

@@ -58,7 +58,7 @@ final class ContactOverlapOverlay extends Overlay
             {
                 continue;
             }
-            int alpha = overlap.contact ? base.getAlpha() : base.getAlpha() / 3;
+            int alpha = base.getAlpha();
             Color line = new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha);
             Color fill = new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha / 2);
             for (int i = 0; i < hits.count; i++)

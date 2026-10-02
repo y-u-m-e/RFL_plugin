@@ -31,6 +31,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
 import net.runelite.api.Projectile;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
@@ -331,7 +332,6 @@ public class RflPlugin extends Plugin
 
     private String debugText()
     {
-        final RflConfig.ContactMode mode = config.contactMode();
         final String source = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY ? "bare" : "equipped";
         final StringBuilder sb = new StringBuilder();
         sb.append("GATE\n")
@@ -339,29 +339,23 @@ public class RflPlugin extends Plugin
             .append("reporting: ").append(yesNo(config.enableReporting())).append('\n')
             .append("in POH: ").append(yesNo(inPoh)).append('\n')
             .append("detect contacts: ").append(yesNo(config.reportContacts())).append('\n')
-            .append("contact mode: ").append(mode).append('\n')
             .append("hitbox source: ").append(source).append("\n\n");
 
         sb.append("PLAYERS IN VIEW\n");
-        final Map<String, Body> bodies = new TreeMap<>(contactDetector.bodies());
-        final List<String> missing = contactDetector.missingBodies();
-        if (bodies.isEmpty() && missing.isEmpty())
+        final Map<String, PosedMesh> meshes = new TreeMap<>(contactDetector.meshes());
+        final List<String> missing = contactDetector.missingMeshes();
+        if (meshes.isEmpty() && missing.isEmpty())
         {
             sb.append("none (or detection not running)\n");
         }
-        for (final Map.Entry<String, Body> entry : bodies.entrySet())
+        for (final Map.Entry<String, PosedMesh> entry : meshes.entrySet())
         {
-            sb.append(entry.getKey()).append(": body yes, ").append(source);
-            if (mode != RflConfig.ContactMode.CAPSULES)
-            {
-                final PosedMesh mesh = entry.getValue().mesh;
-                sb.append(mesh == null ? ", no mesh" : ", " + mesh.triangles + " triangles");
-            }
-            sb.append('\n');
+            sb.append(entry.getKey()).append(": mesh yes, ").append(source).append(", ")
+                .append(entry.getValue().triangles).append(" triangles\n");
         }
         for (final String name : missing)
         {
-            sb.append(name).append(": body NO, ").append(source).append('\n');
+            sb.append(name).append(": mesh NO, ").append(source).append('\n');
         }
 
         sb.append("\nOVERLAPPING PAIRS\n");
@@ -373,11 +367,8 @@ public class RflPlugin extends Plugin
         for (final ContactTracker.Overlap o : overlaps)
         {
             sb.append(o.a).append(" ~ ").append(o.b).append('\n')
-                .append("  deepest ").append(o.partA).append(" / ").append(o.partB)
-                .append(", capsule depth ").append(o.depth).append('\n')
-                .append("  mesh touching: ").append(o.mesh == null ? "n/a" : yesNo(o.mesh)).append('\n')
-                .append("  ").append(o.contact ? "contact" : o.depth > 0 ? "graze" : "none")
-                .append(": ").append(o.why).append('\n');
+                .append("  touching triangles: ").append(o.triangles).append('\n')
+                .append("  contact: ").append(yesNo(o.triangles > 0)).append('\n');
         }
 
         sb.append("\nRECENT EVENTS (newest first)\n");
@@ -498,11 +489,10 @@ public class RflPlugin extends Plugin
         }
         if (debug && watching)
         {
-            // Every overlapping pair's deepest part pair, every tick: what START_DEPTH is measured from.
+            // Every pair whose mesh bounds overlap, every tick, with its touching triangle count.
             for (final ContactTracker.Overlap o : contactDetector.overlaps())
             {
-                log.info("[RFL debug] tick {} depth {}.{}~{}.{}={} ({})", tick, o.a, o.partA, o.b, o.partB, o.depth,
-                    o.contact ? "contact" : "graze");
+                log.info("[RFL debug] tick {} touching {}~{}={}", tick, o.a, o.b, o.triangles);
             }
         }
         if (!watching || !config.detectInterceptions())
@@ -539,9 +529,9 @@ public class RflPlugin extends Plugin
                 log.info("[RFL debug] tick {} {}", tick, interceptionDetector.lastCheck());
             }
         }
-        if (debug && !contactDetector.missingBodies().isEmpty())
+        if (debug && !contactDetector.missingMeshes().isEmpty())
         {
-            log.info("[RFL debug] tick {} no body built for {}", tick, contactDetector.missingBodies());
+            log.info("[RFL debug] tick {} no mesh built for {}", tick, contactDetector.missingMeshes());
         }
         if (debug && !found.isEmpty())
         {
@@ -560,10 +550,11 @@ public class RflPlugin extends Plugin
                     label + " " + interception.receiver + " caught the handegg in contact with "
                         + String.join(", ", interception.contacts), null);
             }
-            final Body body = contactDetector.bodies().get(interception.receiver);
-            if (config.highlightInterceptions() && body != null)
+            final Player receiver = contactDetector.players().get(interception.receiver);
+            final LocalPoint at = receiver == null ? null : receiver.getLocalLocation();
+            if (config.highlightInterceptions() && at != null)
             {
-                contactHighlights.addInterception(body.centreX, body.centreY, System.currentTimeMillis());
+                contactHighlights.addInterception(at.getX(), at.getY(), System.currentTimeMillis());
             }
         }
     }
@@ -583,12 +574,12 @@ public class RflPlugin extends Plugin
                 recordDebugEvent(contactEvent);
                 eventQueue.add(contactEvent);
             }
-            final List<String> missing = contactDetector.missingBodies();
+            final List<String> missing = contactDetector.missingMeshes();
             if (!missing.equals(lastMissing))
             {
                 if (!missing.isEmpty())
                 {
-                    recordDebug("no body built for " + missing);
+                    recordDebug("no mesh built for " + missing);
                 }
                 lastMissing = missing;
             }

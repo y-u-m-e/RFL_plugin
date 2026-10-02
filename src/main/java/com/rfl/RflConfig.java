@@ -27,13 +27,6 @@ public interface RflConfig extends Config
     String FEATURES_SECTION = "features";
 
     @ConfigSection(
-        name = "Detection",
-        description = "How contacts are detected. For testing; this will be fixed to one mode for everyone later.",
-        position = 7
-    )
-    String DETECTION_SECTION = "detection";
-
-    @ConfigSection(
         name = "Display",
         description = "What the plugin draws on your screen. Display only; nothing here is reported.",
         position = 8
@@ -174,14 +167,14 @@ public interface RflConfig extends Config
     }
 
     /**
-     * @return true to draw every player's body-part hitboxes
+     * @return true to draw every player's mesh wireframe and touching triangles
      */
     @ConfigItem(
         keyName = "showHitboxes",
         name = "Show hitboxes",
-        description = "Draws the body parts (legs, torso, arms, head) contacts are detected from, for every "
-            + "player in view while contact detection runs. Parts in a contact use the contact colour; in the "
-            + "mesh contact modes, touching model triangles are filled red.",
+        description = "Draws a wireframe of the model triangles contacts are detected from, for every player "
+            + "in view while contact detection runs. Triangles touching another player's are filled in the "
+            + "contact colour.",
         section = DISPLAY_SECTION,
         position = 13
     )
@@ -191,46 +184,22 @@ public interface RflConfig extends Config
     }
 
     /**
-     * @return colour of the hitbox outlines, including transparency
+     * @return colour of the mesh wireframe, including transparency
      */
     @Alpha
     @ConfigItem(
         keyName = "hitboxColor",
         name = "Hitbox colour",
-        description = "Colour of hitbox outlines not in a contact.",
+        description = "Colour of the mesh wireframe.",
         section = DISPLAY_SECTION,
         position = 15
     )
     default Color hitboxColor()
     {
-        return new Color(255, 255, 255, 115);
+        return new Color(255, 255, 255, 57);
     }
 
-    /** What Show hitboxes draws. */
-    enum HitboxView
-    {
-        CAPSULES,
-        MESH,
-        BOTH
-    }
-
-    /**
-     * @return whether Show hitboxes draws the capsules, the model mesh, or both
-     */
-    @ConfigItem(
-        keyName = "hitboxView",
-        name = "Hitbox view",
-        description = "Capsules: the body-part capsules. Mesh: a wireframe of the exact model triangles the "
-            + "mesh contact modes test. Both: the two together.",
-        section = DISPLAY_SECTION,
-        position = 14
-    )
-    default HitboxView hitboxView()
-    {
-        return HitboxView.BOTH;
-    }
-
-    /** Which model body-part hitboxes are built from. */
+    /** Which model the contact mesh is built from. */
     enum HitboxSource
     {
         EQUIPPED,
@@ -238,45 +207,19 @@ public interface RflConfig extends Config
     }
 
     /**
-     * @return the model hitboxes are built from
+     * @return the model the contact mesh is built from
      */
     @ConfigItem(
         keyName = "hitboxSource",
         name = "Hitbox source",
-        description = "Experimental. Equipped: hitboxes from the model you see, including armour, capes and "
-            + "the handegg. Bare body: from the player's body without equipment. Also changes which "
-            + "contacts are detected.",
+        description = "Experimental. Equipped: the model you see, including armour, capes and the handegg. "
+            + "Bare body: the player's body without equipment. Changes which contacts are detected.",
         section = DISPLAY_SECTION,
         position = 16
     )
     default HitboxSource hitboxSource()
     {
         return HitboxSource.EQUIPPED;
-    }
-
-    /** What decides a contact between two players. */
-    enum ContactMode
-    {
-        CAPSULES,
-        CAPSULES_AND_MESH,
-        MESH
-    }
-
-    /**
-     * @return how contacts are detected
-     */
-    @ConfigItem(
-        keyName = "contactMode",
-        name = "Contact mode",
-        description = "For testing; this will be fixed to one mode for everyone later. Capsules: body-part "
-            + "capsules overlap past the contact depth. Capsules and mesh: that, and the two models' "
-            + "triangles actually touch. Mesh: any triangles of the two models touch.",
-        section = DETECTION_SECTION,
-        position = 0
-    )
-    default ContactMode contactMode()
-    {
-        return ContactMode.CAPSULES_AND_MESH;
     }
 
     /**
