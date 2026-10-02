@@ -28,6 +28,7 @@ Each fact is tagged:
   - **Out of bounds:** columns 1 and 16.
   - **In play:** columns 2–15, rows 2–39 (14 × 38).
   - **Corners** (columns 1 and 16 on rows 1 and 40) are out-of-bounds columns, but entering one **directly from an in-play tile** counts as a touchdown. A diagonal step from (2, 2) into (1, 1) is an example. Entering a corner from an out-of-bounds tile does not count.
+- **[decided]** The field is a **completely open floor**: no furniture and no obstacles inside it, with walls all the way round directly outside the 16 × 40. Every field tile is walkable, the out-of-bounds columns are the outermost tiles a player can reach, and paths follow the open-grid behaviour in §2 exactly.
 - **[gap]** Where the field sits in the POH (template coordinates and which room or rooms), and which team attacks which endzone.
 - **[decided]** A run that passes through an out-of-bounds tile and ends in a corner within the same tick is a **touchdown**. Example: (2, 3) → (1, 2) → (1, 1).
   - A **clicked** path never does this. Clicked paths go straight first and diagonal last (§2), so a click on a corner from any in-play tile reaches it through an in-play tile, for example (2, 3) → (2, 2) → (1, 1). This was checked against all 532 in-play tiles.
@@ -77,6 +78,11 @@ Each fact is tagged:
 ### Not defined yet
 
 - **[gap]** Scoring, downs, game length, kickoff and restart, fouls and penalties, what referees rule on, and how a play starts and ends. These are the core rules a play optimiser needs.
+- **[gap]** What happens when the carrier steps out of bounds: is the play dead, and where is the ball placed?
+- **[gap]** Whether a touchdown needs the carrier to *hold* the handegg as they enter the endzone, and whether a catch made inside the endzone scores.
+- **[gap]** Throws: aimed at a player or at a tile? Can a pass be incomplete or dropped? Do forward-pass limits apply? Is a defender's uncontested catch a turnover?
+- **[gap]** Run energy: is it in play, and are stamina potions or energy restores allowed? Without a ruling, players are modelled as running forever.
+- **[gap]** Same-tick ordering: if the carrier enters the endzone on the tick they are touched, which counts first?
 
 ---
 
