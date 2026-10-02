@@ -23,7 +23,13 @@ Each fact is tagged:
 - **[code]** Games are played inside a **player-owned house (POH)**, which is an instance.
   - Detected by the POH template regions 7257, 7534, 7535, 7790, 7791, 8046, 8047, 8302 and 8303 (RuneLite's Roof Removal list).
   - Positions use `WorldPoint.fromLocalInstance`, so every player in the same house gets the same template coordinates.
-- **[gap]** Pitch layout: dimensions, end zones, which room or rooms, and out of bounds.
+- **[decided]** The field is **16 columns × 40 rows** of tiles, numbered from 1.
+  - **Endzones:** rows 1 and 40.
+  - **Out of bounds:** columns 1 and 16.
+  - **In play:** columns 2–15, rows 2–39 (14 × 38).
+  - **Corners** (columns 1 and 16 on rows 1 and 40) are out-of-bounds columns, but entering one **directly from an in-play tile** counts as a touchdown. A diagonal step from (2, 2) into (1, 1) is an example. Entering a corner from an out-of-bounds tile does not count.
+- **[gap]** Where the field sits in the POH (template coordinates and which room or rooms), and which team attacks which endzone.
+- **[gap]** A run moves 2 tiles per tick, so it can pass through an out-of-bounds tile on its way into a corner, for example (2, 3) → (1, 2) → (1, 1). Does that count as out of bounds or as a touchdown? The same question applies to running out of bounds and back in within one tick.
 
 ### The ball
 
