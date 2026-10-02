@@ -19,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import okhttp3.OkHttpClient;
 
+import com.rfl.game.GameSession;
+
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -98,6 +100,9 @@ public class RflPlugin extends Plugin
 
     @Inject
     private ClientToolbar clientToolbar;
+
+    @Inject
+    private GameSession gameSession;
 
     private static final int DEBUG_EVENTS = 30;
     private static final long DEBUG_REFRESH_MS = 600;
@@ -564,8 +569,7 @@ public class RflPlugin extends Plugin
                 client.getWorld(),
                 System.currentTimeMillis(),
                 inPoh,
-                config.matchCode(),
-                config.team(),
+                gameSession.gameId(),
                 // Nearby names only leave the client inside a POH (what the Hub description promises).
                 inPoh ? contactDetector.seen(client) : Collections.emptyList(),
                 snapshotter.snapshot(),

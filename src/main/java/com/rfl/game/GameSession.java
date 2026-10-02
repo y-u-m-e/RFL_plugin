@@ -2,11 +2,14 @@ package com.rfl.game;
 
 import java.util.concurrent.atomic.AtomicReference;
 
+import javax.inject.Singleton;
+
 /**
  * The plugin's view of "the game I'm in, if any" — the last {@link GameDetail} seen from a
  * successful lobby poll, join, or create. Thread-safe: a lobby poll response lands on an OkHttp
  * callback thread while the panel (Task 6) reads it from the Swing EDT.
  */
+@Singleton
 public final class GameSession
 {
     private final AtomicReference<GameDetail> current = new AtomicReference<>();

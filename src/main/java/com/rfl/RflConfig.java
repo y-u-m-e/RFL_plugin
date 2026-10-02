@@ -16,13 +16,6 @@ import net.runelite.client.config.Units;
 public interface RflConfig extends Config
 {
     @ConfigSection(
-        name = "Match",
-        description = "The match you're playing. Sent with every report and shown publicly on rfl.gg.",
-        position = 1
-    )
-    String MATCH_SECTION = "match";
-
-    @ConfigSection(
         name = "Features",
         description = "Each feature can be turned off. Any feature that is off is reported and shown "
             + "publicly on rfl.gg as a flag.",
@@ -111,37 +104,6 @@ public interface RflConfig extends Config
     default boolean enableReporting()
     {
         return false;
-    }
-
-    /**
-     * @return the league's code for this game, as typed (normalized when sent)
-     */
-    @ConfigItem(
-        keyName = "matchCode",
-        name = "Match code",
-        description = "The code your league gave this game, e.g. W3-G2. Shown on rfl.gg; a code that "
-            + "differs from the rest of your match is flagged.",
-        section = MATCH_SECTION,
-        position = 2
-    )
-    default String matchCode()
-    {
-        return "";
-    }
-
-    /**
-     * @return the player's team name for this match, as typed (normalized when sent)
-     */
-    @ConfigItem(
-        keyName = "team",
-        name = "Team",
-        description = "Your team name for this match. Shown on rfl.gg.",
-        section = MATCH_SECTION,
-        position = 3
-    )
-    default String team()
-    {
-        return "";
     }
 
     /**
