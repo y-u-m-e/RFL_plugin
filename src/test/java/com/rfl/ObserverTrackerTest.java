@@ -184,4 +184,15 @@ public class ObserverTrackerTest
         t.flushObserved(200, 9);
         assertTrue(t.takeObserved().isEmpty());
     }
+
+    @Test
+    public void listsPairsBeingObservedUntilTheyFinish()
+    {
+        ContactTracker t = tracker();
+        Map<String, PosedMesh> touching = Map.of("B", mesh(0, WALL), "A", mesh(0, THROUGH));
+        observe(t, touching, "Me", Set.of("A"), 1000, 5);
+        assertEquals(List.of("A ↔ B"), t.observing());
+        observe(t, NO_MESHES, "Me", Set.of(), 1600, 6);
+        assertTrue(t.observing().isEmpty());
+    }
 }

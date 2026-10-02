@@ -220,6 +220,12 @@ final class ContactDetector
     }
 
     /** Pairs from the latest frame whose mesh bounds overlap, touching or not. */
+    /** Observer collisions in progress, as "A ↔ B". Client thread. */
+    List<String> observing()
+    {
+        return tracker.observing();
+    }
+
     List<ContactTracker.Overlap> overlaps()
     {
         return tracker.overlaps();

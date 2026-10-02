@@ -1,6 +1,7 @@
 package com.rfl;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -356,6 +357,19 @@ final class ContactTracker
         long n = meshNanos;
         meshNanos = 0;
         return n;
+    }
+
+    /** Pairs being tracked as observer collisions right now, as "A ↔ B", sorted. */
+    List<String> observing()
+    {
+        List<String> pairs = new ArrayList<>();
+        for (String key : observed.keySet())
+        {
+            String[] names = splitKey(key);
+            pairs.add(names[0] + " ↔ " + names[1]);
+        }
+        Collections.sort(pairs);
+        return pairs;
     }
 
     /** Every pair from the latest update whose bounds overlap, touching or not. */

@@ -36,12 +36,15 @@ final class RflDebug
     private final ClientToolbar clientToolbar;
     private final ContactDetector contactDetector;
     private final BareBody bareBody;
+    private final ObserverLog observerLog;
 
     // EDT only.
     private DebugPanel panel;
     private NavigationButton button;
 
     // Client thread only.
+    /** Saved observer collisions shown in the panel. */
+    private static final int OBSERVER_ROWS = 10;
     private final Deque<String> events = new ArrayDeque<>();
     private long refreshAt;
     private List<String> lastMissing = Collections.emptyList();
@@ -52,8 +55,9 @@ final class RflDebug
 
     @Inject
     RflDebug(Client client, RflConfig config, ClientToolbar clientToolbar, ContactDetector contactDetector,
-        BareBody bareBody)
+        BareBody bareBody, ObserverLog observerLog)
     {
+        this.observerLog = observerLog;
         this.client = client;
         this.config = config;
         this.clientToolbar = clientToolbar;
@@ -148,6 +152,23 @@ final class RflDebug
         });
     }
 
+    /** Observer mode: collisions in progress, then the latest saved ones (local only, never sent). */
+    private void appendObserver(StringBuilder sb)
+    {
+        sb.append("\nOBSERVER (saved locally, not sent)\n");
+        List<String> open = contactDetector.observing();
+        sb.append("in progress: ").append(open.isEmpty() ? "none" : String.join(", ", open)).append('\n');
+        List<ObservedCollision> recent = observerLog.recent();
+        if (recent.isEmpty())
+        {
+            sb.append("no saved collisions yet\n");
+        }
+        for (int i = 0; i < Math.min(OBSERVER_ROWS, recent.size()); i++)
+        {
+            sb.append(ObserverLog.row(recent.get(i))).append('\n');
+        }
+    }
+
     private String text(boolean inPoh)
     {
         String source = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY ? "bare" : "equipped";
@@ -188,6 +209,11 @@ final class RflDebug
             sb.append(o.a).append(" ~ ").append(o.b).append('\n')
                 .append("  touching triangles: ").append(o.triangles).append('\n')
                 .append("  contact: ").append(yesNo(o.triangles > 0)).append('\n');
+        }
+
+        if (config.observerMode())
+        {
+            appendObserver(sb);
         }
 
         sb.append("\nRECENT EVENTS (newest first)\n");
