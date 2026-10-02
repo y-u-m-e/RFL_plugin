@@ -108,20 +108,37 @@ public class ContactTrackerTest
     }
 
     @Test
-    public void endsOnTheFirstUpdateNoTrianglesTouchEvenWithBoundsOverlapping()
+    public void holdsWhileBoundsOverlapSoWalkingThroughSomeoneIsOneContact()
     {
+        // Walking through a player: surfaces cross going in, the bodies sit inside each other with
+        // nothing crossing, then cross again going out. That must be one contact, not two.
         assertTrue(!PosedMesh.trianglesIntersect(WALL[0], WALL[1], WALL[2], NEAR[0], NEAR[1], NEAR[2]));
         ContactTracker t = tracker();
         PosedMesh amy = mesh(WALL);
-        t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), "Amy", ALL, false, 0, 0, false);
+        assertEquals("contact_start",
+            t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), "Amy", ALL, false, 0, 0, false).get(0).type);
 
-        List<RflEvent> end = t.update(Map.of("Amy", amy, "Zed", mesh(NEAR)), "Amy", ALL, false, 20, 1, false);
-        assertEquals("contact_end", end.get(0).type);
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(NEAR)), "Amy", ALL, false, 20, 1, false).isEmpty());
         assertNull(t.collidingNow().get("Amy"));
         // Still listed for the debug panel: bounds overlap, nothing touching.
         ContactTracker.Overlap near = t.overlaps().get(0);
         assertEquals(0, near.triangles);
         assertNull(near.hits);
+
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), "Amy", ALL, false, 40, 2, false).isEmpty());
+        assertEquals("contact_end",
+            t.update(Map.of("Amy", amy, "Zed", mesh(FAR)), "Amy", ALL, false, 60, 3, false).get(0).type);
+    }
+
+    @Test
+    public void aWitnessedPairPassingThroughEachOtherIsSeenOnce()
+    {
+        ContactTracker t = tracker();
+        PosedMesh a = mesh(WALL);
+        assertEquals("collision_seen",
+            t.update(Map.of("A", a, "B", mesh(THROUGH)), "Me", ALL, false, 0, 0, false).get(0).type);
+        assertTrue(t.update(Map.of("A", a, "B", mesh(NEAR)), "Me", ALL, false, 20, 1, false).isEmpty());
+        assertTrue(t.update(Map.of("A", a, "B", mesh(THROUGH)), "Me", ALL, false, 40, 2, false).isEmpty());
     }
 
     @Test

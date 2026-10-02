@@ -9,7 +9,8 @@ import java.util.Set;
 
 /**
  * Pair state machine over per-frame player meshes (see {@link PosedMesh}). A contact starts on the
- * first update any triangles of the two meshes touch and ends on the first update none do.
+ * first update any triangles of the two meshes touch and holds until their bounds separate, so walking
+ * through someone (surfaces cross going in and out, nothing crosses in between) is one contact.
  *
  * <p>Depth is the number of touching triangle pairs, capped at {@link PosedMesh#MAX_HITS}. A full
  * count is expensive on heavily overlapping models, so it is only taken when something uses it:
@@ -129,6 +130,12 @@ final class ContactTracker
             String key = entry.getKey();
             if (hits == null)
             {
+                // Bounds still overlap but no surfaces cross: the bodies are inside each other
+                // mid-pass. A witnessed pair stays witnessed (open contacts are held below).
+                if (witnessed.contains(key))
+                {
+                    stillWitnessed.add(key);
+                }
                 continue;
             }
             String[] names = splitKey(key);
@@ -174,8 +181,11 @@ final class ContactTracker
         List<String> ended = new ArrayList<>();
         for (Map.Entry<String, Contact> entry : active.entrySet())
         {
+            // A contact holds while the two meshes' bounds overlap, touching or not, and ends once
+            // they separate. Walking through someone crosses surfaces going in and coming out with
+            // nothing crossing in between, which would otherwise read as two contacts.
             // A self change (or null self) ends every contact: its key is no longer a self pair.
-            if (latest.get(entry.getKey()) == null || self == null || !isSelfPair(entry.getKey(), self))
+            if (!latest.containsKey(entry.getKey()) || self == null || !isSelfPair(entry.getKey(), self))
             {
                 ended.add(entry.getKey());
             }
