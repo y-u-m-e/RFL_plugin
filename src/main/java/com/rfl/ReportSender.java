@@ -26,9 +26,10 @@ import okhttp3.Response;
  * dropped rather than retried forever.
  */
 @Singleton
-final class ReportSender
+public final class ReportSender
 {
-    static final String BASE_URL = "https://dev-api.ironforged.gg";
+    /** Visible to {@code com.rfl.game} (Task 4) so GameClient shares the same gateway host. */
+    public static final String BASE_URL = "https://dev-api.ironforged.gg";
 
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
