@@ -1,14 +1,10 @@
 package com.rfl;
 
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Deque;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
@@ -51,7 +47,17 @@ import net.runelite.client.util.Text;
 
 /**
  * RFL match audit plugin. Reports enabled plugins, RSN, world, nearby players and POH contact
- * events to the audit gateway every 10 s while logged in and reporting is enabled (spec §3).
+ * events to the audit gateway every 10 s while logged in and reporting is enabled.
+ *
+ * <p>Owns the wiring between RuneLite events and the pieces that do the work: contact detection
+ * each client frame ({@link ContactDetector}), interception checks each game tick
+ * ({@link InterceptionDetector}), the report heartbeat ({@link ReportSender}), the per-account
+ * install ID, and the identity snapshot the "RFL" game panel ({@link GamePanel}) reads. Debug
+ * panel and debug logging live in {@link RflDebug}.
+ *
+ * <p>Threads: detection, the install ID and the debug state are client-thread only. The game
+ * panel and debug panel are created and removed on the EDT. {@link #identity} and {@link #inPoh}
+ * are volatile snapshots for readers on other threads.
  */
 @Slf4j
 @PluginDescriptor(
@@ -59,6 +65,9 @@ import net.runelite.client.util.Text;
 )
 public class RflPlugin extends Plugin
 {
+    /** RS-profile config key (group {@code rfl}) holding this account's install ID. */
+    static final String INSTALL_ID_KEY = "installId";
+
     @Inject
     private RflConfig config;
 
@@ -116,54 +125,28 @@ public class RflPlugin extends Plugin
     @Inject
     private ConfigManager configManager;
 
-    /** RS-profile config key (group {@code rfl}) holding this account's install ID. */
-    static final String INSTALL_ID_KEY = "installId";
+    @Inject
+    private RflDebug debug;
+
+    private final InterceptionDetector interceptionDetector = new InterceptionDetector();
 
     // Client thread only: the install ID cached for the RS profile it was read for.
     private String installProfileKey;
     private String cachedInstallId;
 
     /**
-     * RSN/install id/world for {@link GameClient}, refreshed on the client thread each game tick
-     * so the game client (OkHttp/EDT threads) never reads {@link Client} itself. Null while logged out.
+     * RSN/install id/world, refreshed on the client thread each game tick so {@link GameClient}
+     * (OkHttp/EDT threads) never reads {@link Client} itself. Null while logged out.
      */
     private volatile GameClient.Identity identity;
 
-    // "RFL" game panel: created/added/removed on the EDT; polling stop is thread-safe.
+    // "RFL" game panel: created/added/removed on the EDT; dispose is thread-safe.
     private volatile GamePanel gamePanel;
     private NavigationButton gameButton;
 
-    private static final int DEBUG_EVENTS = 30;
-    private static final long DEBUG_REFRESH_MS = 600;
-
-    // Debug panel: the panel and its button are touched on the Swing EDT only; the event list and
-    // refresh timer on the client thread only.
-    private DebugPanel debugPanel;
-    private NavigationButton debugButton;
-    private final Deque<String> debugEvents = new ArrayDeque<>();
-    private long debugRefreshAt;
-    private List<String> lastMissing = Collections.emptyList();
-
-    private final InterceptionDetector interceptionDetector = new InterceptionDetector();
-
-    // Debug logging state: only log what changed, so the log stays readable.
-    private String lastGateLog = "";
-    private String lastProjectileLog = "";
-    private Map<String, Integer> lastWeapons = Collections.emptyMap();
-    private String lastContactLog = "";
-
-    /**
-     * Cached each {@link GameTick}; {@link ClientTick} reads it rather than recomputing per
-     * frame since {@link PohDetector} only needs to run once per game tick.
-     */
+    /** Recomputed each {@link GameTick}; the POH check only needs to run once per tick. */
     private volatile boolean inPoh;
 
-    /**
-     * Provides the plugin configuration through RuneLite's config manager.
-     *
-     * @param configManager central RuneLite config manager
-     * @return plugin config instance
-     */
     @Provides
     RflConfig provideConfig(final ConfigManager configManager)
     {
@@ -181,7 +164,7 @@ public class RflPlugin extends Plugin
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
         gameClient.setIdentitySupplier(() -> identity);
-        SwingUtilities.invokeLater(this::syncDebugPanel);
+        SwingUtilities.invokeLater(debug::syncPanel);
         SwingUtilities.invokeLater(this::addGamePanel);
     }
 
@@ -196,7 +179,7 @@ public class RflPlugin extends Plugin
             interceptionDetector.reset();
             contactDetector.reset();
         });
-        SwingUtilities.invokeLater(this::removeDebugPanel);
+        SwingUtilities.invokeLater(debug::removePanel);
         final GamePanel panel = gamePanel;
         if (panel != null)
         {
@@ -242,11 +225,15 @@ public class RflPlugin extends Plugin
     @Subscribe
     public void onConfigChanged(final ConfigChanged event)
     {
-        if ("rfl".equals(event.getGroup()) && "showDebugPanel".equals(event.getKey()))
+        if (!RflConfig.GROUP.equals(event.getGroup()))
         {
-            SwingUtilities.invokeLater(this::syncDebugPanel);
+            return;
         }
-        if ("rfl".equals(event.getGroup()) && "enableReporting".equals(event.getKey()))
+        if ("showDebugPanel".equals(event.getKey()))
+        {
+            SwingUtilities.invokeLater(debug::syncPanel);
+        }
+        if ("enableReporting".equals(event.getKey()))
         {
             SwingUtilities.invokeLater(() ->
             {
@@ -258,139 +245,6 @@ public class RflPlugin extends Plugin
         }
     }
 
-    /** EDT: adds or removes the debug panel to match the setting. */
-    private void syncDebugPanel()
-    {
-        if (!config.showDebugPanel())
-        {
-            removeDebugPanel();
-            return;
-        }
-        if (debugButton != null)
-        {
-            return;
-        }
-        debugPanel = new DebugPanel();
-        debugButton = NavigationButton.builder()
-            .tooltip("RFL Debug")
-            .icon(DebugPanel.icon())
-            .priority(10)
-            .panel(debugPanel)
-            .build();
-        clientToolbar.addNavigation(debugButton);
-    }
-
-    /** EDT. */
-    private void removeDebugPanel()
-    {
-        if (debugButton != null)
-        {
-            clientToolbar.removeNavigation(debugButton);
-        }
-        debugButton = null;
-        debugPanel = null;
-    }
-
-    /** Client thread: adds a line to the debug panel's recent events (newest first). */
-    private void recordDebug(final String line)
-    {
-        if (!config.showDebugPanel())
-        {
-            return;
-        }
-        debugEvents.addFirst("tick " + client.getTickCount() + " " + line);
-        while (debugEvents.size() > DEBUG_EVENTS)
-        {
-            debugEvents.removeLast();
-        }
-    }
-
-    private void recordDebugEvent(final RflEvent event)
-    {
-        recordDebug(event.type + " " + event.a + " ~ " + event.b + " depth " + event.depth);
-    }
-
-    /** Client thread: about every 600 ms, snapshots detection state as text and hands it to the EDT. */
-    private void refreshDebugPanel()
-    {
-        final long now = System.currentTimeMillis();
-        if (!config.showDebugPanel() || now - debugRefreshAt < DEBUG_REFRESH_MS)
-        {
-            return;
-        }
-        debugRefreshAt = now;
-        final String text = debugText();
-        SwingUtilities.invokeLater(() ->
-        {
-            if (debugPanel != null)
-            {
-                debugPanel.show(text);
-            }
-        });
-    }
-
-    private String debugText()
-    {
-        final String source = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY ? "bare" : "equipped";
-        final StringBuilder sb = new StringBuilder();
-        sb.append("GATE\n")
-            .append("logged in: ").append(yesNo(client.getGameState() == GameState.LOGGED_IN)).append('\n')
-            .append("reporting: ").append(yesNo(config.enableReporting())).append('\n')
-            .append("in POH: ").append(yesNo(inPoh)).append('\n')
-            .append("detect contacts: ").append(yesNo(config.reportContacts())).append('\n')
-            .append("hitbox source: ").append(source).append("\n\n");
-
-        sb.append("PLAYERS IN VIEW\n");
-        final Map<String, PosedMesh> meshes = new TreeMap<>(contactDetector.meshes());
-        final List<String> missing = contactDetector.missingMeshes();
-        if (meshes.isEmpty() && missing.isEmpty())
-        {
-            sb.append("none (or detection not running)\n");
-        }
-        for (final Map.Entry<String, PosedMesh> entry : meshes.entrySet())
-        {
-            sb.append(entry.getKey()).append(": mesh yes, ").append(source).append(", ")
-                .append(entry.getValue().triangles).append(" triangles\n");
-        }
-        for (final String name : missing)
-        {
-            sb.append(name).append(": mesh NO, ").append(source).append('\n');
-        }
-
-        sb.append("\nOVERLAPPING PAIRS\n");
-        final List<ContactTracker.Overlap> overlaps = contactDetector.overlaps();
-        if (overlaps.isEmpty())
-        {
-            sb.append("none\n");
-        }
-        for (final ContactTracker.Overlap o : overlaps)
-        {
-            sb.append(o.a).append(" ~ ").append(o.b).append('\n')
-                .append("  touching triangles: ").append(o.triangles).append('\n')
-                .append("  contact: ").append(yesNo(o.triangles > 0)).append('\n');
-        }
-
-        sb.append("\nRECENT EVENTS (newest first)\n");
-        if (debugEvents.isEmpty())
-        {
-            sb.append("none\n");
-        }
-        for (final String line : debugEvents)
-        {
-            sb.append(line).append('\n');
-        }
-
-        sb.append("\nPERFORMANCE (10 s average)\n")
-            .append("bare body: ").append(String.format("%.3f", bareBody.msPerFrame())).append(" ms/frame\n")
-            .append("mesh: ").append(String.format("%.3f", contactDetector.meshMsPerFrame())).append(" ms/frame\n");
-        return sb.toString();
-    }
-
-    private static String yesNo(final boolean value)
-    {
-        return value ? "yes" : "no";
-    }
-
     @Subscribe
     public void onGameTick(final GameTick event)
     {
@@ -399,7 +253,7 @@ public class RflPlugin extends Plugin
         checkInterceptions();
     }
 
-    /** Client thread: snapshots RSN/install id/world for {@link GameClient}; reallocates only on change. */
+    /** Client thread: snapshots RSN/install id/world; reallocates only on change. */
     private void refreshIdentity()
     {
         final Player local = client.getLocalPlayer();
@@ -466,32 +320,28 @@ public class RflPlugin extends Plugin
         return fresh;
     }
 
+    /** Client thread: detection runs only while reporting and contacts are on, logged in, in a POH. */
+    private boolean watchingContacts()
+    {
+        return config.enableReporting() && config.reportContacts()
+            && client.getGameState() == GameState.LOGGED_IN && inPoh;
+    }
+
     /**
      * Once per game tick: a player who starts holding a handegg right after a thrown one stopped
      * being drawn, while in contact with someone, intercepted it. Local display only for now.
      */
     private void checkInterceptions()
     {
-        final boolean debug = config.debugLogging();
+        final boolean logging = config.debugLogging();
         final int tick = client.getTickCount();
-        final boolean watching = config.enableReporting() && config.reportContacts()
-            && client.getGameState() == GameState.LOGGED_IN && inPoh;
-        if (debug)
+        final boolean watching = watchingContacts();
+        if (logging)
         {
-            final String gate = "reporting=" + config.enableReporting() + " contacts=" + config.reportContacts()
-                + " inPoh=" + inPoh + " detectInterceptions=" + config.detectInterceptions();
-            if (!gate.equals(lastGateLog))
+            debug.logGate(tick, inPoh);
+            if (watching)
             {
-                log.info("[RFL debug] tick {} gate: {}", tick, gate);
-                lastGateLog = gate;
-            }
-        }
-        if (debug && watching)
-        {
-            // Every pair whose mesh bounds overlap, every tick, with its touching triangle count.
-            for (final ContactTracker.Overlap o : contactDetector.overlaps())
-            {
-                log.info("[RFL debug] tick {} touching {}~{}={}", tick, o.a, o.b, o.triangles);
+                debug.logOverlaps(tick);
             }
         }
         if (!watching || !config.detectInterceptions())
@@ -502,7 +352,7 @@ public class RflPlugin extends Plugin
 
         boolean ballInFlight = false;
         final List<String> projectiles = new ArrayList<>();
-        for (Projectile projectile : client.getProjectiles())
+        for (final Projectile projectile : client.getProjectiles())
         {
             projectiles.add(projectile.getId() + "(" + projectile.getRemainingCycles() + ")");
             if (InterceptionDetector.HANDEGG_PROJECTILES.contains(projectile.getId()))
@@ -513,83 +363,73 @@ public class RflPlugin extends Plugin
 
         final Map<String, Integer> weapons = contactDetector.weapons(client);
         final Map<String, List<String>> contacts = contactDetector.collidingNow();
-        if (debug)
+        if (logging)
         {
-            logDebugTick(tick, projectiles, ballInFlight, weapons, contacts);
+            debug.logInterceptionInputs(tick, projectiles, ballInFlight, weapons, contacts);
         }
 
         final List<InterceptionDetector.Interception> found = interceptionDetector.onTick(
             tick, ballInFlight, InterceptionDetector.holders(weapons), contacts);
-        if (interceptionDetector.lastCheck() != null)
+        final String check = interceptionDetector.lastCheck();
+        if (check != null)
         {
-            recordDebug(interceptionDetector.lastCheck());
-            if (debug)
+            debug.record(check);
+        }
+        if (logging)
+        {
+            if (check != null)
             {
-                log.info("[RFL debug] tick {} {}", tick, interceptionDetector.lastCheck());
+                log.info("[RFL debug] tick {} {}", tick, check);
             }
-        }
-        if (debug && !contactDetector.missingMeshes().isEmpty())
-        {
-            log.info("[RFL debug] tick {} no mesh built for {}", tick, contactDetector.missingMeshes());
-        }
-        if (debug && !found.isEmpty())
-        {
+            if (!contactDetector.missingMeshes().isEmpty())
+            {
+                log.info("[RFL debug] tick {} no mesh built for {}", tick, contactDetector.missingMeshes());
+            }
             for (final InterceptionDetector.Interception i : found)
             {
                 log.info("[RFL debug] tick {} INTERCEPTION receiver={} contacts={}", tick, i.receiver, i.contacts);
             }
         }
-
         for (final InterceptionDetector.Interception interception : found)
         {
-            if (config.interceptionChatMessage())
-            {
-                final String label = ColorUtil.wrapWithColorTag("Interception:", config.interceptionColor());
-                client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-                    label + " " + interception.receiver + " caught the handegg in contact with "
-                        + String.join(", ", interception.contacts), null);
-            }
-            final Player receiver = contactDetector.players().get(interception.receiver);
-            final LocalPoint at = receiver == null ? null : receiver.getLocalLocation();
-            if (config.highlightInterceptions() && at != null)
-            {
-                contactHighlights.addInterception(at.getX(), at.getY(), System.currentTimeMillis());
-            }
+            showInterception(interception);
+        }
+    }
+
+    /** Chat message and receiver tile highlight for one interception, per the settings. */
+    private void showInterception(final InterceptionDetector.Interception interception)
+    {
+        if (config.interceptionChatMessage())
+        {
+            final String label = ColorUtil.wrapWithColorTag("Interception:", config.interceptionColor());
+            client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+                label + " " + interception.receiver + " caught the handegg in contact with "
+                    + String.join(", ", interception.contacts), null);
+        }
+        final Player receiver = contactDetector.players().get(interception.receiver);
+        final LocalPoint at = receiver == null ? null : receiver.getLocalLocation();
+        if (config.highlightInterceptions() && at != null)
+        {
+            contactHighlights.addInterception(at.getX(), at.getY(), System.currentTimeMillis());
         }
     }
 
     @Subscribe
     public void onClientTick(final ClientTick event)
     {
-        refreshDebugPanel();
-        final boolean reporting = config.enableReporting();
-        final boolean watching = reporting && config.reportContacts()
-            && client.getGameState() == GameState.LOGGED_IN && inPoh;
-
-        if (watching)
+        debug.refresh(inPoh);
+        if (!watchingContacts())
         {
-            for (final RflEvent contactEvent : contactDetector.onFrame(client))
-            {
-                recordDebugEvent(contactEvent);
-                eventQueue.add(contactEvent);
-            }
-            final List<String> missing = contactDetector.missingMeshes();
-            if (!missing.equals(lastMissing))
-            {
-                if (!missing.isEmpty())
-                {
-                    recordDebug("no mesh built for " + missing);
-                }
-                lastMissing = missing;
-            }
+            // Never leave the tracker holding pairs across a period we weren't watching.
+            closeOrResetTracking(config.enableReporting());
             return;
         }
-
-        // Not watching this tick (reporting or contacts off, not logged in, or outside the POH): never
-        // leave the tracker holding pairs across a period we weren't watching. Close them with
-        // a real contact_end when reporting is still on to queue, otherwise there's nothing to
-        // send so just clear.
-        closeOrResetTracking(reporting);
+        for (final RflEvent contactEvent : contactDetector.onFrame(client))
+        {
+            debug.recordEvent(contactEvent);
+            eventQueue.add(contactEvent);
+        }
+        debug.recordMissing(contactDetector.missingMeshes());
     }
 
     @Subscribe
@@ -600,34 +440,6 @@ public class RflPlugin extends Plugin
         {
             identity = null;
             closeOrResetTracking(config.enableReporting());
-        }
-    }
-
-    /** Logs projectiles while any are drawn, weapon-slot changes, and contact changes. */
-    private void logDebugTick(int tick, List<String> projectiles, boolean ballInFlight,
-        Map<String, Integer> weapons, Map<String, List<String>> contacts)
-    {
-        final String projectileLog = projectiles.toString();
-        if (!projectiles.isEmpty() || !projectileLog.equals(lastProjectileLog))
-        {
-            log.info("[RFL debug] tick {} projectiles={} handeggInFlight={}", tick, projectileLog, ballInFlight);
-            lastProjectileLog = projectileLog;
-        }
-        for (final Map.Entry<String, Integer> entry : weapons.entrySet())
-        {
-            final Integer before = lastWeapons.get(entry.getKey());
-            if (!entry.getValue().equals(before))
-            {
-                log.info("[RFL debug] tick {} weapon {}: {} -> {}{}", tick, entry.getKey(), before, entry.getValue(),
-                    InterceptionDetector.HANDEGG_ITEMS.contains(entry.getValue()) ? " (handegg)" : "");
-            }
-        }
-        lastWeapons = new HashMap<>(weapons);
-        final String contactLog = contacts.toString();
-        if (!contactLog.equals(lastContactLog))
-        {
-            log.info("[RFL debug] tick {} contacts={}", tick, contactLog);
-            lastContactLog = contactLog;
         }
     }
 
@@ -645,7 +457,7 @@ public class RflPlugin extends Plugin
         {
             for (final RflEvent endEvent : contactDetector.endAll(client))
             {
-                recordDebugEvent(endEvent);
+                debug.recordEvent(endEvent);
                 eventQueue.add(endEvent);
             }
         }
@@ -671,14 +483,10 @@ public class RflPlugin extends Plugin
     }
 
     /**
-     * Sends one report batch every 10 s while logged in and reporting is enabled — the
-     * heartbeat that also carries whatever contact/toggle events queued up since the last send.
-     * Runs off the client thread (spec §3). The report is built and the queue drained inside
-     * {@link ClientThread#invoke} to read client state safely and keep events and state
-     * consistent, but the actual send — including {@link ReportSender#send}'s JSON encoding of
-     * the body — is handed off to the injected {@link OkHttpClient}'s own dispatcher executor
-     * (already there for the network call itself) so no CPU work runs on the client thread
-     * either.
+     * Sends one report batch every 10 s while logged in and reporting is enabled: the heartbeat
+     * that also carries whatever contact/toggle events queued up since the last send. The report
+     * is built and the queue drained on the client thread, so events and state stay consistent;
+     * the JSON encoding and the send run on OkHttp's dispatcher executor.
      */
     @Schedule(period = 10, unit = ChronoUnit.SECONDS)
     public void sendReport()
