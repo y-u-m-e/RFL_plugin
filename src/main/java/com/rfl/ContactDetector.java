@@ -29,7 +29,7 @@ import net.runelite.client.util.Text;
  *
  * <p>Contact events are self only (pairs including the local player) and need a handegg held by
  * either body. Pairs of two other players are checked only while one of them holds a handegg (for
- * the name-free collision_seen witness) or while Show hitboxes is on.
+ * the name-free collision_seen witness) or while Show hitboxes or Show touching triangles is on.
  *
  * <p>Client thread only: written from {@code ClientTick}, read by overlays (which render on the
  * client thread) and game-tick handlers. The latest-frame maps are replaced, never mutated.
@@ -117,10 +117,12 @@ final class ContactDetector
         latestMeshes = meshes;
         latestPlayers = players;
         latestMissing = missing;
-        boolean detail = config.showHitboxes() || config.showDebugPanel() || config.debugLogging();
+        // Drawing touching triangles needs every pair (other players too) fully counted each frame.
+        boolean display = config.showHitboxes() || config.showTouchingTriangles();
+        boolean detail = display || config.showDebugPanel() || config.debugLogging();
         Player local = client.getLocalPlayer();
         String self = local == null ? null : sanitizedName(local);
-        List<RflEvent> events = tracker.update(meshes, self, holders, config.showHitboxes(), now,
+        List<RflEvent> events = tracker.update(meshes, self, holders, display, now,
             client.getTickCount(), detail);
         endMeshFrame(now);
         for (RflEvent event : events)

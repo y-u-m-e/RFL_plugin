@@ -16,10 +16,10 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * Draws a wireframe of every player's posed mesh (the exact triangles contacts are detected from)
- * and fills the triangles where two meshes touch in the contact colour. Display only. Reads the
- * detector's latest frame; while this overlay is on, the tracker counts every touching pair each
- * frame so the fill is complete.
+ * Fills the triangles where two players' meshes touch in the contact colour (Show touching
+ * triangles), and with Show hitboxes also draws a wireframe of every player's posed mesh: the
+ * exact triangles contacts are detected from. Display only. Reads the detector's latest frame;
+ * while either is on, the tracker counts every touching pair each frame so the fill is complete.
  */
 final class HitboxOverlay extends Overlay
 {
@@ -43,22 +43,26 @@ final class HitboxOverlay extends Overlay
     public Dimension render(Graphics2D graphics)
     {
         WorldView worldView = client.getTopLevelWorldView();
-        if (!config.showHitboxes() || worldView == null)
+        boolean wireframe = config.showHitboxes();
+        if (!wireframe && !config.showTouchingTriangles() || worldView == null)
         {
             return null;
         }
 
         graphics.setStroke(STROKE);
         int plane = worldView.getPlane();
-        graphics.setColor(config.hitboxColor());
-        for (PosedMesh mesh : contactDetector.meshes().values())
+        if (wireframe)
         {
-            for (int t = 0; t < mesh.triangles; t++)
+            graphics.setColor(config.hitboxColor());
+            for (PosedMesh mesh : contactDetector.meshes().values())
             {
-                Polygon triangle = triangle(worldView, plane, mesh, t);
-                if (triangle != null)
+                for (int t = 0; t < mesh.triangles; t++)
                 {
-                    graphics.drawPolygon(triangle);
+                    Polygon triangle = triangle(worldView, plane, mesh, t);
+                    if (triangle != null)
+                    {
+                        graphics.drawPolygon(triangle);
+                    }
                 }
             }
         }

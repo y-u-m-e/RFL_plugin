@@ -28,7 +28,7 @@ import java.util.Set;
  *
  * <p>Pairs of two other players are checked only while one of them holds a handegg (for the
  * name-free {@code collision_seen} witness event, once per pair contact) or while {@code others} is
- * set (Show hitboxes). Each pair's whole-mesh bounds are checked before any triangles.
+ * set (Show hitboxes or Show touching triangles). Each pair's whole-mesh bounds are checked before any triangles.
  *
  * <p>Names are expected to already be {@code Text.sanitize}d by the caller. Client thread only.
  */
@@ -109,7 +109,7 @@ final class ContactTracker
      * @param meshes  this frame's meshes by sanitized name
      * @param self    the local player's sanitized name; null means no self pairs (every contact ends)
      * @param holders sanitized names of the players holding a handegg this frame
-     * @param others  true to check every other-other pair (Show hitboxes), not just handegg ones
+     * @param others  true to check every other-other pair (a display is on), not just handegg ones
      * @param now     epoch ms stamped on any events
      * @param tick    game tick count, stamped on events and used to sample depth once per tick
      * @param detail  true when a display needs the full touching count every update

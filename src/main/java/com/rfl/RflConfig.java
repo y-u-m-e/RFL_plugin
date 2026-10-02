@@ -139,6 +139,22 @@ public interface RflConfig extends Config
     }
 
     /**
+     * @return true to fill the triangles where two players' models touch
+     */
+    @ConfigItem(
+        keyName = "showTouchingTriangles",
+        name = "Show touching triangles",
+        description = "While two players' models touch, fills the exact triangles that touch in the contact "
+            + "colour, for every player in view. Shown without the full wireframe from Show hitboxes.",
+        section = DISPLAY_SECTION,
+        position = 12
+    )
+    default boolean showTouchingTriangles()
+    {
+        return true;
+    }
+
+    /**
      * @return true to draw every player's mesh wireframe and touching triangles
      */
     @ConfigItem(
