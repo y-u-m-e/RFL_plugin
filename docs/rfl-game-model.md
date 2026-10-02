@@ -29,7 +29,9 @@ Each fact is tagged:
   - **In play:** columns 2–15, rows 2–39 (14 × 38).
   - **Corners** (columns 1 and 16 on rows 1 and 40) are out-of-bounds columns, but entering one **directly from an in-play tile** counts as a touchdown. A diagonal step from (2, 2) into (1, 1) is an example. Entering a corner from an out-of-bounds tile does not count.
 - **[gap]** Where the field sits in the POH (template coordinates and which room or rooms), and which team attacks which endzone.
-- **[gap]** A run moves 2 tiles per tick, so it can pass through an out-of-bounds tile on its way into a corner, for example (2, 3) → (1, 2) → (1, 1). Does that count as out of bounds or as a touchdown? The same question applies to running out of bounds and back in within one tick.
+- **[decided]** A run that passes through an out-of-bounds tile and ends in a corner within the same tick is a **touchdown**. Example: (2, 3) → (1, 2) → (1, 1).
+  - A **clicked** path never does this. Clicked paths go straight first and diagonal last (§2), so a click on a corner from any in-play tile reaches it through an in-play tile, for example (2, 3) → (2, 2) → (1, 1). This was checked against all 532 in-play tiles.
+  - The ruling matters for routes that **follow** another player, since following goes diagonal first, and for multi-click sequences.
 
 ### The ball
 
@@ -88,7 +90,9 @@ Each fact is tagged:
 - **[osrs-high]** Players move in all 8 directions. A diagonal step is blocked if either adjacent cardinal tile is blocked, so there's no cutting corners past walls or furniture.
 - **[osrs-high]** **Players do not block players.** Any number of players can stand on the same tile. The only physical contact in RFL is the model overlap our plugin measures; the game itself has none.
 - **[osrs-high]** Clicking a tile makes the server path to it. If the tile is unreachable, the player goes to the nearest reachable tile.
-- **[osrs-verify]** Pathfinding is a breadth-first search in a bounded area around the player. Neighbours are tried in the order W, E, S, N, SW, SE, NW, NE, so ties between equal-length paths break that way. Paths tend to go diagonal first, then straight.
+- **[osrs-high]** Clicked-tile pathfinding is a breadth-first search **from the player**, in a bounded area around them. Neighbours are tried in the order W, E, S, N, SW, SE, NW, NE, and each tile keeps the first predecessor that reaches it. The path is then traced back from the destination and reduced to turn points ("checkpoints"), at most 25 of them. Source: the rsmod `PathFinder.findPath1` port and the OSRS Wiki Pathfinding page.
+  - **Consequence: clicked paths go straight first, diagonal last.** Cardinal neighbours are queued first, so the straight leg wins ties. From (2, 3) to (1, 1) the path is S to (2, 2), then SW. From (0, 0) to (1, 3) it is N, N, then NE.
+- **[osrs-high]** Between checkpoints, and when **following** a player or NPC, movement is the naive "follow mode" instead: diagonal toward the target until one axis lines up, then straight. **Follow paths go diagonal first.**
 - **[osrs-high]** A click takes effect on the next tick. Your input lands up to 600 ms later, plus your network latency.
 - **[osrs-high]** **Following** another player moves you to the tile they stood on the **previous tick**, so a follower is always about one step behind.
 - **[osrs-verify]** Each tick the server processes players in **PID order**, and PID is reshuffled periodically. That decides who "moves first" when two players act on the same tick, for example when one of them follows or reaches a moving target.
