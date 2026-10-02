@@ -64,12 +64,13 @@ final class ContactDetector
         List<String> missing = new ArrayList<>();
         boolean bare = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY;
         RflConfig.ContactMode mode = config.contactMode();
-        // Build meshes for the mesh contact modes, or to draw them in the hitbox view.
-        boolean withMesh = mode != RflConfig.ContactMode.CAPSULES
+        // Build meshes for the mesh contact modes, or to draw them (hitbox view, Show overlap).
+        boolean withMesh = mode != RflConfig.ContactMode.CAPSULES || config.showOverlap()
             || (config.showHitboxes() && config.hitboxView() != RflConfig.HitboxView.CAPSULES);
         tracker.setMode(mode);
-        // Only the hitbox overlay draws every touching triangle; detection needs just one.
-        tracker.setMaxMeshHits(config.showHitboxes() ? PosedMesh.MAX_HITS : 1);
+        tracker.setDisplayMesh(config.showOverlap());
+        // Only the overlays draw every touching triangle; detection needs just one.
+        tracker.setMaxMeshHits(config.showHitboxes() || config.showOverlap() ? PosedMesh.MAX_HITS : 1);
 
         if (worldView != null)
         {

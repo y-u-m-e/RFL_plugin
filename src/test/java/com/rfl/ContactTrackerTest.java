@@ -1,6 +1,9 @@
 package com.rfl;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Collections;
@@ -273,5 +276,26 @@ public class ContactTrackerTest
         assertEquals(Boolean.FALSE, o.mesh);
 
         assertEquals("contact_end", t.update(Map.of("Amy", amy, "Zed", meshed(300, BESIDE)), 40, 2).get(0).type);
+    }
+
+    @Test
+    public void showingTheMeshFindsTouchingTrianglesWithoutChangingCapsuleContacts()
+    {
+        // Depth 5 graze with crossing triangles, capsule mode.
+        Body amy = meshed(0, WALL);
+        Body zed = meshed(95, THROUGH);
+        ContactTracker hidden = new ContactTracker();
+        hidden.setMode(RflConfig.ContactMode.CAPSULES);
+        hidden.update(Map.of("Amy", amy, "Zed", zed), 0, 0);
+        assertNull(hidden.overlaps().get(0).hits);
+
+        ContactTracker shown = new ContactTracker();
+        shown.setMode(RflConfig.ContactMode.CAPSULES);
+        shown.setDisplayMesh(true);
+        assertTrue(shown.update(Map.of("Amy", amy, "Zed", zed), 0, 0).isEmpty());
+        ContactTracker.Overlap o = shown.overlaps().get(0);
+        assertNotNull(o.hits);
+        assertNull(o.mesh);
+        assertFalse(o.contact);
     }
 }

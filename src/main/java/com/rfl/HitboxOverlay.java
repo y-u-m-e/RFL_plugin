@@ -109,8 +109,8 @@ final class HitboxOverlay extends Overlay
         {
             for (int i = 0; i < hits.count; i++)
             {
-                fillTriangle(graphics, worldView, plane, hits.a, hits.pairs[i * 2]);
-                fillTriangle(graphics, worldView, plane, hits.b, hits.pairs[i * 2 + 1]);
+                fill(graphics, triangle(client, worldView, plane, hits.a, hits.pairs[i * 2]));
+                fill(graphics, triangle(client, worldView, plane, hits.b, hits.pairs[i * 2 + 1]));
             }
         }
         return null;
@@ -147,7 +147,8 @@ final class HitboxOverlay extends Overlay
         }
     }
 
-    private void fillTriangle(Graphics2D graphics, WorldView worldView, int plane, PosedMesh mesh, int triangle)
+    /** A mesh triangle on screen, or null when a corner is off screen. */
+    static Polygon triangle(Client client, WorldView worldView, int plane, PosedMesh mesh, int triangle)
     {
         Polygon polygon = new Polygon();
         for (int k = 0; k < 3; k++)
@@ -157,11 +158,19 @@ final class HitboxOverlay extends Overlay
                 new LocalPoint((int) Math.round(c[0]), (int) Math.round(c[1]), worldView), plane, (int) Math.round(c[2]));
             if (p == null)
             {
-                return;
+                return null;
             }
             polygon.addPoint(p.getX(), p.getY());
         }
-        graphics.fill(polygon);
+        return polygon;
+    }
+
+    private static void fill(Graphics2D graphics, Polygon polygon)
+    {
+        if (polygon != null)
+        {
+            graphics.fill(polygon);
+        }
     }
 
     /**

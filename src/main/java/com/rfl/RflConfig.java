@@ -163,8 +163,8 @@ public interface RflConfig extends Config
     @ConfigItem(
         keyName = "showOverlap",
         name = "Show overlap",
-        description = "While two players' bodies overlap, draws the cylinder around each player's feet "
-            + "and fills where they cross: faint for a graze, the contact colour once it counts as a contact.",
+        description = "While two players' bodies overlap, fills the model triangles where they touch: "
+            + "faint for a graze, the contact colour once it counts as a contact.",
         section = DISPLAY_SECTION,
         position = 12
     )

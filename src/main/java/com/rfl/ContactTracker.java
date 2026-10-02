@@ -47,9 +47,13 @@ final class ContactTracker
         final Boolean mesh;
         /** Why the pair is or isn't a contact, for the debug panel. */
         final String why;
+        /** Touching triangles this update, for drawing; null when none or not checked. */
+        final PosedMesh.Hits hits;
 
-        Overlap(String a, String b, String partA, String partB, int depth, boolean contact, Boolean mesh, String why)
+        Overlap(String a, String b, String partA, String partB, int depth, boolean contact, Boolean mesh, String why,
+            PosedMesh.Hits hits)
         {
+            this.hits = hits;
             this.a = a;
             this.b = b;
             this.partA = partA;
@@ -93,10 +97,20 @@ final class ContactTracker
 
     private long meshNanos;
     private int maxMeshHits = PosedMesh.MAX_HITS;
+    private boolean displayMesh;
 
     void setMode(RflConfig.ContactMode mode)
     {
         this.mode = mode;
+    }
+
+    /**
+     * Also find touching triangles of every overlapping pair just to draw them (Show overlap),
+     * whatever the mode. Never changes what counts as a contact.
+     */
+    void setDisplayMesh(boolean displayMesh)
+    {
+        this.displayMesh = displayMesh;
     }
 
     /** Triangle pairs collected per body pair: 1 is enough to decide; more only for the overlay. */
@@ -192,7 +206,7 @@ final class ContactTracker
             Pair p = entry.getValue();
             boolean contact = active.containsKey(entry.getKey());
             result.add(new Overlap(names[0], names[1], p.capsule == null ? "-" : p.capsule.partA.name,
-                p.capsule == null ? "-" : p.capsule.partB.name, p.depth, contact, p.mesh, why(p, contact)));
+                p.capsule == null ? "-" : p.capsule.partB.name, p.depth, contact, p.mesh, why(p, contact), p.hits));
         }
         return result;
     }
@@ -286,8 +300,10 @@ final class ContactTracker
                 int depth = contact == null || contact.depth <= 0 ? 0 : (int) Math.round(contact.depth);
                 Boolean mesh = null;
                 PosedMesh.Hits hits = null;
-                if (mode == RflConfig.ContactMode.MESH
-                    || mode == RflConfig.ContactMode.CAPSULES_AND_MESH && depth >= START_DEPTH)
+                boolean decide = mode == RflConfig.ContactMode.MESH
+                    || mode == RflConfig.ContactMode.CAPSULES_AND_MESH && depth >= START_DEPTH;
+                boolean show = displayMesh && (mode == RflConfig.ContactMode.MESH || depth > 0);
+                if (decide || show)
                 {
                     long start = System.nanoTime();
                     if (ba.mesh != null && bb.mesh != null)
@@ -296,7 +312,10 @@ final class ContactTracker
                             mode == RflConfig.ContactMode.MESH ? null : capsuleRegions(ba, bb), maxMeshHits);
                     }
                     meshNanos += System.nanoTime() - start;
-                    mesh = hits != null;
+                    if (decide)
+                    {
+                        mesh = hits != null;
+                    }
                 }
                 boolean touching = Boolean.TRUE.equals(mesh);
                 boolean colliding = mode == RflConfig.ContactMode.CAPSULES ? depth >= START_DEPTH
