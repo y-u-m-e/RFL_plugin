@@ -4,6 +4,7 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
+import java.awt.Polygon;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -19,12 +20,14 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
  * Draws every body-part capsule of every player in view: a ring square to the part at each endpoint and
- * four lines joining them. Parts in a contact use the contact colour. Display only.
+ * four lines joining them. Parts in a contact use the contact colour; triangles of two models that
+ * intersect (mesh contact modes) are filled red. Display only.
  */
 final class HitboxOverlay extends Overlay
 {
     private static final BasicStroke STROKE = new BasicStroke(1f);
     private static final int RING_POINTS = 12;
+    private static final Color MESH_HIT_FILL = new Color(255, 0, 0, 90);
 
     private final Client client;
     private final RflConfig config;
@@ -83,7 +86,34 @@ final class HitboxOverlay extends Overlay
                 }
             }
         }
+
+        graphics.setColor(MESH_HIT_FILL);
+        for (PosedMesh.Hits hits : contactDetector.meshHits())
+        {
+            for (int i = 0; i < hits.count; i++)
+            {
+                fillTriangle(graphics, worldView, plane, hits.a, hits.pairs[i * 2]);
+                fillTriangle(graphics, worldView, plane, hits.b, hits.pairs[i * 2 + 1]);
+            }
+        }
         return null;
+    }
+
+    private void fillTriangle(Graphics2D graphics, WorldView worldView, int plane, PosedMesh mesh, int triangle)
+    {
+        Polygon polygon = new Polygon();
+        for (int k = 0; k < 3; k++)
+        {
+            double[] c = mesh.corner(triangle, k);
+            Point p = Perspective.localToCanvas(client,
+                new LocalPoint((int) Math.round(c[0]), (int) Math.round(c[1]), worldView), plane, (int) Math.round(c[2]));
+            if (p == null)
+            {
+                return;
+            }
+            polygon.addPoint(p.getX(), p.getY());
+        }
+        graphics.fill(polygon);
     }
 
     /**

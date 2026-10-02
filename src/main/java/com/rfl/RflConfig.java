@@ -215,7 +215,8 @@ public interface RflConfig extends Config
         keyName = "showHitboxes",
         name = "Show hitboxes",
         description = "Draws the body parts (legs, torso, arms, head) contacts are detected from, for every "
-            + "player in view while contact detection runs. Parts in a contact use the contact colour.",
+            + "player in view while contact detection runs. Parts in a contact use the contact colour; in the "
+            + "mesh contact modes, touching model triangles are filled red.",
         section = DISPLAY_SECTION,
         position = 13
     )
