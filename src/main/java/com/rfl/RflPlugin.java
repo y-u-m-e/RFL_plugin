@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -113,6 +115,16 @@ public class RflPlugin extends Plugin
     @Inject
     private ScheduledExecutorService executor;
 
+    @Inject
+    private ConfigManager configManager;
+
+    /** RS-profile config key (group {@code rfl}) holding this account's install ID. */
+    static final String INSTALL_ID_KEY = "installId";
+
+    // Client thread only: the install ID cached for the RS profile it was read for.
+    private String installProfileKey;
+    private String cachedInstallId;
+
     /**
      * RSN/install id/world for {@link GameClient}, refreshed on the client thread each game tick
      * so the game client (OkHttp/EDT threads) never reads {@link Client} itself. Null while logged out.
@@ -163,10 +175,9 @@ public class RflPlugin extends Plugin
     @Override
     protected void startUp()
     {
-        if (config.installId() == null || config.installId().isEmpty())
-        {
-            config.installId(UUID.randomUUID().toString());
-        }
+        // The install ID used to be one global item shared by every client on the PC; it is now
+        // per RuneScape account (RS profile). Drop the old global value.
+        executor.execute(() -> configManager.unsetConfiguration(RflConfig.GROUP, INSTALL_ID_KEY));
         overlayManager.add(contactHighlightOverlay);
         overlayManager.add(contactOverlapOverlay);
         overlayManager.add(hitboxOverlay);
@@ -409,7 +420,12 @@ public class RflPlugin extends Plugin
             return;
         }
         final String rsn = Text.sanitize(name);
-        final String installId = config.installId();
+        final String installId = currentInstallId();
+        if (installId == null)
+        {
+            identity = null;
+            return;
+        }
         final int world = client.getWorld();
         final GameClient.Identity current = identity;
         if (current == null || !current.rsn.equals(rsn) || !current.installId.equals(installId)
@@ -417,6 +433,47 @@ public class RflPlugin extends Plugin
         {
             identity = new GameClient.Identity(rsn, installId, world);
         }
+    }
+
+    /**
+     * Client thread. This RuneScape account's install ID (RS-profile config), generated the first
+     * time the account has none, so two clients on one PC never share an ID.
+     *
+     * @return the install ID, or null while no RS profile is loaded (logged out)
+     */
+    private String currentInstallId()
+    {
+        final String key = configManager.getRSProfileKey();
+        if (key == null || !key.equals(installProfileKey))
+        {
+            installProfileKey = key;
+            cachedInstallId = installIdFor(key,
+                () -> configManager.getRSProfileConfiguration(RflConfig.GROUP, INSTALL_ID_KEY),
+                id -> configManager.setRSProfileConfiguration(RflConfig.GROUP, INSTALL_ID_KEY, id));
+        }
+        return cachedInstallId;
+    }
+
+    /**
+     * @param profileKey current RS profile key, or null when none is loaded
+     * @param read       reads the stored ID for that profile
+     * @param write      stores a new ID for that profile
+     * @return the stored ID, a freshly stored UUID when there was none, or null without a profile
+     */
+    static String installIdFor(final String profileKey, final Supplier<String> read, final Consumer<String> write)
+    {
+        if (profileKey == null)
+        {
+            return null;
+        }
+        final String stored = read.get();
+        if (stored != null && !stored.isEmpty())
+        {
+            return stored;
+        }
+        final String fresh = UUID.randomUUID().toString();
+        write.accept(fresh);
+        return fresh;
     }
 
     /**
@@ -656,10 +713,16 @@ public class RflPlugin extends Plugin
                 return;
             }
 
+            final String id = currentInstallId();
+            if (id == null)
+            {
+                return;
+            }
+
             final List<RflEvent> drained = eventQueue.drain(EventQueue.MAX_BATCH);
             final RflReport report = new RflReport(
                 rsn,
-                config.installId(),
+                id,
                 client.getWorld(),
                 System.currentTimeMillis(),
                 inPoh,

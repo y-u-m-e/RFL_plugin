@@ -12,9 +12,12 @@ import net.runelite.client.config.Units;
 /**
  * User configuration for the RFL audit plugin.
  */
-@ConfigGroup("rfl")
+@ConfigGroup(RflConfig.GROUP)
 public interface RflConfig extends Config
 {
+    /** Config group name, also used for RS-profile keys such as the per-account install ID. */
+    String GROUP = "rfl";
+
     @ConfigSection(
         name = "Features",
         description = "Each feature can be turned off. Any feature that is off is reported and shown "
@@ -377,33 +380,4 @@ public interface RflConfig extends Config
     {
         return false;
     }
-
-    /**
-     * Reads the stored install identifier used to correlate reports from this client.
-     *
-     * @return stored install id, or empty when not yet assigned
-     */
-    @ConfigItem(
-        keyName = "installId",
-        name = "Install ID",
-        description = "Internal install identifier used to correlate reports. Not user-facing.",
-        hidden = true
-    )
-    default String installId()
-    {
-        return "";
-    }
-
-    /**
-     * Stores the install identifier used to correlate reports from this client.
-     *
-     * @param installId install id to persist
-     */
-    @ConfigItem(
-        keyName = "installId",
-        name = "Install ID",
-        description = "Internal install identifier used to correlate reports. Not user-facing.",
-        hidden = true
-    )
-    void installId(String installId);
 }
