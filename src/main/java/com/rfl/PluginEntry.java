@@ -2,7 +2,7 @@ package com.rfl;
 
 /**
  * A single enabled plugin as reported in an audit snapshot: its display name and where it
- * came from ({@code BUILTIN}, {@code PLUGIN_HUB}, {@code UNOFFICIAL}, or {@code UNKNOWN}).
+ * came from ({@code BUILTIN}, {@code PLUGIN_HUB}, or {@code UNOFFICIAL}).
  */
 final class PluginEntry
 {
