@@ -2,7 +2,6 @@ package com.rfl;
 
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -46,8 +45,9 @@ import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.Text;
 
 /**
- * RFL match audit plugin. Reports enabled plugins, RSN, world, nearby players and POH contact
- * events to the audit gateway every 10 s while logged in and reporting is enabled.
+ * RFL match audit plugin. Reports the local player's own RSN, world, enabled plugins and POH
+ * handegg contact events (own contacts, plus nameless collision_seen sightings; never another
+ * player's name) to the audit gateway every 10 s while logged in and reporting is enabled.
  *
  * <p>Owns the wiring between RuneLite events and the pieces that do the work: contact detection
  * each client frame ({@link ContactDetector}), interception checks each game tick
@@ -526,11 +526,9 @@ public class RflPlugin extends Plugin
                 System.currentTimeMillis(),
                 inPoh,
                 gameSession.gameId(),
-                // Nearby names only leave the client inside a POH (what the Hub description promises).
-                inPoh ? contactDetector.seen(client) : Collections.emptyList(),
                 snapshotter.snapshot(),
                 drained,
-                new RflReport.Features(config.reportPlugins(), config.reportContacts(), config.reportNearby()));
+                new RflReport.Features(config.reportPlugins(), config.reportContacts()));
 
             httpClient.dispatcher().executorService().execute(() -> reportSender.send(report, drained));
         });

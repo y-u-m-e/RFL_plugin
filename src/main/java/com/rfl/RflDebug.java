@@ -110,7 +110,9 @@ final class RflDebug
 
     void recordEvent(RflEvent event)
     {
-        record(event.type + " " + event.a + " ~ " + event.b + " depth " + event.depth);
+        record(event.type + (event.contactId == null ? "" : " #" + event.contactId) + " at " + event.x + ","
+            + event.y + "," + event.plane + (event.depth == null ? "" : " depth " + event.depth)
+            + (event.ball == null ? "" : " ball " + event.ball));
     }
 
     /** Records the players without a mesh whenever that list changes. */

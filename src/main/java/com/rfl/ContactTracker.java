@@ -2,8 +2,10 @@ package com.rfl;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Pair state machine over per-frame player meshes (see {@link PosedMesh}). A contact starts on the
@@ -17,10 +19,17 @@ import java.util.Map;
  * carries the largest of the start depth and the per-tick samples, so the reported value never
  * depends on display settings.
  *
- * <p>Names are expected to already be {@code Text.sanitize}d by the caller so two clients derive the
- * identical pair key regardless of non-breaking spaces in the raw RSN. Pairwise over all keys: at
- * the Hub's own render-distance player cap this is at most 45 pairs, and each pair's whole-mesh
- * bounds are checked before any triangles. Client thread only.
+ * <p>Self only: contact events are emitted only for pairs that include the local player
+ * ({@code self}), and a contact starts only while either body holds a handegg ({@code holders});
+ * every started contact gets its contact_end. Each carries a per-client {@code contactId} (stable
+ * while the contact lasts), the world tile under the touching-triangle centroid and who held the
+ * handegg ({@code ball}), never the other player's name; names are local map keys only.
+ *
+ * <p>Pairs of two other players are checked only while one of them holds a handegg (for the
+ * name-free {@code collision_seen} witness event, once per pair contact) or while {@code others} is
+ * set (Show hitboxes). Each pair's whole-mesh bounds are checked before any triangles.
+ *
+ * <p>Names are expected to already be {@code Text.sanitize}d by the caller. Client thread only.
  */
 final class ContactTracker
 {
@@ -46,8 +55,41 @@ final class ContactTracker
         }
     }
 
-    /** pairKey to the largest sampled depth since the pair's contact started. */
-    private final Map<String, Integer> active = new HashMap<>();
+    /** Maps a scene x/y to the world tile {x, y, plane} (WorldPoint.fromLocalInstance in game). */
+    interface Tiles
+    {
+        int[] at(double sceneX, double sceneY);
+    }
+
+    /** One open self contact. */
+    private static final class Contact
+    {
+        final int id;
+        final String ball;
+        /** Largest sampled depth since the contact started. */
+        int depth;
+        /** World tile {x, y, plane} under the latest touching-triangle centroid. */
+        int[] tile;
+
+        Contact(int id, String ball, int depth, int[] tile)
+        {
+            this.id = id;
+            this.ball = ball;
+            this.depth = depth;
+            this.tile = tile;
+        }
+    }
+
+    private final Tiles tiles;
+
+    /** pairKey of each open self contact. */
+    private final Map<String, Contact> active = new HashMap<>();
+
+    /** pairKeys of other-other pairs touching with a handegg that already emitted collision_seen. */
+    private Set<String> witnessed = new HashSet<>();
+
+    /** Next contactId; never reset, so ids stay unique for the client's lifetime. */
+    private int nextId;
 
     /** pairKey to touching triangles in the latest update; null when bounds overlap but nothing touches. */
     private Map<String, PosedMesh.Hits> latest = new HashMap<>();
@@ -57,61 +99,101 @@ final class ContactTracker
 
     private long meshNanos;
 
+    ContactTracker(Tiles tiles)
+    {
+        this.tiles = tiles;
+    }
+
     /**
-     * @param meshes this frame's meshes by sanitized name
-     * @param now    epoch ms stamped on any events
-     * @param tick   game tick count, stamped on events and used to sample depth once per tick
-     * @param detail true when a display needs the full touching count every update
-     * @return contact_start and contact_end events, in that order
+     * @param meshes  this frame's meshes by sanitized name
+     * @param self    the local player's sanitized name; null means no self pairs (every contact ends)
+     * @param holders sanitized names of the players holding a handegg this frame
+     * @param others  true to check every other-other pair (Show hitboxes), not just handegg ones
+     * @param now     epoch ms stamped on any events
+     * @param tick    game tick count, stamped on events and used to sample depth once per tick
+     * @param detail  true when a display needs the full touching count every update
+     * @return collision_seen, contact_start and contact_end events, in that order
      */
-    List<RflEvent> update(Map<String, PosedMesh> meshes, long now, int tick, boolean detail)
+    List<RflEvent> update(Map<String, PosedMesh> meshes, String self, Set<String> holders, boolean others,
+        long now, int tick, boolean detail)
     {
         boolean sample = tick != sampledTick;
         sampledTick = tick;
-        latest = currentPairs(meshes, sample || detail);
+        latest = currentPairs(meshes, self, holders, others, sample || detail);
         List<RflEvent> events = new ArrayList<>();
+        Set<String> stillWitnessed = new HashSet<>();
 
         for (Map.Entry<String, PosedMesh.Hits> entry : latest.entrySet())
         {
             PosedMesh.Hits hits = entry.getValue();
+            String key = entry.getKey();
             if (hits == null)
             {
                 continue;
             }
-            String key = entry.getKey();
-            Integer maxSoFar = active.get(key);
-            if (maxSoFar == null)
+            String[] names = splitKey(key);
+            boolean selfPair = names[0].equals(self) || names[1].equals(self);
+            boolean handegg = holders.contains(names[0]) || holders.contains(names[1]);
+
+            if (!selfPair)
             {
-                String[] names = splitKey(key);
-                events.add(RflEvent.contactStart(now, tick, names[0], names[1], hits.count));
-                active.put(key, hits.count);
+                if (handegg)
+                {
+                    stillWitnessed.add(key);
+                    if (!witnessed.contains(key))
+                    {
+                        int[] tile = tileOf(hits);
+                        events.add(RflEvent.collisionSeen(now, tick, tile[0], tile[1], tile[2]));
+                    }
+                }
+                continue;
             }
-            else if (sample && hits.count > maxSoFar)
+
+            Contact contact = active.get(key);
+            if (contact == null)
             {
-                active.put(key, hits.count);
+                if (handegg)
+                {
+                    int[] tile = tileOf(hits);
+                    String ball = holders.contains(self) ? "self" : "other";
+                    contact = new Contact(nextId++, ball, hits.count, tile);
+                    active.put(key, contact);
+                    events.add(RflEvent.contactStart(now, tick, contact.id, tile[0], tile[1], tile[2],
+                        hits.count, ball));
+                }
+                continue;
+            }
+            contact.tile = tileOf(hits);
+            if (sample && hits.count > contact.depth)
+            {
+                contact.depth = hits.count;
             }
         }
+        witnessed = stillWitnessed;
 
         List<String> ended = new ArrayList<>();
-        for (String key : active.keySet())
+        for (Map.Entry<String, Contact> entry : active.entrySet())
         {
-            if (latest.get(key) == null)
+            // A self change (or null self) ends every contact: its key is no longer a self pair.
+            if (latest.get(entry.getKey()) == null || self == null || !isSelfPair(entry.getKey(), self))
             {
-                ended.add(key);
+                ended.add(entry.getKey());
             }
         }
         for (String key : ended)
         {
-            String[] pair = splitKey(key);
-            events.add(RflEvent.contactEnd(now, tick, pair[0], pair[1], active.remove(key)));
+            Contact c = active.remove(key);
+            events.add(RflEvent.contactEnd(now, tick, c.id, c.tile[0], c.tile[1], c.tile[2], c.depth, c.ball));
         }
 
         return events;
     }
 
+    /** Drops every open contact without events. Keeps the id counter, so ids are never reused. */
     void reset()
     {
         active.clear();
+        witnessed = new HashSet<>();
         latest = new HashMap<>();
         sampledTick = -1;
     }
@@ -142,6 +224,19 @@ final class ContactTracker
         return latest.get(a.compareTo(b) <= 0 ? pairKey(a, b) : pairKey(b, a));
     }
 
+    /** Touching triangles of an open contact this update, or null when not open or not touching. */
+    PosedMesh.Hits hits(int contactId)
+    {
+        for (Map.Entry<String, Contact> entry : active.entrySet())
+        {
+            if (entry.getValue().id == contactId)
+            {
+                return latest.get(entry.getKey());
+            }
+        }
+        return null;
+    }
+
     /** Name to the names whose triangles touch theirs in the latest update. */
     Map<String, List<String>> collidingNow()
     {
@@ -160,10 +255,13 @@ final class ContactTracker
     }
 
     /**
-     * Every pair whose bounds overlap, with its touching triangles. A pair not yet in contact is
-     * always fully counted, since a start reports its depth.
+     * Every checked pair whose bounds overlap, with its touching triangles. Self pairs are always
+     * checked; other-other pairs only with a handegg holder or {@code others}. A pair that could
+     * start now (self, handegg, not yet open; or other-other, handegg, not yet witnessed) is fully
+     * counted, since its start reports depth or a centroid tile; the rest per {@code fullCount}.
      */
-    private Map<String, PosedMesh.Hits> currentPairs(Map<String, PosedMesh> meshes, boolean fullCount)
+    private Map<String, PosedMesh.Hits> currentPairs(Map<String, PosedMesh> meshes, String self,
+        Set<String> holders, boolean others, boolean fullCount)
     {
         Map<String, PosedMesh.Hits> pairs = new HashMap<>();
         List<String> names = new ArrayList<>(meshes.keySet());
@@ -175,6 +273,12 @@ final class ContactTracker
             {
                 String x = names.get(i);
                 String y = names.get(j);
+                boolean selfPair = x.equals(self) || y.equals(self);
+                boolean handegg = holders.contains(x) || holders.contains(y);
+                if (!selfPair && !handegg && !others)
+                {
+                    continue;
+                }
                 String a = x.compareTo(y) <= 0 ? x : y;
                 String b = x.compareTo(y) <= 0 ? y : x;
                 PosedMesh ma = meshes.get(a);
@@ -182,7 +286,8 @@ final class ContactTracker
                 if (PosedMesh.overlap(ma.bounds, mb.bounds) != null)
                 {
                     String key = pairKey(a, b);
-                    int limit = fullCount || !active.containsKey(key) ? PosedMesh.MAX_HITS : 1;
+                    boolean canStart = handegg && (selfPair ? !active.containsKey(key) : !witnessed.contains(key));
+                    int limit = fullCount || canStart ? PosedMesh.MAX_HITS : 1;
                     pairs.put(key, PosedMesh.intersect(ma, mb, limit));
                 }
             }
@@ -190,6 +295,18 @@ final class ContactTracker
 
         meshNanos += System.nanoTime() - start;
         return pairs;
+    }
+
+    private int[] tileOf(PosedMesh.Hits hits)
+    {
+        double[] c = hits.centroid();
+        return tiles.at(c[0], c[1]);
+    }
+
+    private static boolean isSelfPair(String key, String self)
+    {
+        String[] names = splitKey(key);
+        return names[0].equals(self) || names[1].equals(self);
     }
 
     private static String pairKey(String a, String b)

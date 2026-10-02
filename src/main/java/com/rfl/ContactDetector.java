@@ -3,8 +3,10 @@ package com.rfl;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
@@ -15,6 +17,7 @@ import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.kit.KitType;
 import net.runelite.client.util.Text;
 
@@ -23,6 +26,10 @@ import net.runelite.client.util.Text;
  * client frame, from each player's posed model: the drawn model, or the bare body
  * ({@link BareBody}) per the Hitbox source setting. Keeps the latest frame's meshes and pairs for
  * the overlays and the debug panel, adds the contact tile highlight, and measures mesh cost.
+ *
+ * <p>Contact events are self only (pairs including the local player) and need a handegg held by
+ * either body. Pairs of two other players are checked only while one of them holds a handegg (for
+ * the name-free collision_seen witness) or while Show hitboxes is on.
  *
  * <p>Client thread only: written from {@code ClientTick}, read by overlays (which render on the
  * client thread) and game-tick handlers. The latest-frame maps are replaced, never mutated.
@@ -33,7 +40,8 @@ final class ContactDetector
 {
     private static final long LOG_INTERVAL_MS = 10_000;
 
-    private final ContactTracker tracker = new ContactTracker();
+    private final Client client;
+    private final ContactTracker tracker = new ContactTracker(this::tile);
     private final ContactHighlights highlights;
     private final RflConfig config;
     private final BareBody bareBody;
@@ -49,8 +57,9 @@ final class ContactDetector
     private volatile double meshMsPerFrame;
 
     @Inject
-    ContactDetector(ContactHighlights highlights, RflConfig config, BareBody bareBody)
+    ContactDetector(Client client, ContactHighlights highlights, RflConfig config, BareBody bareBody)
     {
+        this.client = client;
         this.highlights = highlights;
         this.config = config;
         this.bareBody = bareBody;
@@ -67,6 +76,7 @@ final class ContactDetector
         Map<String, PosedMesh> meshes = new HashMap<>();
         Map<String, Player> players = new HashMap<>();
         List<String> missing = new ArrayList<>();
+        Set<String> holders = new HashSet<>();
         boolean bare = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY;
 
         if (worldView != null)
@@ -84,6 +94,12 @@ final class ContactDetector
                 {
                     meshes.put(name, mesh);
                     players.put(name, player);
+                    PlayerComposition composition = player.getPlayerComposition();
+                    if (composition != null
+                        && InterceptionDetector.HANDEGG_ITEMS.contains(composition.getEquipmentId(KitType.WEAPON)))
+                    {
+                        holders.add(name);
+                    }
                 }
                 else if (name != null)
                 {
@@ -102,11 +118,14 @@ final class ContactDetector
         latestPlayers = players;
         latestMissing = missing;
         boolean detail = config.showHitboxes() || config.showDebugPanel() || config.debugLogging();
-        List<RflEvent> events = tracker.update(meshes, now, client.getTickCount(), detail);
+        Player local = client.getLocalPlayer();
+        String self = local == null ? null : sanitizedName(local);
+        List<RflEvent> events = tracker.update(meshes, self, holders, config.showHitboxes(), now,
+            client.getTickCount(), detail);
         endMeshFrame(now);
         for (RflEvent event : events)
         {
-            PosedMesh.Hits hits = "contact_start".equals(event.type) ? tracker.hits(event.a, event.b) : null;
+            PosedMesh.Hits hits = "contact_start".equals(event.type) ? tracker.hits(event.contactId) : null;
             if (hits != null)
             {
                 double[] c = hits.centroid();
@@ -116,31 +135,17 @@ final class ContactDetector
         return events;
     }
 
-    /** Sanitized names of the other players in view, for the report's {@code seen} list. */
-    List<String> seen(Client client)
+    /**
+     * World tile {x, y, plane} under a scene point. fromLocalInstance maps instance chunks to their
+     * template, so two players in the same house report the same coordinates.
+     */
+    private int[] tile(double sceneX, double sceneY)
     {
         WorldView worldView = client.getTopLevelWorldView();
-        Player local = client.getLocalPlayer();
-        List<String> names = new ArrayList<>();
-
-        if (worldView != null)
-        {
-            for (Player player : worldView.players())
-            {
-                if (player == null || player == local)
-                {
-                    continue;
-                }
-
-                String name = sanitizedName(player);
-                if (name != null)
-                {
-                    names.add(name);
-                }
-            }
-        }
-
-        return names;
+        int plane = worldView.getPlane();
+        WorldPoint p = WorldPoint.fromLocalInstance(client,
+            new LocalPoint((int) Math.round(sceneX), (int) Math.round(sceneY), worldView), plane);
+        return new int[]{p.getX(), p.getY(), p.getPlane()};
     }
 
     /**
@@ -157,7 +162,8 @@ final class ContactDetector
         latestMeshes = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
         latestMissing = Collections.emptyList();
-        return tracker.update(Collections.emptyMap(), System.currentTimeMillis(), client.getTickCount(), false);
+        return tracker.update(Collections.emptyMap(), null, Collections.emptySet(), false,
+            System.currentTimeMillis(), client.getTickCount(), false);
     }
 
     /** Drops every open pair without events, plus highlights and the bare-body model cache. */

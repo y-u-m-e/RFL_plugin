@@ -40,7 +40,7 @@ public interface RflConfig extends Config
     @ConfigItem(
         keyName = "highlightContacts",
         name = "Highlight contacts",
-        description = "Briefly highlights the tile under the point where two players' models touch. "
+        description = "Briefly highlights the tile under each of your reported contacts. "
             + "Needs reporting and contact detection on, inside a player-owned house.",
         section = DISPLAY_SECTION,
         position = 9
@@ -92,9 +92,10 @@ public interface RflConfig extends Config
         keyName = "enableReporting",
         name = "Enable reporting",
         position = 0,
-        description = "While logged in, every 10 seconds, sends your RSN, world, enabled plugin list, and - "
-            + "inside a player-owned house - the names of nearby players and contact events, to "
-            + "dev-api.ironforged.gg. Published publicly on rfl.gg. Off until you enable it.",
+        description = "While logged in, every 10 seconds, sends your own RSN, world, enabled plugin list and - "
+            + "inside a player-owned house - your own handegg contacts with other players (time, tile, depth) "
+            + "and nameless sightings of other players colliding (time and tile only), to dev-api.ironforged.gg. "
+            + "No other player's name is sent. Published publicly on rfl.gg. Off until you enable it.",
         warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by "
             + "RuneLite developers"
     )
@@ -120,33 +121,19 @@ public interface RflConfig extends Config
     }
 
     /**
-     * @return true to run contact detection inside a player-owned house
+     * @return true to detect and send the local player's own contacts inside a player-owned house
      */
     @ConfigItem(
         keyName = "reportContacts",
         name = "Detect contacts",
-        description = "Detects and sends contact events between players inside a player-owned house. "
-            + "Turning this off is reported and shown publicly on rfl.gg as a flag.",
+        description = "Inside a player-owned house, detects when your character touches another player while "
+            + "either of you holds a handegg and sends the time, tile and depth; also sends the time and tile "
+            + "when two other players collide with a handegg. Never sends another player's name. Turning this "
+            + "off is reported and shown publicly on rfl.gg as a flag.",
         section = FEATURES_SECTION,
         position = 6
     )
     default boolean reportContacts()
-    {
-        return true;
-    }
-
-    /**
-     * @return true to send the names of nearby players inside a player-owned house
-     */
-    @ConfigItem(
-        keyName = "reportNearby",
-        name = "Report nearby players",
-        description = "Sends the names of nearby players inside a player-owned house. Turning this off "
-            + "is reported and shown publicly on rfl.gg as a flag.",
-        section = FEATURES_SECTION,
-        position = 7
-    )
-    default boolean reportNearby()
     {
         return true;
     }

@@ -73,7 +73,7 @@ public class ReportSenderTest
 
         final RflEvent event = RflEvent.pluginToggle(0, 0, "X", true);
         final RflReport report = new RflReport("Rsn", "install-1", 1, 0L, false, "",
-            List.of(), List.of(), List.of(event), new RflReport.Features(true, true, true));
+            List.of(), List.of(event), new RflReport.Features(true, true));
 
         sender.send(report, List.of(event));
 

@@ -7,6 +7,9 @@ import java.util.List;
  * Wire report body POJO for {@code POST /plugins/rfl/report} (spec §4). Field names are the
  * plain Java field names on purpose: Gson's default field naming already matches the spec's
  * JSON keys, so no {@code @SerializedName} is needed.
+ *
+ * <p>Self only: the only player name in a report is {@code rsn}, the local player's own. Contact
+ * events identify the other body by a per-client {@code contactId}, never by name.
  */
 final class RflReport
 {
@@ -22,7 +25,6 @@ final class RflReport
     final boolean inPoh;
     /** The game the player is currently in, from {@link com.rfl.game.GameSession#gameId()}; "" when none. */
     final String gameId;
-    final List<String> seen;
     final List<PluginEntry> plugins;
     final List<RflEvent> events;
     final Features features;
@@ -35,19 +37,16 @@ final class RflReport
     {
         final boolean plugins;
         final boolean contacts;
-        final boolean nearby;
 
-        Features(final boolean plugins, final boolean contacts, final boolean nearby)
+        Features(final boolean plugins, final boolean contacts)
         {
             this.plugins = plugins;
             this.contacts = contacts;
-            this.nearby = nearby;
         }
     }
 
     RflReport(final String rsn, final String installId, final int world, final long sentAt,
-        final boolean inPoh, final String gameId, final List<String> seen,
-        final List<PluginEntry> plugins, final List<RflEvent> events, final Features features)
+        final boolean inPoh, final String gameId, final List<PluginEntry> plugins, final List<RflEvent> events, final Features features)
     {
         this.rsn = rsn;
         this.installId = installId;
@@ -55,7 +54,6 @@ final class RflReport
         this.sentAt = sentAt;
         this.inPoh = inPoh;
         this.gameId = gameId == null ? "" : gameId;
-        this.seen = features.nearby ? seen : Collections.emptyList();
         this.plugins = features.plugins ? plugins : Collections.emptyList();
         this.events = events;
         this.features = features;
