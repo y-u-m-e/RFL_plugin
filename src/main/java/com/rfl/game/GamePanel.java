@@ -19,6 +19,7 @@ import java.util.Random;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -32,6 +33,8 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
+
+import lombok.extern.slf4j.Slf4j;
 
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
@@ -47,6 +50,7 @@ import net.runelite.client.ui.PluginPanel;
  * Client state is never read here — the RSN comes from the identity snapshot RflPlugin takes on
  * the client thread.
  */
+@Slf4j
 public final class GamePanel extends PluginPanel
 {
     static final String OPT_IN = "Turn on Enable reporting to browse and join games";
@@ -71,7 +75,12 @@ public final class GamePanel extends PluginPanel
     // EDT only.
     private final JPanel content = new JPanel();
     private final List<JComboBox<String>> combos = new ArrayList<>();
-    private boolean reporting;
+    /** Written on the EDT (or by {@link #dispose}), read by {@link #startPolling} from any thread. */
+    private volatile boolean reporting;
+    /** Set once when the plugin shuts down; nothing may restart the loop after that. */
+    private volatile boolean disposed;
+    /** EDT: a create/join is in flight, so Host/Join are disabled. */
+    private boolean busy;
     private String notice = "";
     private String actionError = "";
     /** The passphrase we hosted/joined with; the API never returns it. */
@@ -139,6 +148,12 @@ public final class GamePanel extends PluginPanel
         return hex != null && HEX.matcher(hex).matches() ? Color.decode(hex) : fallback;
     }
 
+    /** @return whether the poll loop may (re)start: reporting on and the panel not disposed */
+    static boolean mayPoll(final boolean reporting, final boolean disposed)
+    {
+        return reporting && !disposed;
+    }
+
     static String toHex(final Color c)
     {
         return String.format("#%02X%02X%02X", c.getRed(), c.getGreen(), c.getBlue());
@@ -146,11 +161,25 @@ public final class GamePanel extends PluginPanel
 
     // ---------------------------------------------------------------- poll loop
 
-    /** Any thread. Restarts the loop with an immediate poll. */
+    /** Any thread. Restarts the loop with an immediate poll, unless reporting is off or disposed. */
     public synchronized void startPolling()
     {
         stopPolling();
-        schedule(generation, 0);
+        if (mayPoll(reporting, disposed))
+        {
+            schedule(generation, 0);
+        }
+    }
+
+    /**
+     * Any thread. Plugin shutdown: stops the loop for good, so a late response that would
+     * restart polling (join/leave/game end) finds it disposed and does nothing.
+     */
+    public void dispose()
+    {
+        disposed = true;
+        reporting = false;
+        stopPolling();
     }
 
     /** Any thread. Stops the loop; a poll already in flight is ignored when it lands. */
@@ -177,34 +206,85 @@ public final class GamePanel extends PluginPanel
         schedule(gen, lobbyPoller.nextDelayMs(!session.gameId().isEmpty()));
     }
 
+    /**
+     * One poll. Whatever happens (callback throws, or the call throws before enqueueing), the
+     * next poll is scheduled exactly once, so one exception can't stop the loop for good.
+     */
     private void poll(final int gen)
     {
-        final String id = session.gameId();
-        if (id.isEmpty())
+        final AtomicBoolean rescheduled = new AtomicBoolean();
+        final Runnable next = () ->
         {
-            games.list(r ->
+            if (rescheduled.compareAndSet(false, true))
             {
-                if (r.isOk())
-                {
-                    listPoller.onSuccess(r.value());
-                }
-                else
-                {
-                    listPoller.onFailure(r.error());
-                }
-                refresh();
                 scheduleNext(gen);
-            });
-        }
-        else
+            }
+        };
+        try
         {
-            games.get(id, r ->
+            final String id = session.gameId();
+            if (id.isEmpty())
             {
-                onLobby(id, r);
-                refresh();
-                scheduleNext(gen);
-            });
+                games.list(r ->
+                {
+                    try
+                    {
+                        if (r.isOk())
+                        {
+                            listPoller.onSuccess(r.value());
+                            pollSucceeded();
+                        }
+                        else
+                        {
+                            listPoller.onFailure(r.error());
+                            refresh();
+                        }
+                    }
+                    catch (final RuntimeException e)
+                    {
+                        log.warn("RFL game list poll failed", e);
+                    }
+                    finally
+                    {
+                        next.run();
+                    }
+                });
+            }
+            else
+            {
+                games.get(id, r ->
+                {
+                    try
+                    {
+                        onLobby(id, r);
+                        refresh();
+                    }
+                    catch (final RuntimeException e)
+                    {
+                        log.warn("RFL lobby poll failed", e);
+                    }
+                    finally
+                    {
+                        next.run();
+                    }
+                });
+            }
         }
+        catch (final RuntimeException e)
+        {
+            log.warn("RFL poll could not be sent", e);
+            next.run();
+        }
+    }
+
+    /** Any thread. A successful poll clears a stale action error so poll errors/recovery show. */
+    private void pollSucceeded()
+    {
+        SwingUtilities.invokeLater(() ->
+        {
+            actionError = "";
+            render();
+        });
     }
 
     /** OkHttp thread. Applies a lobby poll unless we've since left/switched games. */
@@ -234,6 +314,7 @@ public final class GamePanel extends PluginPanel
         }
         lobbyPoller.onSuccess(r.value());
         session.update(r.value());
+        pollSucceeded();
     }
 
     private void exitGame(final String why)
@@ -243,11 +324,16 @@ public final class GamePanel extends PluginPanel
         {
             notice = why;
             passphrase = "";
+            actionError = "";
             restartPolling();
             render();
         });
     }
 
+    /**
+     * Known limit: "removed" is judged against the current RSN, so switching accounts while in a
+     * game reads as being removed (the session clears with that notice). Rejoin from the list.
+     */
     private String rsn()
     {
         final GameClient.Identity id = identity.get();
@@ -274,10 +360,14 @@ public final class GamePanel extends PluginPanel
     /** EDT. Joined/left: switch between list and lobby polling now instead of after up to 10 s. */
     private void restartPolling()
     {
-        if (reporting)
-        {
-            startPolling();
-        }
+        startPolling();
+    }
+
+    /** EDT. Marks a create/join in flight (Host/Join disabled until {@link #entered}/{@link #fail}). */
+    private void startBusy()
+    {
+        busy = true;
+        render();
     }
 
     private void hostGame()
@@ -296,6 +386,7 @@ public final class GamePanel extends PluginPanel
             return;
         }
         final String pp = pass.getText().trim();
+        startBusy();
         games.create(name.getText().trim(), pp, r -> entered(r, pp));
     }
 
@@ -304,6 +395,7 @@ public final class GamePanel extends PluginPanel
         final String pp = askPassphrase("Join game", "");
         if (pp != null)
         {
+            startBusy();
             games.joinByPassphrase(pp, r -> entered(r, pp));
         }
     }
@@ -313,6 +405,7 @@ public final class GamePanel extends PluginPanel
         final String pp = askPassphrase("Join " + game.name, "");
         if (pp != null)
         {
+            startBusy();
             games.join(game.id, pp, r -> entered(r.isOk() ? GameClient.Result.ok(game.id) : r, pp));
         }
     }
@@ -339,6 +432,7 @@ public final class GamePanel extends PluginPanel
                 passphrase = pp;
                 notice = "";
                 actionError = "";
+                busy = false;
                 restartPolling();
                 render();
             });
@@ -372,6 +466,10 @@ public final class GamePanel extends PluginPanel
     /** EDT. Sends a host action (action + fields flat; GameClient adds installId). */
     private void host(final Map<String, Object> action, final Runnable onOk)
     {
+        if (!reporting || session.gameId().isEmpty())
+        {
+            return;
+        }
         games.host(session.gameId(), action, r ->
         {
             if (!r.isOk())
@@ -431,6 +529,7 @@ public final class GamePanel extends PluginPanel
         SwingUtilities.invokeLater(() ->
         {
             actionError = error == null ? "Something went wrong" : error;
+            busy = false;
             render();
         });
     }
@@ -502,7 +601,7 @@ public final class GamePanel extends PluginPanel
     private String signature(final GameDetail d)
     {
         final StringBuilder sb = new StringBuilder()
-            .append(reporting).append('|').append(notice).append('|').append(actionError).append('|')
+            .append(reporting).append(busy).append('|').append(notice).append('|').append(actionError).append('|')
             .append(passphrase).append('|').append(rsn()).append('|');
         if (d == null || d.game == null)
         {
@@ -547,6 +646,10 @@ public final class GamePanel extends PluginPanel
         buttons.setOpaque(false);
         buttons.add(button("Host game", this::hostGame));
         buttons.add(button("Join game", this::joinByPassphrase));
+        for (final Component b : buttons.getComponents())
+        {
+            b.setEnabled(!busy);
+        }
         content.add(row(buttons));
         if (!notice.isEmpty())
         {
@@ -568,9 +671,10 @@ public final class GamePanel extends PluginPanel
         for (final GameSummary g : list)
         {
             final JButton entry = button("<html><b>" + esc(g.name) + "</b><br>" + esc(g.hostRsn) + " · W" + g.world
-                + " · " + g.state + " · " + g.playerCount + (g.playerCount == 1 ? " player" : " players")
+                + " · " + esc(g.state) + " · " + g.playerCount + (g.playerCount == 1 ? " player" : " players")
                 + "</html>", () -> joinListed(g));
             entry.setHorizontalAlignment(JButton.LEFT);
+            entry.setEnabled(!busy);
             content.add(row(entry));
         }
     }

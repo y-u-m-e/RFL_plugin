@@ -189,7 +189,7 @@ public class RflPlugin extends Plugin
         final GamePanel panel = gamePanel;
         if (panel != null)
         {
-            panel.stopPolling();
+            panel.dispose();
         }
         SwingUtilities.invokeLater(this::removeGamePanel);
     }
@@ -218,7 +218,7 @@ public class RflPlugin extends Plugin
     {
         if (gamePanel != null)
         {
-            gamePanel.stopPolling();
+            gamePanel.dispose();
         }
         if (gameButton != null)
         {

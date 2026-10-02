@@ -47,6 +47,15 @@ public class GamePanelTest
     }
 
     @Test
+    public void pollsOnlyWhenReportingAndNotDisposed()
+    {
+        org.junit.Assert.assertTrue(GamePanel.mayPoll(true, false));
+        org.junit.Assert.assertFalse(GamePanel.mayPoll(false, false));
+        org.junit.Assert.assertFalse(GamePanel.mayPoll(true, true));
+        org.junit.Assert.assertFalse(GamePanel.mayPoll(false, true));
+    }
+
+    @Test
     public void hostStateButtonFollowsState()
     {
         assertEquals("Start", GamePanel.hostStateButton("lobby"));
