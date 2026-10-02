@@ -77,9 +77,9 @@ public class GamePanelTest
     @Test
     public void serverTextCannotBecomeHtml()
     {
-        assertEquals(" <HTML><img src=x>", GamePanel.plain("<HTML><img src=x>"));
-        assertEquals("Red", GamePanel.plain("Red"));
-        assertEquals("", GamePanel.plain(null));
+        assertEquals(" <HTML><img src=x>", PanelWidgets.plain("<HTML><img src=x>"));
+        assertEquals("Red", PanelWidgets.plain("Red"));
+        assertEquals("", PanelWidgets.plain(null));
     }
 
     @Test
