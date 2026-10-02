@@ -67,7 +67,7 @@ public class GameClientTest
                 throw new IOException("simulated network failure");
             })
             .build();
-        final GameClient client = new GameClient(okHttp, new GsonBuilder().create());
+        final GameClient client = enabled(new GameClient(okHttp, new GsonBuilder().create()));
         client.setIdentitySupplier(() -> new GameClient.Identity("Rsn", "install-1", 301));
 
         final GameClient.Result<List<GameSummary>> result = await(client::list);
@@ -125,12 +125,34 @@ public class GameClientTest
                 })
                 .build())
             .build();
-        final GameClient client = new GameClient(okHttp, new GsonBuilder().create());
+        final GameClient client = enabled(new GameClient(okHttp, new GsonBuilder().create()));
 
         final GameClient.Result<List<GameSummary>> result = await(client::list);
 
         assertFalse(result.isOk());
         assertEquals("Can't reach the RFL API", result.error());
+    }
+
+    @Test
+    public void sendsNothingWhileReportingIsOff() throws InterruptedException
+    {
+        final AtomicReference<Request> sent = new AtomicReference<>();
+        final GameClient client = clientReturning(200, "[]", sent::set);
+        client.setEnabled(() -> false);
+        client.setIdentitySupplier(() -> new GameClient.Identity("Rsn", "install-1", 301));
+
+        final GameClient.Result<List<GameSummary>> listed = await(client::list);
+        final GameClient.Result<String> joined = await(callback -> client.join("g1", "pp", callback));
+
+        assertEquals(GameClient.REPORTING_OFF, listed.error());
+        assertEquals(GameClient.REPORTING_OFF, joined.error());
+        assertEquals(null, sent.get());
+    }
+
+    private static GameClient enabled(final GameClient client)
+    {
+        client.setEnabled(() -> true);
+        return client;
     }
 
     private static GameClient clientReturning(final int code, final String body, final Consumer<Request> onRequest)
@@ -148,7 +170,7 @@ public class GameClientTest
                     .build();
             })
             .build();
-        return new GameClient(okHttp, new GsonBuilder().create());
+        return enabled(new GameClient(okHttp, new GsonBuilder().create()));
     }
 
     private static <T> GameClient.Result<T> await(final Consumer<Consumer<GameClient.Result<T>>> call)

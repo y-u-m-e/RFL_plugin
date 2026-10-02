@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -49,11 +50,15 @@ public final class GameClient
     private static final String NETWORK_ERROR = "Can't reach the RFL API";
     private static final String GAME_NOT_FOUND = "game not found";
     private static final String NO_SUCH_PASSPHRASE = "No game with that passphrase";
+    /** Shown when a call is made while the user has not opted in to third-party requests. */
+    static final String REPORTING_OFF = "Enable reporting is off";
 
     private final OkHttpClient client;
     private final Gson gson;
 
     private volatile Supplier<Identity> identitySupplier = () -> null;
+    /** Hub opt-in gate: nothing is sent unless this says yes. Off until {@code RflPlugin} wires it. */
+    private volatile BooleanSupplier enabled = () -> false;
 
     @Inject
     GameClient(final OkHttpClient client, final Gson gson)
@@ -71,6 +76,17 @@ public final class GameClient
     public void setIdentitySupplier(final Supplier<Identity> identitySupplier)
     {
         this.identitySupplier = identitySupplier;
+    }
+
+    /**
+     * Sets the opt-in gate checked before every request; {@code RflPlugin} points it at the
+     * Enable reporting setting.
+     *
+     * @param enabled true while requests may be sent
+     */
+    public void setEnabled(final BooleanSupplier enabled)
+    {
+        this.enabled = enabled;
     }
 
     /**
@@ -230,6 +246,11 @@ public final class GameClient
     private <T> void enqueue(final Request request, final Consumer<Result<T>> callback,
         final Function<String, T> parseBody)
     {
+        if (!enabled.getAsBoolean())
+        {
+            callback.accept(Result.error(REPORTING_OFF));
+            return;
+        }
         client.newCall(request).enqueue(new Callback()
         {
             @Override

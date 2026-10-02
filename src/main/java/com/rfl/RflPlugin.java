@@ -164,6 +164,7 @@ public class RflPlugin extends Plugin
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
         gameClient.setIdentitySupplier(() -> identity);
+        gameClient.setEnabled(config::enableReporting);
         SwingUtilities.invokeLater(debug::syncPanel);
         SwingUtilities.invokeLater(this::addGamePanel);
     }
