@@ -35,6 +35,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
+import javax.swing.border.Border;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -63,7 +64,9 @@ public final class GamePanel extends PluginPanel
     static final String HOST_NO_PASSPHRASE = "Passphrase hidden — press Passphrase to set a new one";
     private static final String NOT_FOUND = "game not found";
     private static final Pattern HEX = Pattern.compile("^#[0-9A-Fa-f]{6}$");
-    private static final String[] TEAM_KEYS = {"", "A", "B"};
+    /** The fixed referees team: not renamed or recoloured, drawn black and white striped. */
+    private static final String REFEREES = "R";
+    private static final String[] TEAM_KEYS = {"", "A", "B", REFEREES};
 
     private final GameClient games;
     private final GameSession session;
@@ -741,10 +744,18 @@ public final class GamePanel extends PluginPanel
         columns.setOpaque(false);
         for (final GameDetail.Team t : teams)
         {
-            columns.add(column(t.name, parseColor(t.color, ColorScheme.LIGHT_GRAY_COLOR), players, t.key, d, me));
+            if (!REFEREES.equals(t.key))
+            {
+                final Color color = parseColor(t.color, ColorScheme.LIGHT_GRAY_COLOR);
+                columns.add(column(t.name, swatch(color, 8, 8), BorderFactory.createMatteBorder(3, 0, 0, 0, color),
+                    players, t.key, d, me));
+            }
         }
         content.add(row(columns));
-        content.add(row(column("Unassigned", ColorScheme.LIGHT_GRAY_COLOR, players, "", d, me)));
+        content.add(row(column(teamName(teams, REFEREES), stripes(8, 8, true),
+            BorderFactory.createMatteBorder(3, 0, 0, 0, stripes(4, 3, false)), players, REFEREES, d, me)));
+        content.add(row(column("Unassigned", swatch(ColorScheme.LIGHT_GRAY_COLOR, 8, 8),
+            BorderFactory.createMatteBorder(3, 0, 0, 0, ColorScheme.LIGHT_GRAY_COLOR), players, "", d, me)));
 
         if (isHost)
         {
@@ -753,17 +764,17 @@ public final class GamePanel extends PluginPanel
         content.add(row(button("Leave game", this::leave)));
     }
 
-    private JPanel column(final String name, final Color color, final List<GameDetail.Player> players,
+    private JPanel column(final String name, final Icon icon, final Border bar, final List<GameDetail.Player> players,
         final String key, final GameDetail d, final String me)
     {
         final JPanel col = new JPanel();
         col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
         col.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         col.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(3, 0, 0, 0, color), BorderFactory.createEmptyBorder(3, 4, 3, 4)));
+            bar, BorderFactory.createEmptyBorder(3, 4, 3, 4)));
         // Team colour only on the top bar and the swatch; text stays readable on the dark panel.
         final JLabel header = label(name, Color.WHITE);
-        header.setIcon(swatch(color, 8, 8));
+        header.setIcon(icon);
         header.setFont(FontManager.getRunescapeBoldFont());
         col.add(header);
         for (final GameDetail.Player p : players)
@@ -792,6 +803,10 @@ public final class GamePanel extends PluginPanel
         content.add(section("Teams"));
         for (final GameDetail.Team t : teams)
         {
+            if (REFEREES.equals(t.key))
+            {
+                continue;
+            }
             final Color current = parseColor(t.color, ColorScheme.LIGHT_GRAY_COLOR);
             final JButton colour = button("", () ->
             {
@@ -883,7 +898,7 @@ public final class GamePanel extends PluginPanel
                 return t.name;
             }
         }
-        return key;
+        return REFEREES.equals(key) ? "Referees" : key;
     }
 
     private void addError(final String pollError)
@@ -916,6 +931,43 @@ public final class GamePanel extends PluginPanel
             p.add(right, c);
         }
         return p;
+    }
+
+    /** Black and white diagonal stripes, the referees' colours; tiles seamlessly at width 4. */
+    private static Icon stripes(final int w, final int h, final boolean outline)
+    {
+        return new Icon()
+        {
+            @Override
+            public void paintIcon(final Component c, final Graphics g, final int x, final int y)
+            {
+                for (int px = 0; px < w; px++)
+                {
+                    for (int py = 0; py < h; py++)
+                    {
+                        g.setColor((px + py) % 4 < 2 ? Color.BLACK : Color.WHITE);
+                        g.fillRect(x + px, y + py, 1, 1);
+                    }
+                }
+                if (outline)
+                {
+                    g.setColor(ColorScheme.LIGHT_GRAY_COLOR);
+                    g.drawRect(x, y, w - 1, h - 1);
+                }
+            }
+
+            @Override
+            public int getIconWidth()
+            {
+                return w;
+            }
+
+            @Override
+            public int getIconHeight()
+            {
+                return h;
+            }
+        };
     }
 
     /** A painted colour square with a light outline — renders the same under any look and feel. */
