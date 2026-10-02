@@ -53,9 +53,6 @@ final class ContactDetector
         this.bareBody = bareBody;
     }
 
-    @Inject
-    private ModelDumper modelDumper;
-
     List<RflEvent> onFrame(Client client)
     {
         WorldView worldView = client.getTopLevelWorldView();
@@ -292,12 +289,6 @@ final class ContactDetector
                 model.getFaceCount(), model.getFaceTransparencies(), model.getFaceColors3(),
                 player.getCurrentOrientation(), localPoint.getX(), localPoint.getY()));
             meshNanos += System.nanoTime() - start;
-        }
-        if (config.debugLogging() && player == client.getLocalPlayer())
-        {
-            modelDumper.maybeDump(client.getTickCount(), sanitizedName(player), bare, player.getCurrentOrientation(),
-                player.getAnimation(), player.getPoseAnimation(), model.getVerticesX(), model.getVerticesY(),
-                model.getVerticesZ(), model.getVerticesCount(), localPoint.getX(), localPoint.getY(), body);
         }
         return body;
     }
