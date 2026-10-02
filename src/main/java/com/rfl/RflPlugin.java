@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.ScheduledExecutorService;
 
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -19,6 +20,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import okhttp3.OkHttpClient;
 
+import com.rfl.game.GameClient;
+import com.rfl.game.GamePanel;
 import com.rfl.game.GameSession;
 
 import net.runelite.api.ChatMessageType;
@@ -104,6 +107,22 @@ public class RflPlugin extends Plugin
     @Inject
     private GameSession gameSession;
 
+    @Inject
+    private GameClient gameClient;
+
+    @Inject
+    private ScheduledExecutorService executor;
+
+    /**
+     * RSN/install id/world for {@link GameClient}, refreshed on the client thread each game tick
+     * so the game client (OkHttp/EDT threads) never reads {@link Client} itself. Null while logged out.
+     */
+    private volatile GameClient.Identity identity;
+
+    // "RFL" game panel: created/added/removed on the EDT; polling stop is thread-safe.
+    private volatile GamePanel gamePanel;
+    private NavigationButton gameButton;
+
     private static final int DEBUG_EVENTS = 30;
     private static final long DEBUG_REFRESH_MS = 600;
 
@@ -153,7 +172,9 @@ public class RflPlugin extends Plugin
         overlayManager.add(hitboxOverlay);
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
+        gameClient.setIdentitySupplier(() -> identity);
         SwingUtilities.invokeLater(this::syncDebugPanel);
+        SwingUtilities.invokeLater(this::addGamePanel);
     }
 
     @Override
@@ -165,6 +186,46 @@ public class RflPlugin extends Plugin
         interceptionDetector.reset();
         contactDetector.reset();
         SwingUtilities.invokeLater(this::removeDebugPanel);
+        final GamePanel panel = gamePanel;
+        if (panel != null)
+        {
+            panel.stopPolling();
+        }
+        SwingUtilities.invokeLater(this::removeGamePanel);
+    }
+
+    /** EDT. The "RFL" panel is present whenever the plugin runs; it polls only with reporting on. */
+    private void addGamePanel()
+    {
+        if (gameButton != null)
+        {
+            return;
+        }
+        final GamePanel panel = new GamePanel(gameClient, gameSession, () -> identity, executor);
+        gameButton = NavigationButton.builder()
+            .tooltip("RFL")
+            .icon(DebugPanel.icon())
+            .priority(9)
+            .panel(panel)
+            .build();
+        clientToolbar.addNavigation(gameButton);
+        gamePanel = panel;
+        panel.setReporting(config.enableReporting());
+    }
+
+    /** EDT. */
+    private void removeGamePanel()
+    {
+        if (gamePanel != null)
+        {
+            gamePanel.stopPolling();
+        }
+        if (gameButton != null)
+        {
+            clientToolbar.removeNavigation(gameButton);
+        }
+        gameButton = null;
+        gamePanel = null;
     }
 
     @Subscribe
@@ -173,6 +234,16 @@ public class RflPlugin extends Plugin
         if ("rfl".equals(event.getGroup()) && "showDebugPanel".equals(event.getKey()))
         {
             SwingUtilities.invokeLater(this::syncDebugPanel);
+        }
+        if ("rfl".equals(event.getGroup()) && "enableReporting".equals(event.getKey()))
+        {
+            SwingUtilities.invokeLater(() ->
+            {
+                if (gamePanel != null)
+                {
+                    gamePanel.setReporting(config.enableReporting());
+                }
+            });
         }
     }
 
@@ -323,7 +394,29 @@ public class RflPlugin extends Plugin
     public void onGameTick(final GameTick event)
     {
         inPoh = pohDetector.inPoh(client);
+        refreshIdentity();
         checkInterceptions();
+    }
+
+    /** Client thread: snapshots RSN/install id/world for {@link GameClient}; reallocates only on change. */
+    private void refreshIdentity()
+    {
+        final Player local = client.getLocalPlayer();
+        final String name = local == null ? null : local.getName();
+        if (client.getGameState() != GameState.LOGGED_IN || name == null)
+        {
+            identity = null;
+            return;
+        }
+        final String rsn = Text.sanitize(name);
+        final String installId = config.installId();
+        final int world = client.getWorld();
+        final GameClient.Identity current = identity;
+        if (current == null || !current.rsn.equals(rsn) || !current.installId.equals(installId)
+            || current.world != world)
+        {
+            identity = new GameClient.Identity(rsn, installId, world);
+        }
     }
 
     /**
@@ -458,6 +551,7 @@ public class RflPlugin extends Plugin
         final GameState state = event.getGameState();
         if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
         {
+            identity = null;
             closeOrResetTracking(config.enableReporting());
         }
     }
