@@ -28,7 +28,11 @@ import okhttp3.Response;
 @Singleton
 public final class ReportSender
 {
-    /** Gateway host; public so {@code com.rfl.game.GameClient} talks to the same one. */
+    /**
+     * Gateway host; public so {@code com.rfl.game.GameClient} talks to the same one.
+     * RELEASE: staging host. Change to https://api.ironforged.gg for the prod release, together
+     * with the host named in RflConfig#enableReporting and runelite-plugin.properties.
+     */
     public static final String BASE_URL = "https://dev-api.ironforged.gg";
 
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
