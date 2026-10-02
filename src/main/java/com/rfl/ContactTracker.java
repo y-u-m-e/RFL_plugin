@@ -25,8 +25,15 @@ final class ContactTracker
     static final int START_DEPTH = 12;
 
     /**
-     * One overlapping pair from the latest update; {@code contact} once it passed START_DEPTH.
-     * {@code partA}/{@code partB} name the deepest part pair (partA belongs to a).
+     * Grown onto each overlapping capsule pair's shared bounds when picking candidate triangles in
+     * CAPSULES_AND_MESH, since model triangles (armour, capes) can stick out past the capsules.
+     */
+    static final float MESH_REGION_MARGIN = 8;
+
+    /**
+     * One pair from the latest update: overlapping capsules, or (MESH mode) touching triangles.
+     * {@code contact} once it counts as a contact. {@code partA}/{@code partB} name the deepest
+     * part pair (partA belongs to a).
      */
     static final class Overlap
     {
@@ -36,8 +43,12 @@ final class ContactTracker
         final String partB;
         final int depth;
         final boolean contact;
+        /** Triangles touching this update; null when the mode didn't check. */
+        final Boolean mesh;
+        /** Why the pair is or isn't a contact, for the debug panel. */
+        final String why;
 
-        Overlap(String a, String b, String partA, String partB, int depth, boolean contact)
+        Overlap(String a, String b, String partA, String partB, int depth, boolean contact, Boolean mesh, String why)
         {
             this.a = a;
             this.b = b;
@@ -45,49 +56,87 @@ final class ContactTracker
             this.partB = partB;
             this.depth = depth;
             this.contact = contact;
+            this.mesh = mesh;
+            this.why = why;
         }
     }
+
+    /** What one update saw for a pair. */
+    private static final class Pair
+    {
+        /** Deepest capsule pair; null when either body has no parts. */
+        final Body.Contact capsule;
+        /** Capsule penetration, rounded; 0 when apart. */
+        final int depth;
+        final Boolean mesh;
+        final PosedMesh.Hits hits;
+        /** The mode's contact condition this update, without the hold. */
+        final boolean colliding;
+
+        Pair(Body.Contact capsule, int depth, Boolean mesh, PosedMesh.Hits hits, boolean colliding)
+        {
+            this.capsule = capsule;
+            this.depth = depth;
+            this.mesh = mesh;
+            this.hits = hits;
+            this.colliding = colliding;
+        }
+    }
+
+    private RflConfig.ContactMode mode = RflConfig.ContactMode.CAPSULES;
 
     // pairKey -> max overlap depth seen since the pair became active.
     private final Map<String, Integer> active = new HashMap<>();
 
-    // pairKey -> deepest part pair in the latest update (every pair with penetration > 0).
-    private Map<String, Body.Contact> latest = new HashMap<>();
+    // pairKey -> what the latest update saw (overlapping capsules, or touching triangles in MESH).
+    private Map<String, Pair> latest = new HashMap<>();
 
+    private long meshNanos;
+
+    void setMode(RflConfig.ContactMode mode)
+    {
+        this.mode = mode;
+    }
+
+    /**
+     * CAPSULES: a contact starts at START_DEPTH and holds until the capsules separate.
+     * CAPSULES_AND_MESH: starts at START_DEPTH with touching triangles, then holds until the
+     * capsules separate. MESH: a contact exactly while any triangles touch.
+     */
     List<RflEvent> update(Map<String, Body> bodies, long now, int tick)
     {
-        Map<String, Body.Contact> currentDepths = currentOverlaps(bodies);
-        latest = currentDepths;
+        Map<String, Pair> current = currentPairs(bodies);
+        latest = current;
         List<RflEvent> events = new ArrayList<>();
 
-        for (Map.Entry<String, Body.Contact> entry : currentDepths.entrySet())
+        for (Map.Entry<String, Pair> entry : current.entrySet())
         {
             String key = entry.getKey();
-            int depth = depth(entry.getValue());
+            Pair pair = entry.getValue();
             Integer maxSoFar = active.get(key);
 
             if (maxSoFar == null)
             {
-                if (depth < START_DEPTH)
+                if (!pair.colliding)
                 {
                     continue;
                 }
-                String[] pair = splitKey(key);
-                events.add(RflEvent.contactStart(now, tick, pair[0], pair[1], depth));
-                active.put(key, depth);
+                String[] names = splitKey(key);
+                events.add(RflEvent.contactStart(now, tick, names[0], names[1], pair.depth));
+                active.put(key, pair.depth);
             }
-            else if (depth > maxSoFar)
+            else if (pair.depth > maxSoFar)
             {
-                active.put(key, depth);
+                active.put(key, pair.depth);
             }
         }
 
         List<String> ended = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : active.entrySet())
+        for (String key : active.keySet())
         {
-            if (!currentDepths.containsKey(entry.getKey()))
+            if (!held(current.get(key)))
             {
-                ended.add(entry.getKey());
+                ended.add(key);
             }
         }
         for (String key : ended)
@@ -99,37 +148,94 @@ final class ContactTracker
         return events;
     }
 
+    private boolean held(Pair pair)
+    {
+        if (pair == null)
+        {
+            return false;
+        }
+        if (mode == RflConfig.ContactMode.MESH)
+        {
+            return Boolean.TRUE.equals(pair.mesh);
+        }
+        return pair.capsule != null && pair.capsule.depth > 0;
+    }
+
     void reset()
     {
         active.clear();
         latest = new HashMap<>();
     }
 
-    /** Every overlapping pair from the latest update, contacts and sub-threshold grazes alike. */
+    /** Nanoseconds spent in triangle checks since the last call. */
+    long takeMeshNanos()
+    {
+        long n = meshNanos;
+        meshNanos = 0;
+        return n;
+    }
+
+    /** Every pair from the latest update, contacts and sub-threshold grazes alike. */
     List<Overlap> overlaps()
     {
         List<Overlap> result = new ArrayList<>();
-        for (Map.Entry<String, Body.Contact> entry : latest.entrySet())
+        for (Map.Entry<String, Pair> entry : latest.entrySet())
         {
-            String[] pair = splitKey(entry.getKey());
-            Body.Contact c = entry.getValue();
-            result.add(new Overlap(pair[0], pair[1], c.partA.name, c.partB.name, depth(c),
-                active.containsKey(entry.getKey())));
+            String[] names = splitKey(entry.getKey());
+            Pair p = entry.getValue();
+            boolean contact = active.containsKey(entry.getKey());
+            result.add(new Overlap(names[0], names[1], p.capsule == null ? "-" : p.capsule.partA.name,
+                p.capsule == null ? "-" : p.capsule.partB.name, p.depth, contact, p.mesh, why(p, contact)));
+        }
+        return result;
+    }
+
+    private String why(Pair p, boolean contact)
+    {
+        String depth = "depth " + p.depth;
+        if (mode == RflConfig.ContactMode.MESH)
+        {
+            return p.hits != null ? p.hits.count + " triangle pairs touching" : "no triangles touching";
+        }
+        if (p.depth < START_DEPTH)
+        {
+            return contact ? "held until separated (" + depth + ")" : depth + " < " + START_DEPTH;
+        }
+        if (mode == RflConfig.ContactMode.CAPSULES)
+        {
+            return depth + " >= " + START_DEPTH;
+        }
+        if (p.hits != null)
+        {
+            return depth + " >= " + START_DEPTH + ", " + p.hits.count + " triangle pairs touching";
+        }
+        return contact ? "held; no triangles touching" : "no triangles touching";
+    }
+
+    /** Intersecting triangles of every pair checked in the latest update. */
+    List<PosedMesh.Hits> meshHits()
+    {
+        List<PosedMesh.Hits> result = new ArrayList<>();
+        for (Pair p : latest.values())
+        {
+            if (p.hits != null)
+            {
+                result.add(p.hits);
+            }
         }
         return result;
     }
 
     /**
-     * Name to the names they are colliding with in the latest update: overlap of at least
-     * START_DEPTH right now. Unlike {@link #contactsByPlayer}, a contact being held while the
-     * bodies separate does not count.
+     * Name to the names they are colliding with in the latest update: the mode's contact
+     * condition right now. Unlike {@link #contactsByPlayer}, a contact being held does not count.
      */
     Map<String, List<String>> collidingNow()
     {
         Map<String, List<String>> result = new HashMap<>();
-        for (Map.Entry<String, Body.Contact> entry : latest.entrySet())
+        for (Map.Entry<String, Pair> entry : latest.entrySet())
         {
-            if (entry.getValue().depth < START_DEPTH)
+            if (!entry.getValue().colliding)
             {
                 continue;
             }
@@ -140,7 +246,7 @@ final class ContactTracker
         return result;
     }
 
-    /** Name to the names they are currently in contact with (pairs past START_DEPTH). */
+    /** Name to the names they are currently in contact with. */
     Map<String, List<String>> contactsByPlayer()
     {
         Map<String, List<String>> result = new HashMap<>();
@@ -153,14 +259,9 @@ final class ContactTracker
         return result;
     }
 
-    private static int depth(Body.Contact contact)
+    private Map<String, Pair> currentPairs(Map<String, Body> bodies)
     {
-        return (int) Math.round(contact.depth);
-    }
-
-    private static Map<String, Body.Contact> currentOverlaps(Map<String, Body> bodies)
-    {
-        Map<String, Body.Contact> depths = new HashMap<>();
+        Map<String, Pair> pairs = new HashMap<>();
         List<String> names = new ArrayList<>(bodies.keySet());
 
         for (int i = 0; i < names.size(); i++)
@@ -171,16 +272,66 @@ final class ContactTracker
                 String y = names.get(j);
                 String a = x.compareTo(y) <= 0 ? x : y;
                 String b = x.compareTo(y) <= 0 ? y : x;
+                Body ba = bodies.get(a);
+                Body bb = bodies.get(b);
 
-                Body.Contact contact = Body.contact(bodies.get(a), bodies.get(b));
-                if (contact != null && contact.depth > 0)
+                Body.Contact contact = Body.contact(ba, bb);
+                int depth = contact == null || contact.depth <= 0 ? 0 : (int) Math.round(contact.depth);
+                Boolean mesh = null;
+                PosedMesh.Hits hits = null;
+                if (mode == RflConfig.ContactMode.MESH
+                    || mode == RflConfig.ContactMode.CAPSULES_AND_MESH && depth >= START_DEPTH)
                 {
-                    depths.put(pairKey(a, b), contact);
+                    long start = System.nanoTime();
+                    if (ba.mesh != null && bb.mesh != null)
+                    {
+                        hits = PosedMesh.intersect(ba.mesh, bb.mesh,
+                            mode == RflConfig.ContactMode.MESH ? null : capsuleRegions(ba, bb));
+                    }
+                    meshNanos += System.nanoTime() - start;
+                    mesh = hits != null;
+                }
+                boolean touching = Boolean.TRUE.equals(mesh);
+                boolean colliding = mode == RflConfig.ContactMode.CAPSULES ? depth >= START_DEPTH
+                    : mode == RflConfig.ContactMode.CAPSULES_AND_MESH ? depth >= START_DEPTH && touching
+                    : touching;
+                if (contact != null && contact.depth > 0 || touching)
+                {
+                    pairs.put(pairKey(a, b), new Pair(contact, depth, mesh, hits, colliding));
                 }
             }
         }
 
-        return depths;
+        return pairs;
+    }
+
+    /** Shared bounds of every overlapping capsule pair, grown by MESH_REGION_MARGIN. */
+    private static List<float[]> capsuleRegions(Body a, Body b)
+    {
+        List<float[]> regions = new ArrayList<>();
+        for (Capsule pa : a.parts)
+        {
+            for (Capsule pb : b.parts)
+            {
+                if (Capsule.penetration(pa, pb) > 0)
+                {
+                    float[] r = PosedMesh.overlap(bounds(pa), bounds(pb), MESH_REGION_MARGIN);
+                    if (r != null)
+                    {
+                        regions.add(r);
+                    }
+                }
+            }
+        }
+        return regions;
+    }
+
+    private static float[] bounds(Capsule c)
+    {
+        return new float[]{
+            (float) (Math.min(c.ax, c.bx) - c.radius), (float) (Math.min(c.ay, c.by) - c.radius),
+            (float) (Math.min(c.az, c.bz) - c.radius), (float) (Math.max(c.ax, c.bx) + c.radius),
+            (float) (Math.max(c.ay, c.by) + c.radius), (float) (Math.max(c.az, c.bz) + c.radius)};
     }
 
     private static String pairKey(String a, String b)

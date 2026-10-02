@@ -182,4 +182,96 @@ public class ContactTrackerTest
         assertEquals(List.of("Zed"), t.contactsByPlayer().get("Amy"));
         assertEquals(null, t.collidingNow().get("Amy"));
     }
+
+    // --- Contact modes -------------------------------------------------------------------------
+
+    /** Upright torso capsule at (x, 0) with radius 50, carrying a one-triangle mesh. */
+    private static Body meshed(int x, double[]... tri)
+    {
+        PosedMesh mesh = new PosedMesh(
+            new float[]{(float) tri[0][0], (float) tri[1][0], (float) tri[2][0]},
+            new float[]{(float) tri[0][1], (float) tri[1][1], (float) tri[2][1]},
+            new float[]{(float) tri[0][2], (float) tri[1][2], (float) tri[2][2]},
+            new int[]{0, 1, 2});
+        return new Body(List.of(new Capsule("torso", x, 0, 0, x, 0, 100, 50)), x, 0, mesh);
+    }
+
+    private static final double[][] WALL = {{40, -20, 40}, {40, 20, 40}, {40, 0, 80}};
+    private static final double[][] THROUGH = {{30, 0, 50}, {50, 0, 50}, {40, 0, 70}};
+    private static final double[][] BESIDE = {{30, 30, 50}, {50, 30, 50}, {40, 30, 70}};
+
+    private static List<RflEvent> run(RflConfig.ContactMode mode, Body amy, Body zed)
+    {
+        ContactTracker t = new ContactTracker();
+        t.setMode(mode);
+        return t.update(Map.of("Amy", amy, "Zed", zed), 0, 0);
+    }
+
+    @Test
+    public void deepCapsulesWithoutTouchingTrianglesAreAContactOnlyInCapsuleMode()
+    {
+        // Capsules 80 apart, radius 50 each: depth 20 >= START_DEPTH. Triangles miss each other.
+        Body amy = meshed(0, WALL);
+        Body zed = meshed(80, BESIDE);
+        assertTrue(20 >= ContactTracker.START_DEPTH);
+        assertEquals("contact_start", run(RflConfig.ContactMode.CAPSULES, amy, zed).get(0).type);
+        assertTrue(run(RflConfig.ContactMode.CAPSULES_AND_MESH, amy, zed).isEmpty());
+        assertTrue(run(RflConfig.ContactMode.MESH, amy, zed).isEmpty());
+
+        // Same capsules with touching triangles: a contact in both mesh-aware modes too.
+        Body touching = meshed(80, THROUGH);
+        assertEquals("contact_start", run(RflConfig.ContactMode.CAPSULES_AND_MESH, amy, touching).get(0).type);
+        assertEquals("contact_start", run(RflConfig.ContactMode.MESH, amy, touching).get(0).type);
+    }
+
+    @Test
+    public void touchingTrianglesBelowTheStartDepthAreAContactOnlyInMeshMode()
+    {
+        // Capsules 95 apart: depth 5, a graze. The triangles cross.
+        Body amy = meshed(0, WALL);
+        Body zed = meshed(95, THROUGH);
+        assertTrue(run(RflConfig.ContactMode.CAPSULES, amy, zed).isEmpty());
+        assertTrue(run(RflConfig.ContactMode.CAPSULES_AND_MESH, amy, zed).isEmpty());
+        List<RflEvent> mesh = run(RflConfig.ContactMode.MESH, amy, zed);
+        assertEquals("contact_start", mesh.get(0).type);
+        assertEquals(5, (int) mesh.get(0).depth);
+    }
+
+    @Test
+    public void meshModeStartsAndEndsOnTriangleContactAlone()
+    {
+        ContactTracker t = new ContactTracker();
+        t.setMode(RflConfig.ContactMode.MESH);
+        Body amy = meshed(0, WALL);
+        // Capsules 300 apart (no overlap), triangles still crossing: contact with depth 0.
+        List<RflEvent> start = t.update(Map.of("Amy", amy, "Zed", meshed(300, THROUGH)), 0, 0);
+        assertEquals("contact_start", start.get(0).type);
+        assertEquals(0, (int) start.get(0).depth);
+        assertEquals(List.of("Zed"), t.collidingNow().get("Amy"));
+        assertEquals(1, t.meshHits().size());
+
+        // Capsules deep, triangles apart: no hold in mesh mode, the contact ends.
+        List<RflEvent> end = t.update(Map.of("Amy", amy, "Zed", meshed(80, BESIDE)), 20, 1);
+        assertEquals("contact_end", end.get(0).type);
+        assertEquals(null, t.collidingNow().get("Amy"));
+    }
+
+    @Test
+    public void capsulesAndMeshHoldsUntilTheCapsulesSeparate()
+    {
+        ContactTracker t = new ContactTracker();
+        t.setMode(RflConfig.ContactMode.CAPSULES_AND_MESH);
+        Body amy = meshed(0, WALL);
+        assertEquals("contact_start", t.update(Map.of("Amy", amy, "Zed", meshed(80, THROUGH)), 0, 0).get(0).type);
+        assertEquals(List.of("Zed"), t.collidingNow().get("Amy"));
+
+        // Triangles stop touching while the capsules still overlap: held, but not colliding now.
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", meshed(80, BESIDE)), 20, 1).isEmpty());
+        assertEquals(List.of("Zed"), t.contactsByPlayer().get("Amy"));
+        assertEquals(null, t.collidingNow().get("Amy"));
+        ContactTracker.Overlap o = t.overlaps().get(0);
+        assertEquals(Boolean.FALSE, o.mesh);
+
+        assertEquals("contact_end", t.update(Map.of("Amy", amy, "Zed", meshed(300, BESIDE)), 40, 2).get(0).type);
+    }
 }

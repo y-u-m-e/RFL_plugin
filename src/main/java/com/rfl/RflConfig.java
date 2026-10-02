@@ -31,6 +31,13 @@ public interface RflConfig extends Config
     String FEATURES_SECTION = "features";
 
     @ConfigSection(
+        name = "Detection",
+        description = "How contacts are detected. For testing; this will be fixed to one mode for everyone later.",
+        position = 7
+    )
+    String DETECTION_SECTION = "detection";
+
+    @ConfigSection(
         name = "Display",
         description = "What the plugin draws on your screen. Display only; nothing here is reported.",
         position = 8
@@ -255,6 +262,31 @@ public interface RflConfig extends Config
     default HitboxSource hitboxSource()
     {
         return HitboxSource.EQUIPPED;
+    }
+
+    /** What decides a contact between two players. */
+    enum ContactMode
+    {
+        CAPSULES,
+        CAPSULES_AND_MESH,
+        MESH
+    }
+
+    /**
+     * @return how contacts are detected
+     */
+    @ConfigItem(
+        keyName = "contactMode",
+        name = "Contact mode",
+        description = "For testing; this will be fixed to one mode for everyone later. Capsules: body-part "
+            + "capsules overlap past the contact depth. Capsules and mesh: that, and the two models' "
+            + "triangles actually touch. Mesh: any triangles of the two models touch.",
+        section = DETECTION_SECTION,
+        position = 0
+    )
+    default ContactMode contactMode()
+    {
+        return ContactMode.CAPSULES_AND_MESH;
     }
 
     @ConfigSection(

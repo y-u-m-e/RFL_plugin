@@ -74,11 +74,25 @@ final class Body
     final int centreX;
     final int centreY;
 
+    /** The posed model's triangles, for the mesh contact modes; null when not built. */
+    final PosedMesh mesh;
+
     Body(List<Capsule> parts, int centreX, int centreY)
+    {
+        this(parts, centreX, centreY, null);
+    }
+
+    Body(List<Capsule> parts, int centreX, int centreY, PosedMesh mesh)
     {
         this.parts = parts;
         this.centreX = centreX;
         this.centreY = centreY;
+        this.mesh = mesh;
+    }
+
+    Body withMesh(PosedMesh mesh)
+    {
+        return new Body(parts, centreX, centreY, mesh);
     }
 
     /** @return the deepest part pair (each part of a against each part of b), or null when either has none */
