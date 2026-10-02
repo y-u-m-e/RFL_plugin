@@ -65,6 +65,8 @@ import net.runelite.client.ui.PluginPanel;
 public final class GamePanel extends PluginPanel
 {
     static final String OPT_IN = "Turn on Enable reporting to browse and join games";
+    static final String OBSERVING = "Observer mode is on: games are hidden and nothing is sent to any server. "
+        + "Collisions are saved on this computer only.";
     static final String GAME_ENDED = "Game ended";
     static final String REMOVED = "You were removed from the game";
     static final String SWITCHED = "Switched account — left the game view";
@@ -95,6 +97,11 @@ public final class GamePanel extends PluginPanel
     private volatile boolean reporting;
     /** Set once when the plugin shuts down; nothing may restart the loop after that. */
     private volatile boolean disposed;
+    /** EDT: Observer mode is on, so the Observer section replaces every game control. */
+    private boolean observer;
+    /** EDT: latest observer collision rows, newest first. */
+    private List<String> observed = List.of();
+    private Runnable openFolder = () -> { };
     /** EDT: a create/join is in flight, so Host/Join are disabled. */
     private boolean busy;
     private String notice = "";
@@ -415,6 +422,21 @@ public final class GamePanel extends PluginPanel
         render();
     }
 
+    /**
+     * EDT. Observer mode: while on, the Observer section (latest collisions and Open folder)
+     * replaces browsing, hosting and joining.
+     *
+     * @param rows       latest collision rows, newest first
+     * @param openFolder opens the folder the collisions are saved in
+     */
+    public void setObserver(final boolean on, final List<String> rows, final Runnable openFolder)
+    {
+        observer = on;
+        observed = rows;
+        this.openFolder = openFolder;
+        render();
+    }
+
     /** EDT. Marks a create/join in flight (Host/Join disabled until {@link #entered}/{@link #fail}). */
     private void startBusy()
     {
@@ -618,7 +640,11 @@ public final class GamePanel extends PluginPanel
         content.removeAll();
         combos.clear();
         content.add(title("RFL"));
-        if (!reporting)
+        if (observer)
+        {
+            buildObserver();
+        }
+        else if (!reporting)
         {
             content.add(text(OPT_IN, ColorScheme.LIGHT_GRAY_COLOR));
         }
@@ -658,7 +684,7 @@ public final class GamePanel extends PluginPanel
     private String signature(final GameDetail d)
     {
         final StringBuilder sb = new StringBuilder()
-            .append(reporting).append(busy).append('|').append(notice).append('|').append(actionError).append('|')
+            .append(observer).append(observed).append(reporting).append(busy).append('|').append(notice).append('|').append(actionError).append('|')
             .append(passphrase).append('|').append(rsn()).append('|');
         if (d == null || d.game == null)
         {
@@ -695,6 +721,21 @@ public final class GamePanel extends PluginPanel
             }
         }
         return sb.toString();
+    }
+
+    private void buildObserver()
+    {
+        content.add(section("Observer"));
+        content.add(text(OBSERVING, ColorScheme.LIGHT_GRAY_COLOR));
+        content.add(row(button("Open folder", openFolder)));
+        if (observed.isEmpty())
+        {
+            content.add(text("No collisions yet", ColorScheme.LIGHT_GRAY_COLOR));
+        }
+        for (final String r : observed)
+        {
+            content.add(text(r, Color.WHITE));
+        }
     }
 
     private void buildBrowser()

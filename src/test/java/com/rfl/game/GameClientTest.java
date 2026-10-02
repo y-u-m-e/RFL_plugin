@@ -14,6 +14,7 @@ import java.util.function.Consumer;
 import org.junit.Test;
 
 import com.google.gson.GsonBuilder;
+import com.rfl.RflPlugin;
 
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -146,6 +147,22 @@ public class GameClientTest
 
         assertEquals(GameClient.REPORTING_OFF, listed.error());
         assertEquals(GameClient.REPORTING_OFF, joined.error());
+        assertEquals(null, sent.get());
+    }
+
+    @Test
+    public void sendsNothingWhileObservingEvenWithReportingOn() throws InterruptedException
+    {
+        final AtomicReference<Request> sent = new AtomicReference<>();
+        final GameClient client = clientReturning(200, "[]", sent::set);
+        client.setEnabled(() -> RflPlugin.reportingAllowed(true, true));
+        client.setIdentitySupplier(() -> new GameClient.Identity("Rsn", "install-1", 301));
+
+        final GameClient.Result<List<GameSummary>> listed = await(client::list);
+        final GameClient.Result<String> created = await(callback -> client.create("g", "pp", callback));
+
+        assertEquals(GameClient.REPORTING_OFF, listed.error());
+        assertEquals(GameClient.REPORTING_OFF, created.error());
         assertEquals(null, sent.get());
     }
 

@@ -31,6 +31,10 @@ import net.runelite.client.util.Text;
  * either body. Pairs of two other players are checked only while one of them holds a handegg (for
  * the name-free collision_seen witness) or while Show hitboxes or Show touching triangles is on.
  *
+ * <p>Observer mode: no contact events (open self contacts end); every pair with a handegg holder
+ * is tracked locally instead and each finished collision goes to {@link ObserverLog}, never to
+ * the event queue.
+ *
  * <p>Client thread only: written from {@code ClientTick}, read by overlays (which render on the
  * client thread) and game-tick handlers. The latest-frame maps are replaced, never mutated.
  */
@@ -41,10 +45,11 @@ final class ContactDetector
     private static final long LOG_INTERVAL_MS = 10_000;
 
     private final Client client;
-    private final ContactTracker tracker = new ContactTracker(this::tile);
+    private final ContactTracker tracker = new ContactTracker(this::tile, this::world);
     private final ContactHighlights highlights;
     private final RflConfig config;
     private final BareBody bareBody;
+    private final ObserverLog observerLog;
     private Map<String, PosedMesh> latestMeshes = Collections.emptyMap();
     private Map<String, Player> latestPlayers = Collections.emptyMap();
     private List<String> latestMissing = Collections.emptyList();
@@ -57,8 +62,10 @@ final class ContactDetector
     private volatile double meshMsPerFrame;
 
     @Inject
-    ContactDetector(Client client, ContactHighlights highlights, RflConfig config, BareBody bareBody)
+    ContactDetector(Client client, ContactHighlights highlights, RflConfig config, BareBody bareBody,
+        ObserverLog observerLog)
     {
+        this.observerLog = observerLog;
         this.client = client;
         this.highlights = highlights;
         this.config = config;
@@ -123,7 +130,8 @@ final class ContactDetector
         Player local = client.getLocalPlayer();
         String self = local == null ? null : sanitizedName(local);
         List<RflEvent> events = tracker.update(meshes, self, holders, display, now,
-            client.getTickCount(), detail);
+            client.getTickCount(), detail, config.observerMode());
+        saveObserved();
         endMeshFrame(now);
         for (RflEvent event : events)
         {
@@ -164,19 +172,39 @@ final class ContactDetector
         latestMeshes = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
         latestMissing = Collections.emptyList();
-        return tracker.update(Collections.emptyMap(), null, Collections.emptySet(), false,
+        List<RflEvent> events = tracker.update(Collections.emptyMap(), null, Collections.emptySet(), false,
             System.currentTimeMillis(), client.getTickCount(), false);
+        saveObserved();
+        return events;
     }
 
-    /** Drops every open pair without events, plus highlights and the bare-body model cache. */
+    /**
+     * Drops every open pair without events, plus highlights and the bare-body model cache. Open
+     * observer collisions are saved as ended first. Client thread.
+     */
     void reset()
     {
+        tracker.flushObserved(System.currentTimeMillis(), client.getTickCount());
+        saveObserved();
         tracker.reset();
         highlights.clear();
         bareBody.reset();
         latestMeshes = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
         latestMissing = Collections.emptyList();
+    }
+
+    private void saveObserved()
+    {
+        for (ObservedCollision c : tracker.takeObserved())
+        {
+            observerLog.record(c);
+        }
+    }
+
+    private int world()
+    {
+        return client.getWorld();
     }
 
     /** Players from the latest frame, by sanitized name; read on the client thread only. */

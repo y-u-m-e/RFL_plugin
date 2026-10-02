@@ -42,6 +42,7 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
+import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.Text;
 
 /**
@@ -54,6 +55,10 @@ import net.runelite.client.util.Text;
  * ({@link InterceptionDetector}), the report heartbeat ({@link ReportSender}), the per-account
  * install ID, and the identity snapshot the "RFL" game panel ({@link GamePanel}) reads. Debug
  * panel and debug logging live in {@link RflDebug}.
+ *
+ * <p>Observer mode overrides reporting: nothing is sent (no reports, no game panel requests, no
+ * collision_seen), and every handegg collision in view between any two players is saved on this
+ * computer only ({@link ObserverLog}). It does not need Enable reporting.
  *
  * <p>Threads: detection, the install ID and the debug state are client-thread only. The game
  * panel and debug panel are created and removed on the EDT. {@link #identity} and {@link #inPoh}
@@ -128,6 +133,9 @@ public class RflPlugin extends Plugin
     @Inject
     private RflDebug debug;
 
+    @Inject
+    private ObserverLog observerLog;
+
     private final InterceptionDetector interceptionDetector = new InterceptionDetector();
 
     // Client thread only: the install ID cached for the RS profile it was read for.
@@ -164,7 +172,9 @@ public class RflPlugin extends Plugin
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
         gameClient.setIdentitySupplier(() -> identity);
-        gameClient.setEnabled(config::enableReporting);
+        gameClient.setEnabled(this::reporting);
+        reportSender.setEnabled(this::reporting);
+        observerLog.setOnChange(() -> SwingUtilities.invokeLater(this::syncObserver));
         SwingUtilities.invokeLater(debug::syncPanel);
         SwingUtilities.invokeLater(this::addGamePanel);
     }
@@ -175,6 +185,7 @@ public class RflPlugin extends Plugin
         overlayManager.remove(contactHighlightOverlay);
         overlayManager.remove(hitboxOverlay);
         // Detection state is client-thread only; a ClientTick may still be running right now.
+        // contactDetector.reset() saves any open observer collisions as ended.
         clientThread.invoke(() ->
         {
             interceptionDetector.reset();
@@ -205,7 +216,49 @@ public class RflPlugin extends Plugin
             .build();
         clientToolbar.addNavigation(gameButton);
         gamePanel = panel;
-        panel.setReporting(config.enableReporting());
+        panel.setReporting(reporting());
+        syncObserver();
+    }
+
+    /** EDT. Pushes Observer mode and the latest collisions to the game panel. */
+    private void syncObserver()
+    {
+        if (gamePanel == null)
+        {
+            return;
+        }
+        final List<String> rows = new ArrayList<>();
+        for (final ObservedCollision c : observerLog.recent())
+        {
+            rows.add(ObserverLog.row(c));
+        }
+        gamePanel.setObserver(config.observerMode(), rows, this::openObserverFolder);
+    }
+
+    /** EDT. Creates the folder off the EDT, then opens it with LinkBrowser. */
+    private void openObserverFolder()
+    {
+        executor.execute(() ->
+        {
+            observerLog.ensureDir();
+            LinkBrowser.open(observerLog.dir().toUri().toString());
+        });
+    }
+
+    /**
+     * @param enableReporting the Enable reporting setting
+     * @param observerMode    the Observer mode setting
+     * @return whether anything may be sent: Observer mode overrides reporting
+     */
+    public static boolean reportingAllowed(final boolean enableReporting, final boolean observerMode)
+    {
+        return enableReporting && !observerMode;
+    }
+
+    /** Any thread: the send gate for reports, plugin toggles and the game panel. */
+    private boolean reporting()
+    {
+        return reportingAllowed(config.enableReporting(), config.observerMode());
     }
 
     /** EDT. */
@@ -234,14 +287,15 @@ public class RflPlugin extends Plugin
         {
             SwingUtilities.invokeLater(debug::syncPanel);
         }
-        if ("enableReporting".equals(event.getKey()))
+        if ("enableReporting".equals(event.getKey()) || "observerMode".equals(event.getKey()))
         {
             SwingUtilities.invokeLater(() ->
             {
                 if (gamePanel != null)
                 {
-                    gamePanel.setReporting(config.enableReporting());
+                    gamePanel.setReporting(reporting());
                 }
+                syncObserver();
             });
         }
     }
@@ -321,11 +375,21 @@ public class RflPlugin extends Plugin
         return fresh;
     }
 
-    /** Client thread: detection runs only while reporting and contacts are on, logged in, in a POH. */
+    /** Client thread: see {@link #detects}. */
     private boolean watchingContacts()
     {
-        return config.enableReporting() && config.reportContacts()
-            && client.getGameState() == GameState.LOGGED_IN && inPoh;
+        return detects(config.enableReporting(), config.reportContacts(), config.observerMode(),
+            client.getGameState() == GameState.LOGGED_IN, inPoh);
+    }
+
+    /**
+     * Contact detection runs logged in, inside a POH, with either reporting and Detect contacts on
+     * or Observer mode on (which needs neither).
+     */
+    static boolean detects(final boolean enableReporting, final boolean reportContacts, final boolean observerMode,
+        final boolean loggedIn, final boolean inPoh)
+    {
+        return (observerMode || enableReporting && reportContacts) && loggedIn && inPoh;
     }
 
     /**
@@ -427,8 +491,13 @@ public class RflPlugin extends Plugin
         }
         for (final RflEvent contactEvent : contactDetector.onFrame(client))
         {
+            // Observer mode starts nothing reportable; the only events then are contact_ends for
+            // self contacts open when it went on, queued (not sent) so each start keeps its end.
             debug.recordEvent(contactEvent);
-            eventQueue.add(contactEvent);
+            if (config.enableReporting())
+            {
+                eventQueue.add(contactEvent);
+            }
         }
         debug.recordMissing(contactDetector.missingMeshes());
     }
@@ -471,7 +540,7 @@ public class RflPlugin extends Plugin
     @Subscribe
     public void onPluginChanged(final PluginChanged event)
     {
-        if (!config.enableReporting() || !config.reportPlugins())
+        if (!reporting() || !config.reportPlugins())
         {
             return;
         }
@@ -492,7 +561,7 @@ public class RflPlugin extends Plugin
     @Schedule(period = 10, unit = ChronoUnit.SECONDS)
     public void sendReport()
     {
-        if (!config.enableReporting())
+        if (!reporting())
         {
             return;
         }

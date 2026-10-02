@@ -105,6 +105,23 @@ public interface RflConfig extends Config
     }
 
     /**
+     * Local-only collision tracking between any two players. Overrides reporting while on.
+     *
+     * @return true when Observer mode is on
+     */
+    @ConfigItem(
+        keyName = "observerMode",
+        name = "Observer mode",
+        position = 1,
+        description = "Track every handegg collision in view between any two players and save it on this "
+            + "computer only. Nothing is sent to any server while this is on."
+    )
+    default boolean observerMode()
+    {
+        return false;
+    }
+
+    /**
      * @return true to send the enabled plugin list and plugin toggle events
      */
     @ConfigItem(

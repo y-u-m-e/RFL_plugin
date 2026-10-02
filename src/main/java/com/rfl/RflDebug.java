@@ -155,6 +155,7 @@ final class RflDebug
         sb.append("GATE\n")
             .append("logged in: ").append(yesNo(client.getGameState() == GameState.LOGGED_IN)).append('\n')
             .append("reporting: ").append(yesNo(config.enableReporting())).append('\n')
+            .append("observer: ").append(yesNo(config.observerMode())).append('\n')
             .append("in POH: ").append(yesNo(inPoh)).append('\n')
             .append("detect contacts: ").append(yesNo(config.reportContacts())).append('\n')
             .append("hitbox source: ").append(source).append("\n\n");
@@ -213,7 +214,8 @@ final class RflDebug
     /** Logs the detection gate (the settings and state that decide whether detection runs) when it changes. */
     void logGate(int tick, boolean inPoh)
     {
-        String gate = "reporting=" + config.enableReporting() + " contacts=" + config.reportContacts()
+        String gate = "reporting=" + config.enableReporting() + " observer=" + config.observerMode()
+            + " contacts=" + config.reportContacts()
             + " inPoh=" + inPoh + " detectInterceptions=" + config.detectInterceptions();
         if (!gate.equals(lastGateLog))
         {

@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntSupplier;
 
 /**
  * Pair state machine over per-frame player meshes (see {@link PosedMesh}). A contact starts on the
@@ -29,6 +30,12 @@ import java.util.Set;
  * <p>Pairs of two other players are checked only while one of them holds a handegg (for the
  * name-free {@code collision_seen} witness event, once per pair contact) or while {@code others} is
  * set (Show hitboxes or Show touching triangles). Each pair's whole-mesh bounds are checked before any triangles.
+ *
+ * <p>Observer mode ({@code observe}): no new events (open self contacts end, nothing starts, no
+ * collision_seen). Instead every pair, self or not, is tracked locally with the same handegg-gated
+ * mesh-touch start and bounds-separate end, and each finished one is queued as an
+ * {@link ObservedCollision} (with names) for {@link #takeObserved}. Open ones also finish when
+ * observe goes off, the meshes go away, or {@link #flushObserved} is called.
  *
  * <p>Names are expected to already be {@code Text.sanitize}d by the caller. Client thread only.
  */
@@ -81,7 +88,35 @@ final class ContactTracker
         }
     }
 
+    /** One open observer collision. */
+    private static final class Observed
+    {
+        final long startMs;
+        final int startTick;
+        final int world;
+        final List<String> ball;
+        int max;
+        int[] tile;
+
+        Observed(long startMs, int startTick, int world, List<String> ball, int max, int[] tile)
+        {
+            this.startMs = startMs;
+            this.startTick = startTick;
+            this.world = world;
+            this.ball = ball;
+            this.max = max;
+            this.tile = tile;
+        }
+    }
+
     private final Tiles tiles;
+    private final IntSupplier world;
+
+    /** pairKey of each open observer collision. */
+    private final Map<String, Observed> observed = new HashMap<>();
+
+    /** Observer collisions finished since the last {@link #takeObserved}. */
+    private List<ObservedCollision> finished = new ArrayList<>();
 
     /** pairKey of each open self contact. */
     private final Map<String, Contact> active = new HashMap<>();
@@ -102,7 +137,21 @@ final class ContactTracker
 
     ContactTracker(Tiles tiles)
     {
+        this(tiles, () -> 0);
+    }
+
+    /** @param world current world number, stamped on observer collisions */
+    ContactTracker(Tiles tiles, IntSupplier world)
+    {
         this.tiles = tiles;
+        this.world = world;
+    }
+
+    /** Reporting-mode update (observe off). */
+    List<RflEvent> update(Map<String, PosedMesh> meshes, String self, Set<String> holders, boolean others,
+        long now, int tick, boolean detail)
+    {
+        return update(meshes, self, holders, others, now, tick, detail, false);
     }
 
     /**
@@ -113,14 +162,17 @@ final class ContactTracker
      * @param now     epoch ms stamped on any events
      * @param tick    game tick count, stamped on events and used to sample depth once per tick
      * @param detail  true when a display needs the full touching count every update
-     * @return collision_seen, contact_start and contact_end events, in that order
+     * @param observe Observer mode: track every pair locally, start nothing reportable
+     * @return collision_seen, contact_start and contact_end events, in that order; in observer
+     *         mode only the contact_end of self contacts that were open when it went on
      */
     List<RflEvent> update(Map<String, PosedMesh> meshes, String self, Set<String> holders, boolean others,
-        long now, int tick, boolean detail)
+        long now, int tick, boolean detail, boolean observe)
     {
         boolean sample = tick != sampledTick;
         sampledTick = tick;
-        latest = currentPairs(meshes, self, holders, others, sample || detail);
+        latest = currentPairs(meshes, self, holders, others, sample || detail, observe);
+        observePairs(holders, now, tick, sample, observe);
         List<RflEvent> events = new ArrayList<>();
         Set<String> stillWitnessed = new HashSet<>();
 
@@ -136,6 +188,10 @@ final class ContactTracker
                 {
                     stillWitnessed.add(key);
                 }
+                continue;
+            }
+            if (observe)
+            {
                 continue;
             }
             String[] names = splitKey(key);
@@ -185,7 +241,8 @@ final class ContactTracker
             // they separate. Walking through someone crosses surfaces going in and coming out with
             // nothing crossing in between, which would otherwise read as two contacts.
             // A self change (or null self) ends every contact: its key is no longer a self pair.
-            if (!latest.containsKey(entry.getKey()) || self == null || !isSelfPair(entry.getKey(), self))
+            if (observe || !latest.containsKey(entry.getKey()) || self == null
+                || !isSelfPair(entry.getKey(), self))
             {
                 ended.add(entry.getKey());
             }
@@ -199,10 +256,95 @@ final class ContactTracker
         return events;
     }
 
-    /** Drops every open contact without events. Keeps the id counter, so ids are never reused. */
+    /**
+     * Observer pairs: a touching pair with a handegg holder starts (unless open), an open one
+     * follows the centroid tile and the per-tick max count, and one whose bounds no longer
+     * overlap (or every one, with observe off) finishes.
+     */
+    private void observePairs(Set<String> holders, long now, int tick, boolean sample, boolean observe)
+    {
+        if (observe)
+        {
+            for (Map.Entry<String, PosedMesh.Hits> entry : latest.entrySet())
+            {
+                PosedMesh.Hits hits = entry.getValue();
+                if (hits == null)
+                {
+                    continue;
+                }
+                Observed o = observed.get(entry.getKey());
+                if (o != null)
+                {
+                    o.tile = tileOf(hits);
+                    if (sample && hits.count > o.max)
+                    {
+                        o.max = hits.count;
+                    }
+                    continue;
+                }
+                List<String> ball = new ArrayList<>();
+                for (String name : splitKey(entry.getKey()))
+                {
+                    if (holders.contains(name))
+                    {
+                        ball.add(name);
+                    }
+                }
+                if (!ball.isEmpty())
+                {
+                    observed.put(entry.getKey(), new Observed(now, tick, world.getAsInt(), ball, hits.count,
+                        tileOf(hits)));
+                }
+            }
+        }
+        List<String> ended = new ArrayList<>();
+        for (String key : observed.keySet())
+        {
+            if (!observe || !latest.containsKey(key))
+            {
+                ended.add(key);
+            }
+        }
+        for (String key : ended)
+        {
+            finish(key, now, tick);
+        }
+    }
+
+    private void finish(String key, long now, int tick)
+    {
+        Observed o = observed.remove(key);
+        String[] names = splitKey(key);
+        finished.add(new ObservedCollision(names[0], names[1], o.ball, o.startMs, now, o.startTick, tick, o.world,
+            o.tile[0], o.tile[1], o.tile[2], o.max));
+    }
+
+    /** Finishes every open observer collision now (shutdown, observer off, leaving the house). */
+    void flushObserved(long now, int tick)
+    {
+        for (String key : new ArrayList<>(observed.keySet()))
+        {
+            finish(key, now, tick);
+        }
+    }
+
+    /** Observer collisions finished since the last call, oldest first; clears them. */
+    List<ObservedCollision> takeObserved()
+    {
+        List<ObservedCollision> result = finished;
+        finished = new ArrayList<>();
+        return result;
+    }
+
+    /**
+     * Drops every open contact and observer collision without events. Keeps the id counter, so
+     * ids are never reused. Call {@link #flushObserved} first to keep the open observer ones.
+     */
     void reset()
     {
         active.clear();
+        observed.clear();
+        finished = new ArrayList<>();
         witnessed = new HashSet<>();
         latest = new HashMap<>();
         sampledTick = -1;
@@ -271,7 +413,7 @@ final class ContactTracker
      * counted, since its start reports depth or a centroid tile; the rest per {@code fullCount}.
      */
     private Map<String, PosedMesh.Hits> currentPairs(Map<String, PosedMesh> meshes, String self,
-        Set<String> holders, boolean others, boolean fullCount)
+        Set<String> holders, boolean others, boolean fullCount, boolean observe)
     {
         Map<String, PosedMesh.Hits> pairs = new HashMap<>();
         List<String> names = new ArrayList<>(meshes.keySet());
@@ -285,18 +427,21 @@ final class ContactTracker
                 String y = names.get(j);
                 boolean selfPair = x.equals(self) || y.equals(self);
                 boolean handegg = holders.contains(x) || holders.contains(y);
-                if (!selfPair && !handegg && !others)
+                String a = x.compareTo(y) <= 0 ? x : y;
+                String b = x.compareTo(y) <= 0 ? y : x;
+                String key = pairKey(a, b);
+                // An open observer collision stays checked after the handegg is dropped, so it
+                // ends on separation like a self contact does.
+                if (!selfPair && !handegg && !others && !observed.containsKey(key))
                 {
                     continue;
                 }
-                String a = x.compareTo(y) <= 0 ? x : y;
-                String b = x.compareTo(y) <= 0 ? y : x;
                 PosedMesh ma = meshes.get(a);
                 PosedMesh mb = meshes.get(b);
                 if (PosedMesh.overlap(ma.bounds, mb.bounds) != null)
                 {
-                    String key = pairKey(a, b);
-                    boolean canStart = handegg && (selfPair ? !active.containsKey(key) : !witnessed.contains(key));
+                    boolean canStart = handegg && (observe ? !observed.containsKey(key)
+                        : selfPair ? !active.containsKey(key) : !witnessed.contains(key));
                     int limit = fullCount || canStart ? PosedMesh.MAX_HITS : 1;
                     pairs.put(key, PosedMesh.intersect(ma, mb, limit));
                 }

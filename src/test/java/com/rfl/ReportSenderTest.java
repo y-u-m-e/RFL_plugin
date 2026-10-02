@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.Test;
 
@@ -65,11 +66,35 @@ public class ReportSenderTest
         assertRequeueOutcome(clientReturning(400), false);
     }
 
+    @Test
+    public void sendsNothingWhileObservingEvenWithReportingOn() throws InterruptedException
+    {
+        final AtomicBoolean called = new AtomicBoolean();
+        final OkHttpClient client = new OkHttpClient.Builder()
+            .addInterceptor(chain ->
+            {
+                called.set(true);
+                throw new IOException("must not be sent");
+            })
+            .build();
+        final EventQueue queue = new EventQueue();
+        final ReportSender sender = new ReportSender(client, new GsonBuilder().create(), queue);
+        sender.setEnabled(() -> RflPlugin.reportingAllowed(true, true));
+
+        final RflEvent event = RflEvent.pluginToggle(0, 0, "X", true);
+        sender.send(new RflReport("Rsn", "install-1", 1, 0L, false, "", List.of(), List.of(event),
+            new RflReport.Features(true, true)), List.of(event));
+
+        Thread.sleep(200);
+        assertFalse(called.get());
+    }
+
     private static void assertRequeueOutcome(final OkHttpClient client, final boolean expectRequeued)
         throws InterruptedException
     {
         final EventQueue queue = new EventQueue();
         final ReportSender sender = new ReportSender(client, new GsonBuilder().create(), queue);
+        sender.setEnabled(() -> true);
 
         final RflEvent event = RflEvent.pluginToggle(0, 0, "X", true);
         final RflReport report = new RflReport("Rsn", "install-1", 1, 0L, false, "",

@@ -2,6 +2,7 @@ package com.rfl;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -40,6 +41,8 @@ public final class ReportSender
     private final OkHttpClient client;
     private final Gson gson;
     private final EventQueue queue;
+    /** Hub opt-in gate: nothing is sent unless this says yes. Off until {@code RflPlugin} wires it. */
+    private volatile BooleanSupplier enabled = () -> false;
 
     @Inject
     ReportSender(final OkHttpClient client, final Gson gson, final EventQueue queue)
@@ -50,7 +53,18 @@ public final class ReportSender
     }
 
     /**
-     * Sends one report batch. {@code drained} is the exact event list already removed from the
+     * Sets the gate checked before every send; {@code RflPlugin} points it at Enable reporting
+     * with Observer mode off.
+     *
+     * @param enabled true while reports may be sent
+     */
+    void setEnabled(final BooleanSupplier enabled)
+    {
+        this.enabled = enabled;
+    }
+
+    /**
+     * Sends one report batch, or nothing (dropping the batch) while the gate is off. {@code drained} is the exact event list already removed from the
      * queue for this batch; it is put back (via {@link EventQueue#requeue}) if the send fails or
      * the server asks for a retry.
      *
@@ -59,6 +73,10 @@ public final class ReportSender
      */
     void send(final RflReport report, final List<RflEvent> drained)
     {
+        if (!enabled.getAsBoolean())
+        {
+            return;
+        }
         final Request request = new Request.Builder()
             .url(BASE_URL + "/plugins/rfl/report")
             .post(RequestBody.create(JSON, gson.toJson(report)))
