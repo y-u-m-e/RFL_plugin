@@ -4,6 +4,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Graphics;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
@@ -25,6 +26,7 @@ import java.util.regex.Pattern;
 
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JColorChooser;
 import javax.swing.JComboBox;
@@ -56,6 +58,9 @@ public final class GamePanel extends PluginPanel
     static final String OPT_IN = "Turn on Enable reporting to browse and join games";
     static final String GAME_ENDED = "Game ended";
     static final String REMOVED = "You were removed from the game";
+    static final String SWITCHED = "Switched account — left the game view";
+    static final String ASK_HOST = "Passphrase: ask the host";
+    static final String HOST_NO_PASSPHRASE = "Passphrase hidden — press Passphrase to set a new one";
     private static final String NOT_FOUND = "game not found";
     private static final Pattern HEX = Pattern.compile("^#[0-9A-Fa-f]{6}$");
     private static final String[] TEAM_KEYS = {"", "A", "B"};
@@ -85,8 +90,13 @@ public final class GamePanel extends PluginPanel
     private String actionError = "";
     /** {@link System#nanoTime} when {@link #actionError} was set. */
     private long actionErrorAt;
-    /** The passphrase we hosted/joined with; the API never returns it. */
+    /**
+     * The passphrase we set as host (create or change); the API never returns it. Empty after a
+     * join — members never see it, since the host may have changed it since.
+     */
     private String passphrase = "";
+    /** The RSN we entered the current game as; a different logged-in RSN means an account switch. */
+    private volatile String joinedRsn;
     private String rendered;
 
     public GamePanel(final GameClient games, final GameSession session,
@@ -107,11 +117,12 @@ public final class GamePanel extends PluginPanel
     // ---------------------------------------------------------------- pure logic (unit-tested)
 
     /**
-     * @param detail latest lobby poll
-     * @param rsn    our RSN, or null when unknown (logged out) — then roster membership isn't judged
-     * @return {@link #GAME_ENDED}, {@link #REMOVED}, or null while we're still in the game
+     * @param detail    latest lobby poll
+     * @param rsn       our RSN, or null when unknown (logged out) — then roster membership isn't judged
+     * @param joinedRsn the RSN we entered the game as, or null when unknown
+     * @return {@link #GAME_ENDED}, {@link #SWITCHED}, {@link #REMOVED}, or null while we're still in the game
      */
-    static String exitNotice(final GameDetail detail, final String rsn)
+    static String exitNotice(final GameDetail detail, final String rsn, final String joinedRsn)
     {
         if (detail == null || detail.game == null || "ended".equals(detail.game.state))
         {
@@ -120,6 +131,10 @@ public final class GamePanel extends PluginPanel
         if (rsn == null)
         {
             return null;
+        }
+        if (joinedRsn != null && !joinedRsn.equals(rsn))
+        {
+            return SWITCHED;
         }
         if (detail.players != null)
         {
@@ -132,6 +147,16 @@ public final class GamePanel extends PluginPanel
             }
         }
         return REMOVED;
+    }
+
+    /** @return the lobby's passphrase line: only the host sees it (members' copy could be stale) */
+    static String passphraseText(final boolean isHost, final String passphrase)
+    {
+        if (!isHost)
+        {
+            return ASK_HOST;
+        }
+        return passphrase.isEmpty() ? HOST_NO_PASSPHRASE : passphrase;
     }
 
     /** @return "Start" in the lobby, "End" while live, else null (the host's state button) */
@@ -314,7 +339,7 @@ public final class GamePanel extends PluginPanel
             }
             return;
         }
-        final String exit = exitNotice(r.value(), rsn());
+        final String exit = exitNotice(r.value(), rsn(), joinedRsn);
         if (exit != null)
         {
             exitGame(exit);
@@ -338,8 +363,9 @@ public final class GamePanel extends PluginPanel
     }
 
     /**
-     * Known limit: "removed" is judged against the current RSN, so switching accounts while in a
-     * game reads as being removed (the session clears with that notice). Rejoin from the list.
+     * The RSN from the latest identity snapshot. Switching accounts while in a game clears the
+     * game view with {@link #SWITCHED}; the old account stays on the server roster until it
+     * leaves or the game times out.
      */
     private String rsn()
     {
@@ -403,7 +429,7 @@ public final class GamePanel extends PluginPanel
         if (pp != null)
         {
             startBusy();
-            games.joinByPassphrase(pp, r -> entered(r, pp));
+            games.joinByPassphrase(pp, r -> entered(r, ""));
         }
     }
 
@@ -413,11 +439,15 @@ public final class GamePanel extends PluginPanel
         if (pp != null)
         {
             startBusy();
-            games.join(game.id, pp, r -> entered(r.isOk() ? GameClient.Result.ok(game.id) : r, pp));
+            games.join(game.id, pp, r -> entered(r.isOk() ? GameClient.Result.ok(game.id) : r, ""));
         }
     }
 
-    /** Any thread. After host/join: fetch the lobby right away and enter it. */
+    /**
+     * Any thread. After host/join: fetch the lobby right away and enter it.
+     *
+     * @param pp the passphrase when we just hosted, else {@code ""} (members never see it)
+     */
     private void entered(final GameClient.Result<String> r, final String pp)
     {
         if (!r.isOk() || r.value() == null)
@@ -432,6 +462,7 @@ public final class GamePanel extends PluginPanel
                 fail(d.error());
                 return;
             }
+            joinedRsn = rsn();
             lobbyPoller.onSuccess(d.value());
             session.update(d.value());
             SwingUtilities.invokeLater(() ->
@@ -694,8 +725,9 @@ public final class GamePanel extends PluginPanel
 
         final JPanel pp = new JPanel(new BorderLayout(4, 0));
         pp.setOpaque(false);
-        pp.add(label(passphrase.isEmpty() ? "Passphrase hidden" : passphrase, Color.WHITE), BorderLayout.CENTER);
-        if (!passphrase.isEmpty())
+        pp.add(label(passphraseText(isHost, passphrase), isHost ? Color.WHITE : ColorScheme.LIGHT_GRAY_COLOR),
+            BorderLayout.CENTER);
+        if (isHost && !passphrase.isEmpty())
         {
             pp.add(button("Copy", () -> Toolkit.getDefaultToolkit().getSystemClipboard()
                 .setContents(new StringSelection(passphrase), null)), BorderLayout.EAST);
@@ -729,7 +761,9 @@ public final class GamePanel extends PluginPanel
         col.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         col.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createMatteBorder(3, 0, 0, 0, color), BorderFactory.createEmptyBorder(3, 4, 3, 4)));
-        final JLabel header = label(name, color);
+        // Team colour only on the top bar and the swatch; text stays readable on the dark panel.
+        final JLabel header = label(name, Color.WHITE);
+        header.setIcon(swatch(color, 8, 8));
         header.setFont(FontManager.getRunescapeBoldFont());
         col.add(header);
         for (final GameDetail.Player p : players)
@@ -746,7 +780,7 @@ public final class GamePanel extends PluginPanel
                 {
                     shown += " (you)";
                 }
-                col.add(label(shown, p.rsn.equals(me) ? Color.WHITE : color));
+                col.add(label(shown, p.rsn.equals(me) ? Color.WHITE : ColorScheme.LIGHT_GRAY_COLOR));
             }
         }
         return col;
@@ -767,9 +801,7 @@ public final class GamePanel extends PluginPanel
                     host(action("team", "key", t.key, "color", toHex(picked)), null);
                 }
             });
-            colour.setBackground(current);
-            colour.setOpaque(true);
-            colour.setContentAreaFilled(false);
+            colour.setIcon(swatch(current, 14, 14));
             colour.setToolTipText("Change team colour");
             colour.setPreferredSize(new Dimension(24, 22));
             final JTextField name = new JTextField(t.name);
@@ -884,6 +916,34 @@ public final class GamePanel extends PluginPanel
             p.add(right, c);
         }
         return p;
+    }
+
+    /** A painted colour square with a light outline — renders the same under any look and feel. */
+    private static Icon swatch(final Color color, final int w, final int h)
+    {
+        return new Icon()
+        {
+            @Override
+            public void paintIcon(final Component c, final Graphics g, final int x, final int y)
+            {
+                g.setColor(color);
+                g.fillRect(x, y, w, h);
+                g.setColor(ColorScheme.LIGHT_GRAY_COLOR);
+                g.drawRect(x, y, w - 1, h - 1);
+            }
+
+            @Override
+            public int getIconWidth()
+            {
+                return w;
+            }
+
+            @Override
+            public int getIconHeight()
+            {
+                return h;
+            }
+        };
     }
 
     /** Wraps a component so BoxLayout stretches it to the panel width with a small gap below. */

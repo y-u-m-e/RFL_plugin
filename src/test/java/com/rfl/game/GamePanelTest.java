@@ -24,26 +24,26 @@ public class GamePanelTest
     @Test
     public void stillInGameWhenOnRoster()
     {
-        assertNull(GamePanel.exitNotice(detail("lobby", "Host", "Me"), "Me"));
+        assertNull(GamePanel.exitNotice(detail("lobby", "Host", "Me"), "Me", "Me"));
     }
 
     @Test
     public void removedWhenOffRoster()
     {
-        assertEquals(GamePanel.REMOVED, GamePanel.exitNotice(detail("live", "Host"), "Me"));
+        assertEquals(GamePanel.REMOVED, GamePanel.exitNotice(detail("live", "Host"), "Me", "Me"));
     }
 
     @Test
     public void endedBeatsRoster()
     {
-        assertEquals(GamePanel.GAME_ENDED, GamePanel.exitNotice(detail("ended", "Me"), "Me"));
-        assertEquals(GamePanel.GAME_ENDED, GamePanel.exitNotice(null, "Me"));
+        assertEquals(GamePanel.GAME_ENDED, GamePanel.exitNotice(detail("ended", "Me"), "Me", "Me"));
+        assertEquals(GamePanel.GAME_ENDED, GamePanel.exitNotice(null, "Me", "Me"));
     }
 
     @Test
     public void unknownRsnIsNotJudged()
     {
-        assertNull(GamePanel.exitNotice(detail("lobby", "Host"), null));
+        assertNull(GamePanel.exitNotice(detail("lobby", "Host"), null, "Me"));
     }
 
     @Test
@@ -80,5 +80,23 @@ public class GamePanelTest
         assertEquals(" <HTML><img src=x>", GamePanel.plain("<HTML><img src=x>"));
         assertEquals("Red", GamePanel.plain("Red"));
         assertEquals("", GamePanel.plain(null));
+    }
+
+    @Test
+    public void accountSwitchIsNotReadAsRemoved()
+    {
+        assertEquals(GamePanel.SWITCHED, GamePanel.exitNotice(detail("lobby", "Host", "Me"), "Alt", "Me"));
+        assertNull(GamePanel.exitNotice(detail("lobby", "Host", "Me"), "Me", "Me"));
+        assertEquals(GamePanel.REMOVED, GamePanel.exitNotice(detail("lobby", "Host"), "Me", "Me"));
+        assertEquals(GamePanel.GAME_ENDED, GamePanel.exitNotice(detail("ended", "Me"), "Alt", "Me"));
+    }
+
+    @Test
+    public void onlyTheHostSeesThePassphrase()
+    {
+        assertEquals("brave-otter-lamp", GamePanel.passphraseText(true, "brave-otter-lamp"));
+        assertEquals(GamePanel.ASK_HOST, GamePanel.passphraseText(false, "brave-otter-lamp"));
+        assertEquals(GamePanel.ASK_HOST, GamePanel.passphraseText(false, ""));
+        assertEquals(GamePanel.HOST_NO_PASSPHRASE, GamePanel.passphraseText(true, ""));
     }
 }

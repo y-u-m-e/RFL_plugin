@@ -47,6 +47,8 @@ public final class GameClient
     private static final String NOT_READY = "Not ready yet";
     /** Review Focus item 5: the API being unreachable gets this one line, not a stack trace. */
     private static final String NETWORK_ERROR = "Can't reach the RFL API";
+    private static final String GAME_NOT_FOUND = "game not found";
+    private static final String NO_SUCH_PASSPHRASE = "No game with that passphrase";
 
     private final OkHttpClient client;
     private final Gson gson;
@@ -128,16 +130,16 @@ public final class GameClient
      * passphrase; leaves any other game first.
      *
      * @param passphrase passphrase to look up
-     * @param callback   receives the joined game's id, or a one-line error (404 "game not
-     *                   found" if none matches, 403 "Wrong passphrase" is not applicable here
-     *                   since the lookup itself is by passphrase)
+     * @param callback   receives the joined game's id, or a one-line error ("No game with that
+     *                   passphrase" when none matches)
      */
     public void joinByPassphrase(final String passphrase, final Consumer<Result<String>> callback)
     {
         withIdentity(callback, identity ->
         {
             final PassphraseBody body = new PassphraseBody(identity.rsn, identity.installId, passphrase);
-            enqueue(postRequest(GAMES_PATH + "/join", body), callback, this::readId);
+            enqueue(postRequest(GAMES_PATH + "/join", body), r -> callback.accept(
+                !r.isOk() && GAME_NOT_FOUND.equals(r.error()) ? Result.error(NO_SUCH_PASSPHRASE) : r), this::readId);
         });
     }
 
@@ -240,24 +242,25 @@ public final class GameClient
             @Override
             public void onResponse(final Call call, final Response response)
             {
+                // Any failure reading/parsing becomes an error Result; the callback runs exactly once,
+                // outside the try, so an exception thrown by the callback itself isn't reported twice.
+                Result<T> result;
                 try
                 {
                     final String rawBody = response.body() == null ? "" : response.body().string();
-                    if (!response.isSuccessful())
-                    {
-                        callback.accept(Result.error(friendlyError(apiErrorMessage(rawBody, response.code()))));
-                        return;
-                    }
-                    callback.accept(Result.ok(parseBody.apply(rawBody)));
+                    result = response.isSuccessful()
+                        ? Result.ok(parseBody.apply(rawBody))
+                        : Result.error(friendlyError(apiErrorMessage(rawBody, response.code())));
                 }
-                catch (final IOException | JsonSyntaxException e)
+                catch (final IOException | RuntimeException e)
                 {
-                    callback.accept(Result.error(NETWORK_ERROR));
+                    result = Result.error(NETWORK_ERROR);
                 }
                 finally
                 {
                     response.close();
                 }
+                callback.accept(result);
             }
         });
     }

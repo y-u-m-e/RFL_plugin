@@ -21,6 +21,7 @@ import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import okio.BufferedSource;
 
 /**
  * {@link GameClient} exercised against a fake OkHttp application interceptor — the same
@@ -69,6 +70,63 @@ public class GameClientTest
             .build();
         final GameClient client = new GameClient(okHttp, new GsonBuilder().create());
         client.setIdentitySupplier(() -> new GameClient.Identity("Rsn", "install-1", 301));
+
+        final GameClient.Result<List<GameSummary>> result = await(client::list);
+
+        assertFalse(result.isOk());
+        assertEquals("Can't reach the RFL API", result.error());
+    }
+
+    @Test
+    public void unknownPassphraseOnJoinByPassphraseSaysSo() throws InterruptedException
+    {
+        final GameClient client = clientReturning(404, "{\"error\":\"game not found\"}", request -> { });
+        client.setIdentitySupplier(() -> new GameClient.Identity("Rsn", "install-1", 301));
+
+        final GameClient.Result<String> result = await(callback -> client.joinByPassphrase("nope", callback));
+
+        assertFalse(result.isOk());
+        assertEquals("No game with that passphrase", result.error());
+    }
+
+    @Test
+    public void runtimeExceptionReadingTheResponseStillReachesTheCallback() throws InterruptedException
+    {
+        final OkHttpClient okHttp = new OkHttpClient.Builder()
+            .addInterceptor(chain -> new Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("")
+                .body(new ResponseBody()
+                {
+                    @Override
+                    public MediaType contentType()
+                    {
+                        return null;
+                    }
+
+                    @Override
+                    public long contentLength()
+                    {
+                        return -1;
+                    }
+
+                    @Override
+                    public BufferedSource source()
+                    {
+                        throw new IllegalStateException("simulated body failure");
+                    }
+
+                    @Override
+                    public void close()
+                    {
+                        // Nothing to release; the default close() would call source() again.
+                    }
+                })
+                .build())
+            .build();
+        final GameClient client = new GameClient(okHttp, new GsonBuilder().create());
 
         final GameClient.Result<List<GameSummary>> result = await(client::list);
 
