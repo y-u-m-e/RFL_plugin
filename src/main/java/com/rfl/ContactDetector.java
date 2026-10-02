@@ -3,10 +3,8 @@ package com.rfl;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
@@ -233,20 +231,6 @@ final class ContactDetector
             }
         }
         return weapons;
-    }
-
-    /** Sanitized names of players with a handegg in the weapon slot. */
-    static Set<String> handeggHolders(Map<String, Integer> weapons)
-    {
-        Set<String> holders = new HashSet<>();
-        for (Map.Entry<String, Integer> entry : weapons.entrySet())
-        {
-            if (InterceptionDetector.HANDEGG_ITEMS.contains(entry.getValue()))
-            {
-                holders.add(entry.getKey());
-            }
-        }
-        return holders;
     }
 
     /** Mesh of the player's drawn model, or their bare body per the Hitbox source setting. */

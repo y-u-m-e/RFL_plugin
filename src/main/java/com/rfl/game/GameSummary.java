@@ -16,21 +16,4 @@ public final class GameSummary
     public String state;
     public int playerCount;
     public long createdAt;
-
-    /** No-arg constructor for Gson. */
-    public GameSummary()
-    {
-    }
-
-    public GameSummary(final String id, final String name, final String hostRsn, final int world,
-        final String state, final int playerCount, final long createdAt)
-    {
-        this.id = id;
-        this.name = name;
-        this.hostRsn = hostRsn;
-        this.world = world;
-        this.state = state;
-        this.playerCount = playerCount;
-        this.createdAt = createdAt;
-    }
 }

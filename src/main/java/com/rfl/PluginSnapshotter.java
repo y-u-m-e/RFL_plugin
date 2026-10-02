@@ -1,9 +1,6 @@
 package com.rfl;
 
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -18,10 +15,8 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
 
 /**
- * Builds the enabled-plugin snapshot for the audit report: which plugins are enabled, where
- * each one came from, a stable hash of that list, and the {@code plugin_toggle} event fired
- * when a plugin is turned on or off. Ported unchanged from the pre-audit
- * {@code PlayerCollisionPlugin} (source classification logic, display name resolution).
+ * Builds the enabled-plugin snapshot for the audit report (which plugins are enabled and where
+ * each one came from) and the {@code plugin_toggle} event fired when a plugin is turned on or off.
  */
 @Singleton
 class PluginSnapshotter
@@ -72,42 +67,6 @@ class PluginSnapshotter
     }
 
     /**
-     * Hashes a plugin entry list in stable sorted order so two clients with the same enabled
-     * plugins produce the same hash.
-     *
-     * @param entries plugin entries to hash
-     * @return SHA-256 hex hash of the snapshot
-     */
-    static String hash(final List<PluginEntry> entries)
-    {
-        final StringBuilder builder = new StringBuilder();
-        for (final PluginEntry entry : entries)
-        {
-            builder.append(entry.name).append('|').append(entry.source).append('\n');
-        }
-        return sha256Hex(builder.toString());
-    }
-
-    private static String sha256Hex(final String value)
-    {
-        try
-        {
-            final MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            final byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            final StringBuilder builder = new StringBuilder();
-            for (final byte b : hash)
-            {
-                builder.append(String.format("%02x", b));
-            }
-            return builder.toString();
-        }
-        catch (NoSuchAlgorithmException ex)
-        {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
-    }
-
-    /**
      * Resolves display name for a plugin, preferring the descriptor annotation name.
      *
      * @param plugin plugin instance
@@ -124,8 +83,7 @@ class PluginSnapshotter
     }
 
     /**
-     * Cuts a plugin name to the server's 64-char string limit (the server truncates too; this
-     * keeps the hash and the wire value identical on both ends).
+     * Cuts a plugin name to the server's 64-char string limit, so the server stores the name as sent.
      *
      * @param name plugin display name
      * @return at most the first 64 characters of {@code name}

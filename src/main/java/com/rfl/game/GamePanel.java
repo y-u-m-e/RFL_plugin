@@ -374,7 +374,7 @@ public final class GamePanel extends PluginPanel
             notice = why;
             passphrase = "";
             actionError = "";
-            restartPolling();
+            startPolling();
             render();
         });
     }
@@ -405,12 +405,6 @@ public final class GamePanel extends PluginPanel
             stopPolling();
         }
         render();
-    }
-
-    /** EDT. Joined/left: switch between list and lobby polling now instead of after up to 10 s. */
-    private void restartPolling()
-    {
-        startPolling();
     }
 
     /** EDT. Marks a create/join in flight (Host/Join disabled until {@link #entered}/{@link #fail}). */
@@ -488,7 +482,7 @@ public final class GamePanel extends PluginPanel
                 notice = "";
                 actionError = "";
                 busy = false;
-                restartPolling();
+                startPolling();
                 render();
             });
         });
@@ -516,7 +510,7 @@ public final class GamePanel extends PluginPanel
             {
                 passphrase = "";
                 actionError = "";
-                restartPolling();
+                startPolling();
                 render();
             });
         });

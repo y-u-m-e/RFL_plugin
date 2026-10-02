@@ -35,11 +35,6 @@ final class EventQueue
         dropStale();
     }
 
-    synchronized List<RflEvent> drain()
-    {
-        return drain(Integer.MAX_VALUE);
-    }
-
     /**
      * Removes and returns up to {@code max} of the oldest queued events; the rest stay queued.
      *

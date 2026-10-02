@@ -38,6 +38,20 @@ final class InterceptionDetector
         }
     }
 
+    /** Sanitized names of players with a handegg in the weapon slot. */
+    static Set<String> holders(Map<String, Integer> weapons)
+    {
+        Set<String> holders = new HashSet<>();
+        for (Map.Entry<String, Integer> entry : weapons.entrySet())
+        {
+            if (HANDEGG_ITEMS.contains(entry.getValue()))
+            {
+                holders.add(entry.getKey());
+            }
+        }
+        return holders;
+    }
+
     private Set<String> previousHolders = Collections.emptySet();
     /** Who held a handegg just before the current throw; none of them can be its catcher. */
     private Set<String> holdersBeforeThrow = Collections.emptySet();

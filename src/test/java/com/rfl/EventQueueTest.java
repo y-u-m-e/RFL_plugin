@@ -15,7 +15,7 @@ public class EventQueueTest
         EventQueue q = new EventQueue();
         q.add(RflEvent.pluginToggle(0, 0, "X", true));
         q.add(RflEvent.pluginToggle(300_001, 1, "Y", true));
-        assertEquals(List.of("Y"), q.drain().stream().map(e -> e.plugin).collect(toList()));
+        assertEquals(List.of("Y"), q.drain(EventQueue.MAX_BATCH).stream().map(e -> e.plugin).collect(toList()));
     }
 
     @Test
@@ -44,11 +44,11 @@ public class EventQueueTest
     {
         EventQueue q = new EventQueue();
         q.add(RflEvent.pluginToggle(0, 0, "A", true));
-        List<RflEvent> drained = q.drain();
+        List<RflEvent> drained = q.drain(EventQueue.MAX_BATCH);
 
         q.add(RflEvent.pluginToggle(1, 1, "B", true));
         q.requeue(drained);
 
-        assertEquals(List.of("A", "B"), q.drain().stream().map(e -> e.plugin).collect(toList()));
+        assertEquals(List.of("A", "B"), q.drain(EventQueue.MAX_BATCH).stream().map(e -> e.plugin).collect(toList()));
     }
 }

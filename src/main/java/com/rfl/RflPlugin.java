@@ -519,7 +519,7 @@ public class RflPlugin extends Plugin
         }
 
         final List<InterceptionDetector.Interception> found = interceptionDetector.onTick(
-            tick, ballInFlight, ContactDetector.handeggHolders(weapons), contacts);
+            tick, ballInFlight, InterceptionDetector.holders(weapons), contacts);
         if (interceptionDetector.lastCheck() != null)
         {
             recordDebug(interceptionDetector.lastCheck());
@@ -603,14 +603,6 @@ public class RflPlugin extends Plugin
         }
     }
 
-    /**
-     * Stops contact tracking for a period we're no longer watching (left the POH, logged out,
-     * hopped, or reporting turned off). Closes any open pairs with a real {@code contact_end}
-     * when there's still somewhere to send it (reporting on); otherwise there's nothing to queue
-     * so it just clears the tracker.
-     *
-     * @param queueEnds true to queue contact_end events for open pairs; false to silently reset
-     */
     /** Logs projectiles while any are drawn, weapon-slot changes, and contact changes. */
     private void logDebugTick(int tick, List<String> projectiles, boolean ballInFlight,
         Map<String, Integer> weapons, Map<String, List<String>> contacts)
@@ -639,6 +631,14 @@ public class RflPlugin extends Plugin
         }
     }
 
+    /**
+     * Stops contact tracking for a period we're no longer watching (left the POH, logged out,
+     * hopped, or reporting turned off). Closes any open pairs with a real {@code contact_end}
+     * when there's still somewhere to send it (reporting on); otherwise there's nothing to queue
+     * so it just clears the tracker.
+     *
+     * @param queueEnds true to queue contact_end events for open pairs; false to silently reset
+     */
     private void closeOrResetTracking(final boolean queueEnds)
     {
         if (queueEnds)

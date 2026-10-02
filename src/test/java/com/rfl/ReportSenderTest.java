@@ -91,7 +91,7 @@ public class ReportSenderTest
         final long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline)
         {
-            final List<RflEvent> drained = queue.drain();
+            final List<RflEvent> drained = queue.drain(EventQueue.MAX_BATCH);
             if (!drained.isEmpty())
             {
                 return drained;
