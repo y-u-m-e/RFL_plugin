@@ -90,6 +90,12 @@ final class ReplayRecorder
         return recordReplays && loggedIn && inPoh;
     }
 
+    /** Client thread: whether a replay file is open right now. */
+    boolean recording()
+    {
+        return sampler != null;
+    }
+
     /** {@code yyyy-MM-dd_HHmmss_w<world>.rflr.gz}, local time. */
     static String fileName(long epochMs, int world)
     {

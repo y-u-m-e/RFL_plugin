@@ -7,50 +7,33 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.ScheduledExecutorService;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
-import net.runelite.client.ui.ClientToolbar;
-import net.runelite.client.ui.NavigationButton;
-import net.runelite.client.util.LinkBrowser;
 
 /**
- * Everything behind "Show RFL panel" and "Debug logging": the RFL sidebar panel's lifecycle and
- * text (the local plugin list, then detection state), its recent-events list, and the debug log
- * lines (each logged only when it changes, so the log stays readable). Display and logging only.
+ * Everything behind "Debug logging": the RFL panel's Debug tab text (detection gate, players in
+ * view, overlapping pairs, recent detection events, mesh timing) and the debug log lines (each
+ * logged only when it changes, so the log stays readable). Display and logging only. The panel
+ * itself lives in {@link RflPanelController}.
  *
- * <p>Threads: the panel and its button are touched on the Swing EDT only ({@link #syncPanel},
- * {@link #removePanel}); every other method runs on the client thread.
+ * <p>Threads: client thread only.
  */
 @Slf4j
 @Singleton
 final class RflDebug
 {
     private static final int MAX_EVENTS = 30;
-    private static final long REFRESH_MS = 600;
 
     private final Client client;
     private final RflConfig config;
-    private final ClientToolbar clientToolbar;
     private final ContactDetector contactDetector;
     private final BareBody bareBody;
     private final CollisionLog collisionLog;
-    private final PluginLog pluginLog;
-    private final ScheduledExecutorService executor;
 
-    // EDT only.
-    private RflPanel panel;
-    private NavigationButton button;
-
-    // Client thread only.
-    /** Saved collisions shown in the panel. */
-    private static final int COLLISION_ROWS = 10;
     private final Deque<String> events = new ArrayDeque<>();
-    private long refreshAt;
     private List<String> lastMissing = Collections.emptyList();
     private String lastGateLog = "";
     private String lastProjectileLog = "";
@@ -58,66 +41,20 @@ final class RflDebug
     private String lastContactLog = "";
 
     @Inject
-    RflDebug(Client client, RflConfig config, ClientToolbar clientToolbar, ContactDetector contactDetector,
-        BareBody bareBody, CollisionLog collisionLog, PluginLog pluginLog, ScheduledExecutorService executor)
+    RflDebug(Client client, RflConfig config, ContactDetector contactDetector, BareBody bareBody,
+        CollisionLog collisionLog)
     {
-        this.pluginLog = pluginLog;
-        this.executor = executor;
-        this.collisionLog = collisionLog;
         this.client = client;
         this.config = config;
-        this.clientToolbar = clientToolbar;
         this.contactDetector = contactDetector;
         this.bareBody = bareBody;
+        this.collisionLog = collisionLog;
     }
 
-    /** EDT: adds or removes the RFL panel to match the setting. */
-    void syncPanel()
-    {
-        if (!config.showPanel())
-        {
-            removePanel();
-            return;
-        }
-        if (button != null)
-        {
-            return;
-        }
-        panel = new RflPanel(this::openFolder);
-        button = NavigationButton.builder()
-            .tooltip("RFL")
-            .icon(RflPanel.icon())
-            .priority(10)
-            .panel(panel)
-            .build();
-        clientToolbar.addNavigation(button);
-    }
-
-    /** EDT: creates the collisions folder off the EDT, then opens it with LinkBrowser. */
-    private void openFolder()
-    {
-        executor.execute(() ->
-        {
-            collisionLog.ensureDir();
-            LinkBrowser.open(collisionLog.dir().toUri().toString());
-        });
-    }
-
-    /** EDT. */
-    void removePanel()
-    {
-        if (button != null)
-        {
-            clientToolbar.removeNavigation(button);
-        }
-        button = null;
-        panel = null;
-    }
-
-    /** Adds a line to the panel's recent events (newest first). */
+    /** Adds a line to the Debug tab's recent events (newest first). */
     void record(String line)
     {
-        if (!config.showPanel())
+        if (!config.showPanel() || !config.debugLogging())
         {
             return;
         }
@@ -142,81 +79,20 @@ final class RflDebug
         lastMissing = missing;
     }
 
-    /** About every 600 ms: snapshots detection state as text and hands it to the EDT. */
-    void refresh(boolean inPoh)
-    {
-        long now = System.currentTimeMillis();
-        if (!config.showPanel() || now - refreshAt < REFRESH_MS)
-        {
-            return;
-        }
-        refreshAt = now;
-        String text = text(inPoh);
-        SwingUtilities.invokeLater(() ->
-        {
-            if (panel != null)
-            {
-                panel.show(text);
-            }
-        });
-    }
-
-    /** Collisions in progress, then the latest saved ones. */
+    /** Whether collisions are saved, and the pairs in contact right now. */
     private void appendCollisions(StringBuilder sb)
     {
-        sb.append("\nCOLLISIONS (saved locally)\n");
+        sb.append("\nCOLLISIONS\n");
         sb.append("saving: ").append(config.saveCollisions() ? "on, " + collisionLog.dir() : "off").append('\n');
         List<String> open = contactDetector.inProgress();
         sb.append("in progress: ").append(open.isEmpty() ? "none" : String.join(", ", open)).append('\n');
-        List<Collision> recent = collisionLog.recent();
-        if (recent.isEmpty())
-        {
-            sb.append("no saved collisions yet\n");
-        }
-        for (int i = 0; i < Math.min(COLLISION_ROWS, recent.size()); i++)
-        {
-            sb.append(CollisionLog.row(recent.get(i))).append('\n');
-        }
     }
 
-    /** Banned plugins that are on first, then how many plugins are on and off. */
-    static void appendPlugins(StringBuilder sb, List<PluginEntry> plugins, boolean saving)
-    {
-        sb.append("PLUGINS (latest snapshot)\n");
-        if (plugins.isEmpty())
-        {
-            sb.append("no snapshot yet\n");
-        }
-        else
-        {
-            List<String> banned = PluginSnapshotter.enabledBanned(plugins);
-            for (String name : banned)
-            {
-                sb.append("BANNED, ON: ").append(name).append('\n');
-            }
-            if (banned.isEmpty())
-            {
-                sb.append("no banned plugins on\n");
-            }
-            int enabled = 0;
-            for (PluginEntry e : plugins)
-            {
-                if (e.enabled)
-                {
-                    enabled++;
-                }
-            }
-            sb.append("enabled: ").append(enabled).append(", disabled: ").append(plugins.size() - enabled)
-                .append('\n');
-        }
-        sb.append("logging: ").append(saving ? "on" : "off").append("\n\n");
-    }
-
-    private String text(boolean inPoh)
+    /** Client thread: the Debug tab's text. */
+    String text(boolean inPoh)
     {
         String source = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY ? "bare" : "equipped";
         StringBuilder sb = new StringBuilder();
-        appendPlugins(sb, pluginLog.latest(), pluginLog.saving());
         sb.append("GATE\n")
             .append("logged in: ").append(yesNo(client.getGameState() == GameState.LOGGED_IN)).append('\n')
             .append("in POH: ").append(yesNo(inPoh)).append('\n')

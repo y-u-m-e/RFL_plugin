@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledExecutorService;
 
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -41,8 +42,9 @@ import net.runelite.client.util.Text;
  * <p>Owns the wiring between RuneLite events and the pieces that do the work: contact detection
  * each client frame, interception checks each game tick, and the replay recorder
  * ({@link ReplayRecorder}), and the local user's own plugin log ({@link PluginLog}): a snapshot on
- * entering a POH and a line per plugin toggle while logged in. The RFL panel and debug logging
- * live in {@link RflDebug}.
+ * entering a POH and a line per plugin toggle while logged in. The RFL panel lives in
+ * {@link RflPanelController} (this session's events in {@link SessionEvents}); debug logging and
+ * the Debug tab's text in {@link RflDebug}.
  *
  * <p>Threads: detection, the plugin log and the panel state are client-thread only. The panel is
  * created and removed on the EDT. {@link #inPoh} is a volatile snapshot for readers on other
@@ -99,6 +101,15 @@ public class RflPlugin extends Plugin
     @Inject
     private PluginLog pluginLog;
 
+    @Inject
+    private SessionEvents sessionEvents;
+
+    @Inject
+    private RflPanelController panel;
+
+    @Inject
+    private ScheduledExecutorService executor;
+
     private final InterceptionDetector interceptionDetector = new InterceptionDetector();
 
     /** Recomputed each {@link GameTick}; the POH check only needs to run once per tick. */
@@ -120,11 +131,20 @@ public class RflPlugin extends Plugin
         overlayManager.add(hitboxOverlay);
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
-        collisionLog.setListener(replayRecorder::onEvent);
+        // Session counts reset on every start-up.
+        sessionEvents.clear();
+        collisionLog.setListener(event ->
+        {
+            replayRecorder.onEvent(event);
+            sessionEvents.onEvent(event);
+        });
+        // The panel's toggle history starts with what today's plugin file already holds.
+        final long now = System.currentTimeMillis();
+        executor.execute(() -> pluginLog.loadToday(now));
         replayRecorder.setPluginSource(() -> config.logPluginStats() ? pluginSnapshotter.snapshot() : null);
         // The panel shows the plugin list before the first POH visit too; nothing is written here.
         clientThread.invoke(() -> pluginLog.remember(pluginSnapshotter.snapshot()));
-        SwingUtilities.invokeLater(debug::syncPanel);
+        SwingUtilities.invokeLater(panel::syncPanel);
     }
 
     @Override
@@ -144,7 +164,7 @@ public class RflPlugin extends Plugin
             // After the reset, so collisions it saves as ended still reach the open replay.
             replayRecorder.stop();
         });
-        SwingUtilities.invokeLater(debug::removePanel);
+        SwingUtilities.invokeLater(panel::removePanel);
     }
 
     @Subscribe
@@ -156,7 +176,7 @@ public class RflPlugin extends Plugin
         }
         if ("showPanel".equals(event.getKey()))
         {
-            SwingUtilities.invokeLater(debug::syncPanel);
+            SwingUtilities.invokeLater(panel::syncPanel);
         }
     }
 
@@ -283,7 +303,7 @@ public class RflPlugin extends Plugin
     @Subscribe
     public void onClientTick(final ClientTick event)
     {
-        debug.refresh(inPoh);
+        panel.refresh(inPoh);
         final boolean watching = watchingContacts();
         if (!watching)
         {

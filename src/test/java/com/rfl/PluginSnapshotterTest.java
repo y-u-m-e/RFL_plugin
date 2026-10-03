@@ -70,20 +70,22 @@ public class PluginSnapshotterTest
     }
 
     @Test
-    public void panelFlagsBannedPluginsFirstThenCounts()
+    public void panelFlagsBannedPluginsAndCounts()
     {
-        StringBuilder sb = new StringBuilder();
-        RflDebug.appendPlugins(sb, List.of(
+        PanelModel m = PanelModel.of(true, false, List.of(
             new PluginEntry("Agility", true, PluginEntry.BUILTIN),
             new PluginEntry("Block Tracker", true, PluginEntry.HUB),
-            new PluginEntry("Zoom", false, PluginEntry.BUILTIN)), true);
-        String text = sb.toString();
-        assertTrue(text, text.startsWith("PLUGINS (latest snapshot)\nBANNED, ON: Block Tracker\n"));
-        assertTrue(text, text.contains("enabled: 2, disabled: 1\n"));
-        assertTrue(text, text.contains("logging: on"));
+            new PluginEntry("Zoom", false, PluginEntry.BUILTIN)), 0, 0, List.of(), List.of(), null, List.of(), null,
+            java.time.ZoneOffset.UTC);
+        assertEquals(List.of("Block Tracker"), m.getBannedOn());
+        assertEquals("Banned plugin enabled: Block Tracker", m.bannedAlert());
+        assertEquals(2, m.getEnabledCount());
+        assertEquals(1, m.getDisabledCount());
+        assertTrue(m.isPluginsKnown());
 
-        StringBuilder empty = new StringBuilder();
-        RflDebug.appendPlugins(empty, List.of(), false);
-        assertTrue(empty.toString().contains("no snapshot yet"));
+        PanelModel empty = PanelModel.of(false, false, List.of(), 0, 0, List.of(), List.of(), null, List.of(), null,
+            java.time.ZoneOffset.UTC);
+        assertFalse(empty.isPluginsKnown());
+        assertEquals(null, empty.bannedAlert());
     }
 }

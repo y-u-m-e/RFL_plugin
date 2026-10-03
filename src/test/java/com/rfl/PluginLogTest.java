@@ -125,4 +125,67 @@ public class PluginLogTest
         assertFalse(log.saving());
         assertEquals(3, log.latest().size());
     }
+
+    @Test
+    public void toggleHistoryIsTodayNewestFirstEvenWithLoggingOff() throws Exception
+    {
+        Path dir = temp.getRoot().toPath().resolve("plugins");
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        PluginLog log = new PluginLog(new GsonBuilder().create(), executor, dir, () -> false);
+        long version = log.version();
+
+        log.toggle(NOW - 86_400_000L * 2, "Ref", 330, "Old", true);
+        log.toggle(NOW + 1, "Ref", 330, "Block Tracker", true);
+        log.toggle(NOW + 2, "Ref", 330, "Block Tracker", false);
+        drain(executor);
+
+        List<PluginLog.Toggle> today = log.toggles(NOW);
+        assertEquals(2, today.size());
+        assertEquals(NOW + 2, today.get(0).timeMs);
+        assertFalse(today.get(0).enabled);
+        assertTrue(log.version() != version);
+    }
+
+    @Test
+    public void loadTodaySeedsHistoryFromTheFileWithoutDuplicates() throws Exception
+    {
+        Path dir = temp.getRoot().toPath().resolve("plugins");
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        PluginLog writer = new PluginLog(new GsonBuilder().create(), executor, dir, () -> true);
+        writer.snapshot(NOW, "Ref", 330, plugins());
+        writer.toggle(NOW + 1, "Ref", 330, "Block Tracker", true);
+        drain(executor);
+        Files.write(writer.dayFile(NOW), "{torn line\n".getBytes(StandardCharsets.UTF_8),
+            java.nio.file.StandardOpenOption.APPEND);
+
+        ScheduledExecutorService executor2 = Executors.newSingleThreadScheduledExecutor();
+        PluginLog log = new PluginLog(new GsonBuilder().create(), executor2, dir, () -> false);
+        log.toggle(NOW + 1, "Ref", 330, "Block Tracker", true);
+        log.loadToday(NOW);
+        log.loadToday(NOW);
+        drain(executor2);
+
+        List<PluginLog.Toggle> today = log.toggles(NOW);
+        assertEquals(1, today.size());
+        assertEquals("Block Tracker", today.get(0).name);
+        assertTrue(today.get(0).enabled);
+    }
+
+    @Test
+    public void readTodayIsVerbatimOrNullWhenMissing() throws Exception
+    {
+        Path dir = temp.getRoot().toPath().resolve("plugins");
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        PluginLog log = new PluginLog(new GsonBuilder().create(), executor, dir, () -> true);
+        assertEquals(null, log.readToday(NOW));
+
+        log.snapshot(NOW, "Ref", 330, plugins());
+        log.toggle(NOW + 1, "Ref", 330, "Block Tracker", true);
+        drain(executor);
+
+        String text = log.readToday(NOW);
+        assertEquals(new String(Files.readAllBytes(log.dayFile(NOW)), StandardCharsets.UTF_8), text);
+        assertEquals(2, PanelModel.lineCount(text));
+        assertEquals("Copied 2 lines", PanelModel.copyResult(PanelModel.lineCount(text)));
+    }
 }
