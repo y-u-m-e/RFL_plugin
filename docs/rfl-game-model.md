@@ -1,8 +1,8 @@
 # RFL game model: rules, movement and collision
 
 Reference for modelling RuneScape Football League (RFL) plays. Written 2026-10-02 from the
-`RFL_plugin` code (master), the yume-api RFL code (dev, 2.31.0) and the design decisions made
-while building them.
+`RFL_plugin` code (master), the yume-api RFL code (dev, 2.31.0), the design decisions made
+while building them, and the **RFL Rulebook, Season 31 Edition**.
 
 Each fact is tagged:
 
@@ -10,6 +10,7 @@ Each fact is tagged:
 |---|---|
 | **[code]** | Enforced by our plugin or server today. Authoritative. |
 | **[decided]** | A rule the league owner stated. |
+| **[rulebook]** | From the RFL Rulebook, Season 31 Edition. |
 | **[osrs-high]** | Well-established OSRS mechanic. |
 | **[osrs-verify]** | My best understanding of OSRS. Measure it before you rely on it (see §6). |
 | **[gap]** | Not defined anywhere yet. Needs the league owner. |
@@ -29,7 +30,9 @@ Each fact is tagged:
   - **In play:** columns 2–15, rows 2–39 (14 × 38).
   - **Corners** (columns 1 and 16 on rows 1 and 40) are out-of-bounds columns, but entering one **directly from an in-play tile** counts as a touchdown. A diagonal step from (2, 2) into (1, 1) is an example. Entering a corner from an out-of-bounds tile does not count.
 - **[decided]** The field is a **completely open floor**: no furniture and no obstacles inside it, with walls all the way round directly outside the 16 × 40. Every field tile is walkable, the out-of-bounds columns are the outermost tiles a player can reach, and paths follow the open-grid behaviour in §2 exactly.
-- **[gap]** Where the field sits in the POH (template coordinates and which room or rooms), and which team attacks which endzone.
+- **[rulebook]** The stadium is a closed POH **2 rooms wide by 5 rooms long** (8 × 8 tiles per room, so 16 × 40), clear of all plants and objects. Out of bounds is the tile along the wall, and the endzone is the last tile row. There are no doors or fireplaces in the endzones. The 2 rooms nearest each endzone have windows on at least one side; field positions are called by **window**.
+- **[rulebook]** Sides: the coin-toss loser picks which end to defend in the first half, and the ends swap at half time.
+- **[gap]** Where the field sits in the POH template coordinates. This only matters to the plugin, not the simulator.
 - **[decided]** A run that passes through an out-of-bounds tile and ends in a corner within the same tick is a **touchdown**. Example: (2, 3) → (1, 2) → (1, 1).
   - A **clicked** path never does this. Clicked paths go straight first and diagonal last (§2), so a click on a corner from any in-play tile reaches it through an in-play tile, for example (2, 3) → (2, 2) → (1, 1). This was checked against all 532 in-play tiles.
   - The ruling matters for routes that **follow** another player, since following goes diagonal first, and for multi-click sequences.
@@ -42,7 +45,10 @@ Each fact is tagged:
   - Chaotic (`EASTER18_HANDEGG_CHAOS`)
 - **[code]** Item ids are 22355, 22358 and 22361. A player "has the ball" when a handegg is in their **weapon slot**.
 - **[code]** A thrown handegg exists as an in-flight projectile, one per type: spotanims `EASTER18_HANDEGG_TRAVEL_SARA`, `_GUTH` and `_ZAM` (1526, 1527 and 1528).
-- **[gap]** Throw range, flight time per distance, and whether a throw can miss or land on a tile. Flight time is measurable from the projectile (§6).
+- **[rulebook]** Gnomeballs are also legal, but **only for RB/QB rushing plays**, not passes (their catch animation has a rendering bug).
+- **[code] gap:** the plugin only recognises handeggs, so a gnomeball rushing play is invisible to it.
+- **[rulebook]** Only one ball may be visible during a play.
+- **[gap]** Throw range and flight time per distance. Both are measurable from the projectile (§6).
 
 ### Teams
 
@@ -52,14 +58,17 @@ Each fact is tagged:
   - **Referees**, fixed name, drawn black and white striped
   - unassigned players
 - **[decided]** Every league player must run the plugin.
-- **[gap]** Players per side, substitutions, and what referees are allowed to do on the pitch.
+- **[rulebook]** **5v5 by default**, 4 to 6 per side. 4v4 only if a team has no more than 4 players; 6v6 only if both owners agree. A team must have at least 4 to play.
+- **[rulebook]** At least 2 referees, at least one recording. Referees wear yellow. A pass thrown to a referee or a fan is incomplete.
+- **[rulebook]** A player who leaves the field and isn't back before the hike plays that down a man short.
 
 ### Collisions
 
 - **[decided] [code]** A collision only matters when **at least one of the two players holds a handegg**. Touches with no ball involved are ignored.
 - **[code]** A collision is detected from the **3D models touching**, not from tiles (§3).
 - **[code]** Walking through someone counts as **one** collision. It starts on the first triangle touch and ends when the two models' bounding boxes separate.
-- **[gap]** What a collision *means* in the game: a tackle, a down, a turnover? Does the carrier have to stop?
+- **[rulebook]** A **tackle** is a defender touching any part of the **body** of an offensive player who has the ball. Touching the ball is not a tackle, and headgear touching (a unicorn horn, say) is neither a tackle nor an incomplete. The plugin's default bare-body model matches this.
+- **[rulebook]** A play is dead when a majority of referees call **D** (down) or **Inc**.
 
 ### Interceptions
 
@@ -69,20 +78,71 @@ Each fact is tagged:
   - is colliding with another player on that same tick (models touching)
 - **[code]** Hand-to-hand passes without a throw, and uncontested catches, are **not** interceptions.
 - **[code]** Detected locally and shown in chat and as a tile highlight. Interceptions are not sent to the server yet.
+- **Conflict with the rulebook.** The rulebook defines these differently:
+  - **Incomplete:** a defender touches, or stands on, the intended receiver as the receiver catches the ball.
+  - **Interception:** a defender catches a pass, **or** the same player is ruled incomplete **twice in a row** on one drive. If several players are ruled incomplete on one play, all of them are on track for an interception on the next play.
+  - What the plugin calls an interception (a catch made while the catcher's model is touching someone) is the rulebook's **incomplete** when an offensive receiver is the one touched. A defender's clean catch, which the plugin ignores, is the rulebook's interception.
+- **[rulebook]** A **catch** happens the moment the receiver has both hands on the ball and the ball can no longer be seen in the air. Once the arms start moving down, an incomplete can no longer happen. The plugin's check on "the tick the projectile stops being drawn" lines up with this.
 
 ### Fair play
 
 - **[decided]** Banned plugins: **Block Tracker** and **True Tile Player Indicators**. rfl.gg reads the banned list from a config JSON. Unofficial plugins are allowed and shown in beige.
 - **[code]** Each report includes the player's own plugin list (enabled and disabled) and logs toggles.
 
-### Not defined yet
+### Game structure
 
-- **[gap]** Scoring, downs, game length, kickoff and restart, fouls and penalties, what referees rule on, and how a play starts and ends. These are the core rules a play optimiser needs.
-- **[gap]** What happens when the carrier steps out of bounds: is the play dead, and where is the ball placed?
-- **[gap]** Whether a touchdown needs the carrier to *hold* the handegg as they enter the endzone, and whether a catch made inside the endzone scores.
-- **[gap]** Throws: aimed at a player or at a tile? Can a pass be incomplete or dropped? Do forward-pass limits apply? Is a defender's uncontested catch a turnover?
-- **[gap]** Run energy: is it in play, and are stamina potions or energy restores allowed? Without a ruling, players are modelled as running forever.
-- **[gap]** Same-tick ordering: if the carrier enters the endzone on the tick they are touched, which counts first?
+- **[rulebook]** Two **10-minute halves** (1000 ticks each), with a 5-minute half time and a two-minute warning in each half. Three one-minute timeouts per half.
+- **[rulebook]** The clock stops on a change of possession, an incomplete pass, out of bounds, a touchdown, a challenge and the two-minute warning. Extra points are not timed.
+- **[rulebook]** **4 downs to score.** There are no first downs: a drive scores within four plays or turns over on downs.
+- **[rulebook]** A drive starts with the ball at the **second window from the offense's own goal line**.
+- **[rulebook]** Overtime: one possession each, repeating in the order 1, 2, 2, 1, 1, 2 and so on until one team leads after equal possessions. From the third set of possessions, every touchdown must go for two.
+
+### A play
+
+- **[rulebook]** **Play clock:** 20 s (about 33 ticks). Hike can't be called before it starts, and the snap must happen within it.
+- **[rulebook]** **The snap:** the center starts with the ball. The QB says "Hike" in public chat while standing still, and the center throws the ball to the QB. Neither moves until the QB has the ball. After that the center may run a route.
+- **[rulebook]** **Direct snap:** the center may snap to any player on or behind the line of scrimmage instead. This ends the sack clock.
+- **[rulebook]** **Sack clock:** 15 s (25 ticks) from the hike. Until it expires, or until the QB passes, hands off, or runs behind the line, a defender running through the QB is an illegal sack. Moving with the ball also opens the QB to a sack. A sack is avoided the moment the throw animation starts.
+- **[rulebook]** A player carrying the ball past the line of scrimmage must have it **equipped**. Running past the line without the ball before the throw is a dead-ball penalty.
+- **[rulebook]** **Laterals:** a player who has caught or run with the ball may stop, unequip it, and throw to anyone **behind them or level with them**, measured toward the scoring endzone.
+- **[rulebook]** **Handoff:** the RB carries their own ball in their inventory. Once the QB unequips, the RB runs through the QB and equips on the QB's tile or within one tile of it, before crossing the line of scrimmage. Only one RB may run through the QB per play, and only once. A handoff ends the sack clock.
+- **[rulebook]** A QB throw that goes **backwards** is a pitch (counts as a rushing TD). A throw **level** with the QB is a screen (counts as a pass).
+
+### Scoring
+
+- **[rulebook]** Reaching the end of the field is a **touchdown**. The carrier must enter the endzone **untouched** by the defense.
+- **[rulebook]** It's also a touchdown if the carrier's foot and ball fully cross the plane, facing forward, before the tackle lands. Because this is judged on the models, the trailing render matters here (§2).
+- **[rulebook]** **Running** into an endzone corner is a touchdown, but a **pass** to the corner is incomplete. A catch on the half-tile marker between the corner and in-bounds is incomplete.
+- **[rulebook]** After a touchdown: a 1-point try from the second window from the goal line, or a 2-point try from the fourth window. Stopping it counts as an "XP stop".
+
+### Defense
+
+- **[rulebook]** Following or trading the ball carrier is a penalty (5 yards, replay down). Following a receiver who is running their route is also prohibited. Following or trading an offensive player **through** the QB is not an illegal sack.
+- **[rulebook]** **Off-ball** players may accept trades or teleother spells. That counts as blocking.
+- **[rulebook]** A defender **equipping a ball** is a penalty.
+- **[rulebook]** In 6v6, at most 5 defenders may be in the endzone at once, unless the play starts on the 1-yard line.
+
+### Turnovers
+
+- **[rulebook]** **Interception:** see the conflict note above. If the second incomplete in a row falls on 4th down, the team taking over starts from the original line of scrimmage.
+- **[rulebook]** **Fumble:** the center snaps the ball to a defender, **or** one player has two sacks or tackles for loss, in any combination, on back-to-back plays.
+- **[rulebook]** **Turnover on downs:** no score in 4 plays.
+
+### Penalties that affect movement
+
+- **[rulebook]** **Emotes and speed boosts** are penalties for both sides. So run speed is the base 1 or 2 tiles per tick.
+- **[rulebook]** The usual penalty is **5 yards**, with the down replayed. Unsportsmanlike conduct is 15 yards.
+- **[rulebook]** Equipment: nothing in the weapon or shield slot (books are allowed), no capes (the shoulder parrot is allowed), and nothing that hides or extends the feet.
+
+### Still not defined
+
+- **[gap]** **Yards and windows to tiles.** Where are the 1-yard line and the 2nd and 4th windows in tile rows, and how many tiles is 5 yards? Every spot, penalty and conversion depends on this.
+- **[gap]** **Where the next down starts.** At the tackle spot (the carrier's tile, or the contact tile)? On the same row and column, or re-centred? Where does the ball go after out of bounds, an incomplete, a sack or a turnover?
+- **[gap]** **Where the line of scrimmage is, and what offsides means**, in tiles.
+- **[gap]** **Throws:** aimed at a player (the OSRS handegg "toss") or at a tile? Does a ball whose target moves away still get caught, and is that incomplete?
+- **[gap]** **Run energy:** speed boosts are banned, but does that include stamina potions? Do players run out of energy during a 10-minute half?
+- **[gap]** **Same-tick ordering:** if the carrier enters the endzone on the tick they are touched, which counts? The rulebook's "untouched" and "crosses the plane before the tackle" read as touchdown only if the touchdown happens strictly first.
+- **[gap]** **The interception conflict above:** which definition should the plugin follow?
 
 ---
 
