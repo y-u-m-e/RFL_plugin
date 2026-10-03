@@ -132,7 +132,7 @@ final class ContactDetector
 
     /**
      * World tile {x, y, plane} under a scene point. fromLocalInstance maps instance chunks to their
-     * template, so two players in the same house report the same coordinates.
+     * template, so two players in the same house get the same coordinates.
      */
     private int[] tile(double sceneX, double sceneY)
     {

@@ -20,7 +20,7 @@ final class PosedMesh
     private static final double DEGENERATE = 1e-12;
     /**
      * At most this many intersecting triangle pairs are collected per player pair. The count is
-     * reported as a contact's depth, so a depth of MAX_HITS means "at least MAX_HITS".
+     * saved as a collision's maxTriangles, so a value of MAX_HITS means "at least MAX_HITS".
      */
     static final int MAX_HITS = 512;
 

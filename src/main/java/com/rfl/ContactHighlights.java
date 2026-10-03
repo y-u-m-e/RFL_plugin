@@ -7,7 +7,7 @@ import javax.inject.Singleton;
 
 /**
  * Recent contact points for the on-screen tile highlight. Written by {@link ContactDetector} when a
- * contact starts, read by {@link ContactHighlightOverlay}. Display only; nothing here is reported.
+ * collision starts, read by {@link ContactHighlightOverlay}. Display only.
  */
 @Singleton
 final class ContactHighlights
