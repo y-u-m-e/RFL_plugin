@@ -201,13 +201,13 @@ final class ReplayWriter
         }
     }
 
-    /** Drain task only. Closing the previous file's writer is a no-op once it's already null. */
+    /**
+     * Drain task only. Always closes whatever is open: a failure on the previous file can mark the
+     * writer closed while this file's open is already queued, and skipping the close then would
+     * leak the handle and leave a header-only gzip. {@link #closeOut} is a no-op when nothing is.
+     */
     private void doClose(boolean wasOpen)
     {
-        if (!wasOpen)
-        {
-            return;
-        }
         closeOut();
     }
 

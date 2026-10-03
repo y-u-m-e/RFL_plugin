@@ -145,18 +145,21 @@ public class ReplaySamplerTest
     @Test
     public void noBallLinesBeforeTheProjectileStarts()
     {
-        // The client creates the projectile ~0.8 s early, parked at (0, 0) until its start cycle.
+        // The client creates the projectile ~0.8 s early, parked at (0, 0) through its start cycle;
+        // the first real position is the cycle after (seen in a real recording).
         ReplaySampler sampler = new ReplaySampler();
-        Ball early = new Ball(1528, 100, 0.0, 0.0, 0.0, 0);
-        assertTrue(sampler.frame(99, List.of(), List.of(early)).isEmpty());
-        assertEquals(1, sampler.frame(100, List.of(), List.of(new Ball(1528, 100, 8896, 5696, -651, 1175))).size());
+        Ball parked = new Ball(1528, 100, 0.0, 0.0, 0.0, 0);
+        assertTrue(sampler.frame(99, List.of(), List.of(parked)).isEmpty());
+        assertTrue(sampler.frame(100, List.of(), List.of(parked)).isEmpty());
+        assertEquals(1, sampler.frame(101, List.of(), List.of(new Ball(1528, 100, 8896, 5696, -651, 1175))).size());
     }
 
     @Test
     public void ballLinesEveryCycleWhileInFlight()
     {
         ReplaySampler sampler = new ReplaySampler();
-        Ball ball = new Ball(7, 1, 1.5, 2.5, 0.0, 90);
+        // Started at cycle 0, so it is in flight (has a position) from cycle 1.
+        Ball ball = new Ball(7, 0, 1.5, 2.5, 0.0, 90);
 
         List<Map<String, Object>> cycle1 = sampler.frame(1, List.of(), List.of(ball));
         assertEquals(1, cycle1.size());
@@ -164,7 +167,7 @@ public class ReplaySamplerTest
         assertEquals("ball", line.get("t"));
         assertEquals(1, line.get("cyc"));
         assertEquals(7, line.get("id"));
-        assertEquals(1, line.get("sc"));
+        assertEquals(0, line.get("sc"));
         assertEquals(1.5, line.get("x"));
         assertEquals(2.5, line.get("y"));
         assertEquals(0.0, line.get("z"));

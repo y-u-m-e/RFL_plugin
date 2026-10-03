@@ -305,4 +305,41 @@ public class ReplayWriterTest
 
         assertEquals(3, gunzipLines(file).size());
     }
+
+    @Test
+    public void aFailureOnAFileBoundaryStillFinishesTheNextFile() throws Exception
+    {
+        // File A fails after B's open is already queued: the failure marks the writer closed, so
+        // B's close used to be skipped, leaking B's handle and leaving a header-only gzip.
+        java.util.Queue<Runnable> queued = new java.util.ArrayDeque<>();
+        ExecutorService manual = new java.util.concurrent.AbstractExecutorService()
+        {
+            public void execute(Runnable r) { queued.add(r); }
+            public void shutdown() { }
+            public List<Runnable> shutdownNow() { return List.of(); }
+            public boolean isShutdown() { return false; }
+            public boolean isTerminated() { return false; }
+            public boolean awaitTermination(long t, java.util.concurrent.TimeUnit u) { return true; }
+        };
+        ReplayWriter writer = new ReplayWriter(new GsonBuilder().create(), manual);
+        Path a = temp.getRoot().toPath().resolve("a.rflr.gz");
+        Path b = temp.getRoot().toPath().resolve("b.rflr.gz");
+        writer.open(a);
+        writer.enqueue(() ->
+        {
+            throw new IllegalStateException("boom");
+        });
+        writer.open(b);
+        while (!queued.isEmpty())
+        {
+            queued.poll().run();
+        }
+        writer.close();
+        while (!queued.isEmpty())
+        {
+            queued.poll().run();
+        }
+        // B must be a complete gzip (trailer written), even though its lines were dropped.
+        gunzipLines(b);
+    }
 }

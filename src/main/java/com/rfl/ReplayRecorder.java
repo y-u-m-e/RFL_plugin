@@ -92,10 +92,10 @@ final class ReplayRecorder
         return recordReplays && loggedIn && inPoh;
     }
 
-    /** Client thread: whether a replay file is open right now. */
+    /** Client thread: whether a replay file is open and being written (false after a disk failure). */
     boolean recording()
     {
-        return sampler != null;
+        return sampler != null && writer.isOpen();
     }
 
     /** {@code yyyy-MM-dd_HHmmss_w<world>.rflr.gz}, local time. */

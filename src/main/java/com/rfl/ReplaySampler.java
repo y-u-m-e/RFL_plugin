@@ -166,8 +166,9 @@ final class ReplaySampler
 
         for (Ball b : balls)
         {
-            // The client creates a projectile before its start cycle, parked at (0, 0): not in flight yet.
-            if (cycle < b.startCycle)
+            // The client creates a projectile ~0.8 s early, parked at (0, 0) through its start
+            // cycle; it has a real position only from the cycle after.
+            if (cycle <= b.startCycle)
             {
                 continue;
             }
