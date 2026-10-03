@@ -3,6 +3,7 @@ package com.rfl;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -23,6 +24,7 @@ import net.runelite.api.events.GameTick;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -289,11 +291,43 @@ public class RflPlugin extends Plugin
     public void onGameStateChanged(final GameStateChanged event)
     {
         final GameState state = event.getGameState();
+        // inPoh is otherwise only recomputed on GameTick; refresh it here so the frames between a
+        // scene change and the next tick don't run on the old value (detection and replays both read it).
         if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
         {
+            inPoh = false;
             stopTracking();
         }
+        else if (state == GameState.LOGGED_IN)
+        {
+            inPoh = pohDetector.inPoh(client);
+        }
         replayRecorder.onGameStateChanged(state);
+    }
+
+    /**
+     * RuneLite doesn't call {@link #shutDown} when the client exits, so the open replay is closed
+     * here and the exit is held until its gzip trailer is written. ClientShutdown may arrive off the
+     * client thread; the recorder's state stays client-thread only, so the stop runs through
+     * {@link ClientThread#invoke} (inline when already on it) and the exit waits on the outcome.
+     */
+    @Subscribe
+    public void onClientShutdown(final ClientShutdown event)
+    {
+        final CompletableFuture<Void> done = new CompletableFuture<>();
+        clientThread.invoke(() ->
+        {
+            try
+            {
+                replayRecorder.stop().whenComplete((ignored, error) -> done.complete(null));
+            }
+            catch (RuntimeException e)
+            {
+                done.complete(null);
+                throw e;
+            }
+        });
+        event.waitFor(done);
     }
 
     /**

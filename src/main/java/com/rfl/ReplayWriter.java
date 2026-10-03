@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -78,10 +79,17 @@ final class ReplayWriter
         enqueue(() -> doWrite(json));
     }
 
-    /** Finishes the gzip (trailer) and closes. Safe to call when nothing is open. */
-    void close()
+    /**
+     * Finishes the gzip (trailer) and closes. Safe to call when nothing is open. The returned
+     * future completes once the queued close step has run, so the file is complete on disk; it is
+     * queued right behind the close, and a failing step never stops later steps running.
+     */
+    CompletableFuture<Void> close()
     {
         closeQuietly();
+        CompletableFuture<Void> done = new CompletableFuture<>();
+        enqueue(() -> done.complete(null));
+        return done;
     }
 
     boolean isOpen()

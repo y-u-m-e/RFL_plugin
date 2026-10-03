@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 
 import javax.inject.Inject;
@@ -194,30 +195,35 @@ final class ReplayRecorder
         writer.write(line);
     }
 
-    /** Client thread: closes the open file, if any. Safe to call when nothing is open. */
-    void stop()
+    /**
+     * Client thread: closes the open file, if any. Safe to call when nothing is open. The future
+     * completes once the gzip trailer is on disk (at once when nothing was open).
+     */
+    CompletableFuture<Void> stop()
     {
         if (sampler == null)
         {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
+        final CompletableFuture<Void> closed;
         if (config.debugLogging())
         {
-            final Path closed = file;
+            final Path path = file;
             final int cycles = lastCycle - startCycle;
             final long avgMicros = frames == 0 ? 0 : frameNanos / frames / 1000;
-            writer.close();
+            closed = writer.close();
             // Queued behind the close, so the byte count is final when this runs.
             writer.enqueue(() -> log.info("[RFL debug] replay closed {} cycles={} bytes={} avgClientTickMicros={}",
-                closed, cycles, writer.bytesWritten(), avgMicros));
+                path, cycles, writer.bytesWritten(), avgMicros));
         }
         else
         {
-            writer.close();
+            closed = writer.close();
         }
         sampler = null;
         file = null;
         pitchPending = false;
+        return closed;
     }
 
     private void open(Client client)

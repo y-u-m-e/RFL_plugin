@@ -15,6 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Future;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -121,6 +123,77 @@ public class ReplayWriterTest
         assertEquals(2, lines.size());
         assertEquals(gson.toJson(first), lines.get(0));
         assertEquals(gson.toJson(second), lines.get(1));
+    }
+
+    @Test
+    public void closeFutureCompletesOnlyAfterTheFileHasItsTrailer() throws Exception
+    {
+        // Holds every task until the test lets it run, so "not done yet" can be observed.
+        ConcurrentLinkedQueue<Runnable> held = new ConcurrentLinkedQueue<>();
+        ExecutorService gated = new AbstractExecutorService()
+        {
+            @Override
+            public void execute(Runnable command)
+            {
+                held.add(command);
+            }
+
+            @Override
+            public void shutdown()
+            {
+            }
+
+            @Override
+            public List<Runnable> shutdownNow()
+            {
+                return List.of();
+            }
+
+            @Override
+            public boolean isShutdown()
+            {
+                return false;
+            }
+
+            @Override
+            public boolean isTerminated()
+            {
+                return false;
+            }
+
+            @Override
+            public boolean awaitTermination(long timeout, TimeUnit unit)
+            {
+                return true;
+            }
+        };
+        com.google.gson.Gson gson = new GsonBuilder().create();
+        ReplayWriter writer = new ReplayWriter(gson, gated);
+        Path file = temp.getRoot().toPath().resolve("exit.gz");
+
+        writer.open(file);
+        for (int i = 0; i < 500; i++)
+        {
+            writer.write(map("t", "tick" + i));
+        }
+        Future<?> done = writer.close();
+        assertFalse("close has not run yet", done.isDone());
+
+        Thread worker = new Thread(() ->
+        {
+            Runnable r;
+            while ((r = held.poll()) != null)
+            {
+                r.run();
+            }
+        });
+        worker.start();
+        done.get(5, TimeUnit.SECONDS);
+
+        List<String> lines = gunzipLines(file);
+        assertEquals(500, lines.size());
+        assertEquals(gson.toJson(map("t", "tick499")), lines.get(499));
+        worker.join(5000);
     }
 
     @Test
