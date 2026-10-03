@@ -20,6 +20,7 @@ import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.Scrollable;
@@ -35,7 +36,9 @@ import net.runelite.client.ui.components.materialtabs.MaterialTabGroup;
 import net.runelite.client.util.ImageUtil;
 
 /**
- * The "RFL" sidebar panel. Top to bottom: a status strip (house, recording); the session's
+ * The "RFL" sidebar panel. Top to bottom: a status strip (house, a brief "Saved collision" /
+ * "Saved plugin list" tick) over a replay card while a replay is recording, saving (with a
+ * determinate progress bar), just saved (with Open folder) or failed; the session's
  * collision and incomplete counts with the latest event as a highlighted card;
  * Collisions / Incompletes / Debug tabs; and a footer with Copy plugin history, the record
  * button and Open folder. It renders a {@link PanelModel} and formats nothing itself. No plugin
@@ -55,8 +58,15 @@ final class RflPanel extends PluginPanel
 
     // Status strip.
     private final JLabel status = new JLabel();
-    private final JLabel recording = new JLabel("Recording");
+    private final JLabel savedTick = new JLabel();
     private final JButton recordButton = new JButton();
+
+    // Replay card, under the status line.
+    private final JPanel replayCard = new JPanel(new BorderLayout(0, 4));
+    private final JLabel replayTitle = new JLabel();
+    private final JLabel replayDetail = new JLabel();
+    private final JProgressBar replayBar = new JProgressBar(0, 100);
+    private final JButton replayOpen = new JButton("Open folder");
 
     // Hero.
     private final JLabel collisionCount = bigNumber(COLLISION);
@@ -96,6 +106,8 @@ final class RflPanel extends PluginPanel
         top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
         top.setOpaque(false);
         top.add(statusStrip());
+        top.add(Box.createVerticalStrut(6));
+        top.add(replayCard(openFolder));
         top.add(Box.createVerticalStrut(6));
         top.add(heroCounts());
         top.add(Box.createVerticalStrut(6));
@@ -169,13 +181,44 @@ final class RflPanel extends PluginPanel
         strip.setOpaque(false);
         strip.setAlignmentX(LEFT_ALIGNMENT);
         status.setFont(FontManager.getRunescapeBoldFont());
-        recording.setFont(FontManager.getRunescapeBoldFont());
-        recording.setForeground(ALERT.brighter());
-        recording.setIcon(new Dot(ALERT.brighter()));
-        recording.setToolTipText("A replay file is open.");
+        savedTick.setFont(FontManager.getRunescapeSmallFont());
+        savedTick.setForeground(OK);
+        savedTick.setIcon(new Dot(OK));
+        savedTick.setToolTipText("A line was just written to the RFL folder.");
         strip.add(status, BorderLayout.WEST);
-        strip.add(recording, BorderLayout.EAST);
+        strip.add(savedTick, BorderLayout.EAST);
         return capHeight(strip);
+    }
+
+    /** The replay card: title, file name, the saving bar and, once saved, Open folder. */
+    private JComponent replayCard(Runnable openFolder)
+    {
+        replayTitle.setFont(FontManager.getRunescapeBoldFont());
+        replayDetail.setFont(FontManager.getRunescapeSmallFont());
+        replayDetail.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+
+        replayBar.setStringPainted(false);
+        replayBar.setBorderPainted(false);
+        replayBar.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        replayBar.setForeground(ColorScheme.PROGRESS_INPROGRESS_COLOR);
+        replayBar.setPreferredSize(new Dimension(10, 10));
+
+        replayOpen.setFocusable(false);
+        replayOpen.setFont(FontManager.getRunescapeSmallFont());
+        replayOpen.setToolTipText("Opens the RFL folder; replays are in rfl/replays.");
+        replayOpen.addActionListener(e -> openFolder.run());
+
+        JPanel south = new JPanel(new BorderLayout(0, 4));
+        south.setOpaque(false);
+        south.add(replayBar, BorderLayout.NORTH);
+        south.add(replayOpen, BorderLayout.SOUTH);
+
+        replayCard.add(replayTitle, BorderLayout.NORTH);
+        replayCard.add(replayDetail, BorderLayout.CENTER);
+        replayCard.add(south, BorderLayout.SOUTH);
+        replayCard.setAlignmentX(LEFT_ALIGNMENT);
+        replayCard.setVisible(false);
+        return capHeight(replayCard);
     }
 
     private JComponent heroCounts()
@@ -272,7 +315,9 @@ final class RflPanel extends PluginPanel
         status.setText(m.status());
         status.setForeground(m.isInPoh() ? OK : ColorScheme.LIGHT_GRAY_COLOR);
         status.setIcon(m.isInPoh() ? new Dot(OK) : new Dot(ColorScheme.MEDIUM_GRAY_COLOR));
-        recording.setVisible(m.isRecording());
+        savedTick.setText(m.getSavedTick() == null ? "" : m.getSavedTick());
+        savedTick.setVisible(m.getSavedTick() != null);
+        showReplay(m.getReplay());
 
         collisionCount.setText(String.valueOf(m.getCollisionCount()));
         incompleteCount.setText(String.valueOf(m.getIncompleteCount()));
@@ -342,6 +387,46 @@ final class RflPanel extends PluginPanel
         latestTime.setText(e.getTime());
         latestBody.setForeground(Color.WHITE);
         latestBody.setText(wrap("<b>" + arrows(PanelModel.html(e.getBody())) + "</b>"));
+    }
+
+    /** EDT: the replay card for a strip, hidden when null. */
+    private void showReplay(PanelModel.ReplayStrip r)
+    {
+        replayCard.setVisible(r != null);
+        if (r == null)
+        {
+            return;
+        }
+        Color accent = replayAccent(r.getState());
+        replayCard.setBackground(blend(ColorScheme.DARKER_GRAY_COLOR, accent, 0.18f));
+        replayCard.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 4, 0, 0, accent),
+            BorderFactory.createEmptyBorder(6, 8, 6, 8)));
+        replayTitle.setForeground(r.getState() == ReplayState.SAVED ? OK : accent);
+        replayTitle.setIcon(r.getState() == ReplayState.RECORDING ? new Dot(accent) : null);
+        replayTitle.setText(wrap(glyphs(PanelModel.html(r.getText()))));
+        replayTitle.setToolTipText(r.getText());
+        replayDetail.setVisible(r.getDetail() != null);
+        replayDetail.setText(r.getDetail() == null ? "" : r.getDetail());
+        replayBar.setVisible(r.getState() == ReplayState.SAVING);
+        replayBar.setForeground(accent);
+        replayBar.setValue(r.getPercent());
+        replayOpen.setVisible(r.getState() == ReplayState.SAVED);
+    }
+
+    private static Color replayAccent(ReplayState state)
+    {
+        switch (state)
+        {
+            case SAVING:
+                return ColorScheme.PROGRESS_INPROGRESS_COLOR;
+            case SAVED:
+                return OK;
+            case ERROR:
+                return ColorScheme.PROGRESS_ERROR_COLOR;
+            default:
+                return ALERT.brighter();
+        }
     }
 
     private void showCollisions(List<PanelModel.CollisionRow> rows)
@@ -480,6 +565,13 @@ final class RflPanel extends PluginPanel
     private static String wrap(String escapedHtml)
     {
         return "<html><body style='width:" + WRAP + "px'>" + escapedHtml + "</body></html>";
+    }
+
+    /** The RuneScape fonts may lack "·" and "…", so they are drawn in the logical Dialog font. */
+    private static String glyphs(String html)
+    {
+        return html.replace("·", "<font face='Dialog'>&middot;</font>")
+            .replace("…", "<font face='Dialog'>&hellip;</font>");
     }
 
     /** The RuneScape fonts have no "↔" glyph, so it is drawn in the logical Dialog font. */

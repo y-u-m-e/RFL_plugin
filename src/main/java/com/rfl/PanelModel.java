@@ -6,6 +6,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 import lombok.Value;
 
@@ -21,6 +22,10 @@ final class PanelModel
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     static final String NO_HISTORY = "No plugin history yet today";
+    /** How long "Saved <file>" stays up after a replay finishes saving. */
+    static final long SAVED_SHOW_MS = 10_000;
+    /** How long a "Saved collision" / "Saved plugin list" tick stays up. */
+    static final long TICK_SHOW_MS = 2_000;
     static final String COPY_FAILED = "Couldn't read today's plugin history";
 
     enum Kind
@@ -50,6 +55,19 @@ final class PanelModel
         {
             return kind.label + ": " + body + ", " + time;
         }
+    }
+
+    /** The replay strip under the status line: what the replay file is doing right now. */
+    @Value
+    static class ReplayStrip
+    {
+        ReplayState state;
+        /** "Recording 2:31 · 1.4 MB · 132 models", "Saving replay… 42%", "Saved x (1.4 MB)", or the error. */
+        String text;
+        /** The file name under the text while recording or saving; null otherwise. */
+        String detail;
+        /** 0..100: the saving bar. */
+        int percent;
     }
 
     @Value
@@ -90,6 +108,10 @@ final class PanelModel
     List<IncompleteRow> incompletes;
     /** The Debug tab's text; null when Debug logging is off, which hides the tab. */
     String debugText;
+    /** Null when there is nothing to say about a replay file. */
+    ReplayStrip replay;
+    /** "Saved collision" / "Saved plugin list" for a moment after a line is written; else null. */
+    String savedTick;
 
     /**
      * @param collisions this session's collisions, newest first
@@ -100,6 +122,18 @@ final class PanelModel
     static PanelModel of(boolean inPoh, boolean recording, int collisionCount, int incompleteCount,
         List<Collision> collisions, List<CollisionLog.Incomplete> incompletes, Object latest, String debugText,
         ZoneId zone)
+    {
+        return of(inPoh, recording, collisionCount, incompleteCount, collisions, incompletes, latest, debugText, null,
+            null, zone);
+    }
+
+    /**
+     * @param replay {@link #replayStrip}, or null for none
+     * @param savedTick {@link #savedTick}, or null for none
+     */
+    static PanelModel of(boolean inPoh, boolean recording, int collisionCount, int incompleteCount,
+        List<Collision> collisions, List<CollisionLog.Incomplete> incompletes, Object latest, String debugText,
+        ReplayStrip replay, String savedTick, ZoneId zone)
     {
         List<CollisionRow> collisionRows = new ArrayList<>(collisions.size());
         for (Collision c : collisions)
@@ -112,7 +146,81 @@ final class PanelModel
             incompleteRows.add(incompleteRow(i, zone));
         }
         return new PanelModel(inPoh, recording, collisionCount, incompleteCount, latestEvent(latest, zone),
-            Collections.unmodifiableList(collisionRows), Collections.unmodifiableList(incompleteRows), debugText);
+            Collections.unmodifiableList(collisionRows), Collections.unmodifiableList(incompleteRows), debugText,
+            replay, savedTick);
+    }
+
+    /**
+     * The replay strip for a recorder {@link ReplayRecorder.Status} at {@code nowMs}, or null when
+     * there is nothing to show: idle, or saved more than {@link #SAVED_SHOW_MS} ago. An error stays
+     * until the next recording replaces it.
+     */
+    static ReplayStrip replayStrip(ReplayRecorder.Status s, long nowMs)
+    {
+        if (s == null)
+        {
+            return null;
+        }
+        switch (s.getState())
+        {
+            case RECORDING:
+                return new ReplayStrip(ReplayState.RECORDING, "Recording " + elapsed(s.getElapsedMs()) + " · "
+                    + size(s.getBytes()) + " · " + s.getModels() + (s.getModels() == 1 ? " model" : " models"),
+                    s.getFileName(), 0);
+            case SAVING:
+                int percent = (int) Math.floor(Math.max(0.0, Math.min(1.0, s.getProgress())) * 100);
+                return new ReplayStrip(ReplayState.SAVING, "Saving replay… " + percent + "%", s.getFileName(),
+                    percent);
+            case SAVED:
+                if (nowMs - s.getSavedAtMs() >= SAVED_SHOW_MS)
+                {
+                    return null;
+                }
+                return new ReplayStrip(ReplayState.SAVED, "Saved " + s.getFileName() + " (" + size(s.getBytes()) + ")",
+                    null, 100);
+            case ERROR:
+                return new ReplayStrip(ReplayState.ERROR, "Couldn't save replay: "
+                    + (s.getError() == null || s.getError().isEmpty() ? "unknown error" : s.getError()), null, 0);
+            default:
+                return null;
+        }
+    }
+
+    /** "Saved collision" or "Saved plugin list" (the newer) within {@link #TICK_SHOW_MS}; else null. */
+    static String savedTick(long collisionSavedAtMs, long pluginSavedAtMs, long nowMs)
+    {
+        boolean collision = collisionSavedAtMs > 0 && nowMs - collisionSavedAtMs < TICK_SHOW_MS;
+        boolean plugin = pluginSavedAtMs > 0 && nowMs - pluginSavedAtMs < TICK_SHOW_MS;
+        if (collision && (!plugin || collisionSavedAtMs > pluginSavedAtMs))
+        {
+            return "Saved collision";
+        }
+        return plugin ? "Saved plugin list" : null;
+    }
+
+    /** "2:31", or "1:02:31" from an hour. */
+    static String elapsed(long ms)
+    {
+        long total = Math.max(0L, ms) / 1000;
+        long h = total / 3600;
+        long m = total / 60 % 60;
+        long sec = total % 60;
+        return h > 0 ? String.format(Locale.ROOT, "%d:%02d:%02d", h, m, sec)
+            : String.format(Locale.ROOT, "%d:%02d", m, sec);
+    }
+
+    /** "900 B", "12 KB", "1.4 MB" (binary units). */
+    static String size(long bytes)
+    {
+        if (bytes < 1024)
+        {
+            return Math.max(0L, bytes) + " B";
+        }
+        if (bytes < 1024 * 1024)
+        {
+            return bytes / 1024 + " KB";
+        }
+        return String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
     /** The record button's label: what a click does. {@code armed} is the Record replays setting. */

@@ -18,6 +18,7 @@ import javax.inject.Singleton;
 
 import com.google.gson.Gson;
 
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ActorSpotAnim;
 import net.runelite.api.Client;
@@ -101,6 +102,31 @@ final class ReplayRecorder
     private int locsSkipped;
     /** The local user's own plugin list for the {@code plugins} line; may be null or return null. */
     private Supplier<List<PluginEntry>> pluginSource;
+    /** For the panel: when the open file opened, and the last file's name and model count. */
+    private long openedAtMs;
+    private String lastFileName;
+    private int lastModels;
+
+    /**
+     * What the panel's replay strip shows, as plain values ({@link PanelModel#replayStrip} formats
+     * it). {@code elapsedMs} and {@code models} are meaningful while recording; {@code progress}
+     * while saving; {@code savedAtMs} once saved; {@code error} on failure. {@code bytes} is the
+     * compressed size on disk so far (the finished size once saved).
+     */
+    @Value
+    static class Status
+    {
+        static final Status IDLE = new Status(ReplayState.IDLE, null, 0L, 0L, 0, 0.0, null, 0L);
+
+        ReplayState state;
+        String fileName;
+        long elapsedMs;
+        long bytes;
+        int models;
+        double progress;
+        String error;
+        long savedAtMs;
+    }
 
     @Inject
     ReplayRecorder(RflConfig config, Gson gson, ScheduledExecutorService executor)
@@ -126,6 +152,34 @@ final class ReplayRecorder
     boolean recording()
     {
         return sampler != null && writer.isOpen();
+    }
+
+    /**
+     * Client thread: the replay strip's state. The writer's state is read through volatiles, so a
+     * save that finishes on the writer's thread after {@link #stop} still shows here.
+     */
+    Status status(long nowMs)
+    {
+        switch (writer.state())
+        {
+            case RECORDING:
+                if (sampler == null)
+                {
+                    return Status.IDLE;
+                }
+                return new Status(ReplayState.RECORDING, lastFileName, Math.max(0L, nowMs - openedAtMs),
+                    writer.fileBytes(), sampler.modelsCaptured(), 0.0, null, 0L);
+            case SAVING:
+                return new Status(ReplayState.SAVING, lastFileName, 0L, writer.fileBytes(), lastModels,
+                    writer.progress(), null, 0L);
+            case SAVED:
+                return new Status(ReplayState.SAVED, lastFileName, 0L, writer.savedBytes(), lastModels, 1.0, null,
+                    writer.savedAtMs());
+            case ERROR:
+                return new Status(ReplayState.ERROR, lastFileName, 0L, 0L, lastModels, 0.0, writer.error(), 0L);
+            default:
+                return Status.IDLE;
+        }
     }
 
     /** {@code yyyy-MM-dd_HHmmss_w<world>.rflr.gz}, local time. */
@@ -333,6 +387,7 @@ final class ReplayRecorder
         {
             return CompletableFuture.completedFuture(null);
         }
+        lastModels = sampler.modelsCaptured();
         final CompletableFuture<Void> closed;
         if (config.debugLogging())
         {
@@ -374,6 +429,9 @@ final class ReplayRecorder
         final int world = client.getWorld();
         sampler = new ReplaySampler();
         file = dir.resolve(fileName(now, world));
+        openedAtMs = now;
+        lastFileName = file.getFileName().toString();
+        lastModels = 0;
         startCycle = lastCycle;
         frameNanos = 0;
         frames = 0;

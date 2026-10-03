@@ -88,6 +88,8 @@ final class PluginLog
 
     private final Gson gson;
     private final ScheduledExecutorService executor;
+    /** Written on the executor after each successful append, read by the panel on the client thread. */
+    private volatile long lastSavedAtMs;
     private final Path dir;
     private final BooleanSupplier save;
     /** Panel history cap. */
@@ -321,10 +323,17 @@ final class PluginLog
             Files.createDirectories(dir);
             Files.write(file, (json + "\n").getBytes(StandardCharsets.UTF_8),
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            lastSavedAtMs = System.currentTimeMillis();
         }
         catch (IOException e)
         {
             log.warn("RFL plugins: can't write {}", file, e);
         }
+    }
+
+    /** Any thread: epoch ms the last line reached disk, 0 before any; for the panel's "Saved" tick. */
+    long lastSavedAtMs()
+    {
+        return lastSavedAtMs;
     }
 }

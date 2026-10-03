@@ -168,4 +168,23 @@ public class CollisionLogTest
         assertFalse(Files.isDirectory(notADir));
         assertEquals(1, log.recent().size());
     }
+
+    @Test
+    public void lastSavedAtIsSetOnlyWhenALineIsWritten() throws Exception
+    {
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        CollisionLog off = new CollisionLog(new GsonBuilder().create(), executor,
+            temp.getRoot().toPath().resolve("off"), () -> false);
+        CollisionLog on = new CollisionLog(new GsonBuilder().create(), executor,
+            temp.getRoot().toPath().resolve("on"), () -> true);
+        assertEquals(0L, on.lastSavedAtMs());
+
+        long before = System.currentTimeMillis();
+        off.record(collision("Amy", END));
+        on.record(collision("Amy", END));
+        drain(executor);
+
+        assertEquals(0L, off.lastSavedAtMs());
+        assertTrue(on.lastSavedAtMs() >= before);
+    }
 }

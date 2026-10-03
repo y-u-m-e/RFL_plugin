@@ -82,6 +82,8 @@ final class CollisionLog
 
     private final Gson gson;
     private final ScheduledExecutorService executor;
+    /** Written on the executor after each successful append, read by the panel on the client thread. */
+    private volatile long lastSavedAtMs;
     private final Path dir;
     private final BooleanSupplier save;
     /** Newest first; guarded by this. */
@@ -178,11 +180,18 @@ final class CollisionLog
             Files.createDirectories(dir);
             Files.write(file, (json + "\n").getBytes(StandardCharsets.UTF_8),
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            lastSavedAtMs = System.currentTimeMillis();
         }
         catch (IOException e)
         {
             log.warn("RFL collisions: can't write {}", file, e);
         }
+    }
+
+    /** Any thread: epoch ms the last line reached disk, 0 before any; for the panel's "Saved" tick. */
+    long lastSavedAtMs()
+    {
+        return lastSavedAtMs;
     }
 
     /** {@code YYYY-MM-DD.jsonl} for the local date of an epoch ms. */

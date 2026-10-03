@@ -32,12 +32,15 @@ import net.runelite.client.util.LinkBrowser;
 final class RflPanelController
 {
     static final long REFRESH_MS = 500;
+    /** While a replay is saving, so its progress bar moves. */
+    static final long SAVING_REFRESH_MS = 200;
 
     private final RflConfig config;
     private final ClientToolbar clientToolbar;
     private final RflDebug debug;
     private final SessionEvents session;
     private final PluginLog pluginLog;
+    private final CollisionLog collisionLog;
     private final ReplayRecorder replayRecorder;
     private final ScheduledExecutorService executor;
     private final ConfigManager configManager;
@@ -52,15 +55,17 @@ final class RflPanelController
     private boolean seenInPoh;
     private boolean seenRecording;
     private boolean seenArmed;
+    private ReplayState seenReplayState = ReplayState.IDLE;
     private PanelModel lastModel;
     /** Set on the EDT when a new panel is created, so the next refresh sends a model unconditionally. */
     private volatile boolean resend;
 
     @Inject
     RflPanelController(RflConfig config, ClientToolbar clientToolbar, RflDebug debug, SessionEvents session,
-        PluginLog pluginLog, ReplayRecorder replayRecorder, ScheduledExecutorService executor,
-        ConfigManager configManager)
+        PluginLog pluginLog, CollisionLog collisionLog, ReplayRecorder replayRecorder,
+        ScheduledExecutorService executor, ConfigManager configManager)
     {
+        this.collisionLog = collisionLog;
         this.configManager = configManager;
         this.config = config;
         this.clientToolbar = clientToolbar;
@@ -120,7 +125,9 @@ final class RflPanelController
 
     /**
      * Client thread, every ClientTick: rebuilds the model when something it shows changed, or at
-     * most every {@link #REFRESH_MS} for the rest, and sends it to the EDT only when it differs.
+     * most every {@link #REFRESH_MS} for the rest ({@link #SAVING_REFRESH_MS} while a replay is
+     * saving), and sends it to the EDT only when it differs. Runs whether or not a file is open, so
+     * a save finishing on the writer's thread after the recorder stopped keeps showing.
      */
     void refresh(boolean inPoh)
     {
@@ -132,14 +139,18 @@ final class RflPanelController
         long sessionVersion = session.version();
         boolean recording = replayRecorder.recording();
         boolean armed = config.recordReplays();
+        ReplayRecorder.Status replay = replayRecorder.status(now);
         boolean force = resend;
         resend = false;
         boolean changed = force || sessionVersion != seenSessionVersion
-            || inPoh != seenInPoh || recording != seenRecording || armed != seenArmed;
-        if (!changed && now - refreshAt < REFRESH_MS)
+            || inPoh != seenInPoh || recording != seenRecording || armed != seenArmed
+            || replay.getState() != seenReplayState;
+        long every = replay.getState() == ReplayState.SAVING ? SAVING_REFRESH_MS : REFRESH_MS;
+        if (!changed && now - refreshAt < every)
         {
             return;
         }
+        seenReplayState = replay.getState();
         boolean buttonChanged = force || armed != seenArmed || recording != seenRecording;
         refreshAt = now;
         seenSessionVersion = sessionVersion;
@@ -159,7 +170,9 @@ final class RflPanelController
 
         PanelModel model = PanelModel.of(inPoh, recording, session.collisionCount(), session.incompleteCount(),
             session.collisions(), session.incompletes(), session.latest(),
-            config.debugLogging() ? debug.text(inPoh) : null, ZoneId.systemDefault());
+            config.debugLogging() ? debug.text(inPoh) : null, PanelModel.replayStrip(replay, now),
+            PanelModel.savedTick(collisionLog.lastSavedAtMs(), pluginLog.lastSavedAtMs(), now),
+            ZoneId.systemDefault());
         if (!force && model.equals(lastModel))
         {
             return;

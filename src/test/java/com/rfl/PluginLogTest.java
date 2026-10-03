@@ -204,4 +204,23 @@ public class PluginLogTest
         assertEquals(2, PanelModel.lineCount(text));
         assertEquals("Copied 2 lines", PanelModel.copyResult(PanelModel.lineCount(text)));
     }
+
+    @Test
+    public void lastSavedAtIsSetOnlyWhenALineIsWritten() throws Exception
+    {
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        PluginLog off = new PluginLog(new GsonBuilder().create(), executor, temp.getRoot().toPath().resolve("off"),
+            () -> false);
+        PluginLog on = new PluginLog(new GsonBuilder().create(), executor, temp.getRoot().toPath().resolve("on"),
+            () -> true);
+        assertEquals(0L, on.lastSavedAtMs());
+
+        long before = System.currentTimeMillis();
+        off.snapshot(NOW, "Ref", 330, plugins(), "enter");
+        on.snapshot(NOW, "Ref", 330, plugins(), "enter");
+        drain(executor);
+
+        assertEquals(0L, off.lastSavedAtMs());
+        assertTrue(on.lastSavedAtMs() >= before);
+    }
 }

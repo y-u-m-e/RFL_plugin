@@ -167,4 +167,90 @@ public class PanelModelTest
             PanelModel.recordButtonTip(true, false));
         assertEquals("Recording. Click to stop and save the replay file.", PanelModel.recordButtonTip(true, true));
     }
+
+    private static final String FILE = "2026-10-03_120000_w330.rflr.gz";
+    /** 1.4 MB in the panel's binary megabytes. */
+    private static final long SIZE = 1_468_006L;
+
+    @Test
+    public void recordingStripText()
+    {
+        ReplayRecorder.Status s = new ReplayRecorder.Status(ReplayState.RECORDING, FILE, 151_000L, SIZE, 132, 0.0,
+            null, 0L);
+        PanelModel.ReplayStrip strip = PanelModel.replayStrip(s, T);
+        assertEquals(ReplayState.RECORDING, strip.getState());
+        assertEquals("Recording 2:31 \u00b7 1.4 MB \u00b7 132 models", strip.getText());
+        assertEquals(FILE, strip.getDetail());
+        assertEquals("Recording 0:05 \u00b7 12 KB \u00b7 1 model", PanelModel.replayStrip(
+            new ReplayRecorder.Status(ReplayState.RECORDING, FILE, 5_400L, 12_800L, 1, 0.0, null, 0L), T).getText());
+        assertEquals("1:02:31", PanelModel.elapsed(3_751_000L));
+        assertEquals("900 B", PanelModel.size(900));
+    }
+
+    @Test
+    public void savingShowsPercent()
+    {
+        ReplayRecorder.Status s = new ReplayRecorder.Status(ReplayState.SAVING, FILE, 0L, SIZE, 132, 0.427, null,
+            0L);
+        PanelModel.ReplayStrip strip = PanelModel.replayStrip(s, T);
+        assertEquals(ReplayState.SAVING, strip.getState());
+        assertEquals("Saving replay\u2026 42%", strip.getText());
+        assertEquals(42, strip.getPercent());
+        assertEquals(FILE, strip.getDetail());
+        // Never past 100, never below 0.
+        assertEquals(100, PanelModel.replayStrip(new ReplayRecorder.Status(ReplayState.SAVING, FILE, 0L, SIZE, 0,
+            1.7, null, 0L), T).getPercent());
+        assertEquals(0, PanelModel.replayStrip(new ReplayRecorder.Status(ReplayState.SAVING, FILE, 0L, SIZE, 0,
+            -1.0, null, 0L), T).getPercent());
+    }
+
+    @Test
+    public void savedShowsFileAndSizeFor10s()
+    {
+        ReplayRecorder.Status s = new ReplayRecorder.Status(ReplayState.SAVED, FILE, 0L, SIZE, 132, 1.0, null, T);
+        PanelModel.ReplayStrip strip = PanelModel.replayStrip(s, T + 9_999);
+        assertEquals(ReplayState.SAVED, strip.getState());
+        assertEquals("Saved " + FILE + " (1.4 MB)", strip.getText());
+        assertEquals(100, strip.getPercent());
+        assertNull("gone after 10 s", PanelModel.replayStrip(s, T + 10_000));
+        assertNull(PanelModel.replayStrip(ReplayRecorder.Status.IDLE, T));
+    }
+
+    @Test
+    public void errorShowsReason()
+    {
+        ReplayRecorder.Status s = new ReplayRecorder.Status(ReplayState.ERROR, FILE, 0L, 0L, 0, 0.0, "disk full",
+            0L);
+        PanelModel.ReplayStrip strip = PanelModel.replayStrip(s, T);
+        assertEquals(ReplayState.ERROR, strip.getState());
+        assertEquals("Couldn't save replay: disk full", strip.getText());
+        assertEquals("Couldn't save replay: unknown error", PanelModel.replayStrip(
+            new ReplayRecorder.Status(ReplayState.ERROR, FILE, 0L, 0L, 0, 0.0, null, 0L), T).getText());
+        // Stays up until the next recording: an error must not vanish on its own.
+        assertEquals(strip, PanelModel.replayStrip(s, T + 3_600_000L));
+    }
+
+    @Test
+    public void savedTickFlashesForTwoSecondsNewestWins()
+    {
+        assertNull(PanelModel.savedTick(0L, 0L, T));
+        assertEquals("Saved collision", PanelModel.savedTick(T, 0L, T + 1_999));
+        assertNull(PanelModel.savedTick(T, 0L, T + 2_000));
+        assertEquals("Saved plugin list", PanelModel.savedTick(0L, T, T + 10));
+        assertEquals("Saved plugin list", PanelModel.savedTick(T, T + 5, T + 10));
+        assertEquals("Saved collision", PanelModel.savedTick(T + 5, T, T + 10));
+    }
+
+    @Test
+    public void stripAndTickTakePartInEquality()
+    {
+        PanelModel.ReplayStrip strip = PanelModel.replayStrip(new ReplayRecorder.Status(ReplayState.SAVING, FILE,
+            0L, SIZE, 1, 0.5, null, 0L), T);
+        PanelModel a = PanelModel.of(true, false, 0, 0, List.of(), List.of(), null, null, strip, null, UTC);
+        PanelModel b = PanelModel.of(true, false, 0, 0, List.of(), List.of(), null, null, strip, null, UTC);
+        assertEquals(a, b);
+        assertNotEquals(a, PanelModel.of(true, false, 0, 0, List.of(), List.of(), null, null, null, null, UTC));
+        assertNotEquals(a, PanelModel.of(true, false, 0, 0, List.of(), List.of(), null, null, strip,
+            "Saved collision", UTC));
+    }
 }

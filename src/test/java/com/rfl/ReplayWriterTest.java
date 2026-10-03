@@ -364,4 +364,154 @@ public class ReplayWriterTest
         // B must be a complete gzip (trailer written), even though its lines were dropped.
         gunzipLines(b);
     }
+
+    /** Holds every executor task until {@link #runHeld}, so "not saved yet" can be observed. */
+    private static ExecutorService held(ConcurrentLinkedQueue<Runnable> held)
+    {
+        return new AbstractExecutorService()
+        {
+            @Override
+            public void execute(Runnable command)
+            {
+                held.add(command);
+            }
+
+            @Override
+            public void shutdown()
+            {
+            }
+
+            @Override
+            public List<Runnable> shutdownNow()
+            {
+                return List.of();
+            }
+
+            @Override
+            public boolean isShutdown()
+            {
+                return false;
+            }
+
+            @Override
+            public boolean isTerminated()
+            {
+                return false;
+            }
+
+            @Override
+            public boolean awaitTermination(long timeout, TimeUnit unit)
+            {
+                return true;
+            }
+        };
+    }
+
+    private static void runHeld(ConcurrentLinkedQueue<Runnable> held)
+    {
+        Runnable r;
+        while ((r = held.poll()) != null)
+        {
+            r.run();
+        }
+    }
+
+    @Test
+    public void progressTracksQueuedAndWritten() throws Exception
+    {
+        ConcurrentLinkedQueue<Runnable> held = new ConcurrentLinkedQueue<>();
+        ReplayWriter writer = new ReplayWriter(new GsonBuilder().create(), held(held));
+        Path file = temp.getRoot().toPath().resolve("progress.gz");
+
+        assertEquals(ReplayState.IDLE, writer.state());
+        writer.open(file);
+        assertEquals(ReplayState.RECORDING, writer.state());
+        // Equal-sized lines, with a probe exactly halfway through the queue.
+        for (int i = 0; i < 100; i++)
+        {
+            writer.write(map("t", String.format("tick%04d", i)));
+        }
+        List<Double> seen = new ArrayList<>();
+        writer.enqueue(() -> seen.add(writer.progress()));
+        for (int i = 100; i < 200; i++)
+        {
+            writer.write(map("t", String.format("tick%04d", i)));
+        }
+        long queued = writer.queuedBytes();
+        assertEquals(0, writer.writtenBytes());
+        writer.close();
+        assertEquals(ReplayState.SAVING, writer.state());
+        assertEquals(0.0, writer.progress(), 1e-9);
+
+        runHeld(held);
+
+        assertEquals(queued, writer.writtenBytes());
+        assertEquals(1, seen.size());
+        assertEquals(0.5, seen.get(0), 0.01);
+    }
+
+    @Test
+    public void savingProgressReachesDone() throws Exception
+    {
+        ConcurrentLinkedQueue<Runnable> held = new ConcurrentLinkedQueue<>();
+        ReplayWriter writer = new ReplayWriter(new GsonBuilder().create(), held(held));
+        Path file = temp.getRoot().toPath().resolve("done.gz");
+
+        writer.open(file);
+        for (int i = 0; i < 300; i++)
+        {
+            writer.write(map("t", "tick" + i));
+        }
+        writer.writeDeferred(map("t", "model"));
+        Future<?> done = writer.close();
+        assertEquals(ReplayState.SAVING, writer.state());
+        assertTrue(writer.progress() < 1.0);
+
+        runHeld(held);
+        done.get(5, TimeUnit.SECONDS);
+
+        assertEquals(ReplayState.SAVED, writer.state());
+        assertEquals(1.0, writer.progress(), 1e-9);
+        // The saved size is the finished file on disk, gzip trailer included.
+        assertEquals(Files.size(file), writer.savedBytes());
+        assertTrue(writer.savedAtMs() > 0);
+        assertEquals(301, gunzipLines(file).size());
+
+        // A new file starts over.
+        writer.open(temp.getRoot().toPath().resolve("next.gz"));
+        runHeld(held);
+        assertEquals(ReplayState.RECORDING, writer.state());
+        assertEquals(0.0, writer.progress(), 1e-9);
+    }
+
+    @Test
+    public void failureSurfacesAsErrorWithAReason() throws Exception
+    {
+        Path notADir = temp.newFile("blocked2").toPath();
+        ReplayWriter writer = new ReplayWriter(new GsonBuilder().create(), sameThreadExecutor());
+
+        writer.open(notADir.resolve("replay.gz"));
+        writer.close();
+
+        assertEquals(ReplayState.ERROR, writer.state());
+        assertTrue(writer.error() != null && !writer.error().isEmpty());
+        assertFalse("the reason is not just a path", writer.error().contains(notADir.toString()));
+
+        // The next good file clears the error.
+        writer.open(temp.getRoot().toPath().resolve("ok.gz"));
+        assertEquals(ReplayState.RECORDING, writer.state());
+        assertEquals(null, writer.error());
+    }
+
+    @Test
+    public void fileBytesCountsTheCompressedFile() throws Exception
+    {
+        ReplayWriter writer = new ReplayWriter(new GsonBuilder().create(), sameThreadExecutor());
+        Path file = temp.getRoot().toPath().resolve("size.gz");
+        writer.open(file);
+        assertTrue("gzip header", writer.fileBytes() > 0);
+        writer.write(map("t", "hdr"));
+        writer.close();
+        assertEquals(Files.size(file), writer.fileBytes());
+    }
 }
