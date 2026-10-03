@@ -152,7 +152,7 @@ Each fact is tagged:
 - **[decided]** **Line of scrimmage:** the row the ball is snapped on. **Offsides** is either team crossing that row before the snap.
 - **[decided]** If the carrier enters the endzone on the **same tick** they are touched, it's a **down at the 1-yard line** (row 2 / 39), not a touchdown.
 - **[decided]** **Stamina potions do nothing** under the rules. The sim treats players as always able to run.
-- **[decided]** Re-centring is on the middle of the 14-wide in-play area, columns 8–9. The owner answered "yes" to "column 8 or 9?" and has been asked which tile the ball actually sits on.
+- **[decided]** Re-centring puts the ball on column **8 or 9**, either one; the owner doesn't care which. The sim uses 8.
 - **[decided]** The tackle row is where the **models intersect** (the contact tile from the collision detector), not the carrier's server tile.
 - **[decided]** After any dead ball (out of bounds, incomplete, sack, turnover), players line up on their sides of the line of scrimmage and the ball is hiked back to the QB from there. The rulebook's spots apply. Sim default until the owner says otherwise: out of bounds = the exit row, incomplete = the previous line of scrimmage, sack = the contact row, turnover = the dead-ball row with the direction flipped.
 
