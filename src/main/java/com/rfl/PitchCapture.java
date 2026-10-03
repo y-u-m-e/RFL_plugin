@@ -55,6 +55,8 @@ final class PitchCapture
     private final int[] locSkips = new int[ReplaySampler.LocSkip.values().length];
     private int ticksMax;
     private int abandoned;
+    private long worstReadNanos;
+    private long worstStepNanos;
 
     PitchCapture(Sink sink, long budgetNanos, LongSupplier clock)
     {
@@ -83,6 +85,8 @@ final class PitchCapture
         java.util.Arrays.fill(locSkips, 0);
         ticksMax = 0;
         abandoned = 0;
+        worstReadNanos = 0;
+        worstStepNanos = 0;
     }
 
     /**
@@ -91,17 +95,7 @@ final class PitchCapture
      */
     void begin(ReplaySampler sampler, Map<String, Object> pitchLine, List<ReplaySampler.Loc> locs)
     {
-        if (pass != null)
-        {
-            abandoned++;
-            if (streams)
-            {
-                pass.abandon();
-                finish();
-            }
-            pass = null;
-            line = null;
-        }
+        abandon();
         this.sampler = sampler;
         line = pitchLine;
         pass = sampler.locPass(locs);
@@ -109,6 +103,26 @@ final class PitchCapture
         rowsWritten = 0;
         // Only the file's first pitch streams: the viewer merges every locs line into it.
         streams = !written;
+    }
+
+    /**
+     * Gives up on a pending pitch (a reload: its scene is gone). A streaming one keeps what it
+     * wrote; any other is dropped unwritten. No-op when nothing is pending.
+     */
+    void abandon()
+    {
+        if (pass == null)
+        {
+            return;
+        }
+        abandoned++;
+        if (streams)
+        {
+            pass.abandon();
+            finish();
+        }
+        pass = null;
+        line = null;
     }
 
     /** Whether a pitch is waiting on house models. */
@@ -125,7 +139,9 @@ final class PitchCapture
             return;
         }
         ticks++;
+        final long start = clock.getAsLong();
         final boolean done = pass.step(budgetNanos, clock);
+        worstStepNanos = Math.max(worstStepNanos, clock.getAsLong() - start);
         sink.models(sampler.newModelLines());
         if (streams)
         {
@@ -186,6 +202,7 @@ final class PitchCapture
             locSkips[k] += skips[k];
         }
         ticksMax = Math.max(ticksMax, ticks);
+        worstReadNanos = Math.max(worstReadNanos, pass.worstReadNanos());
         line = null;
         pass = null;
     }
@@ -209,5 +226,17 @@ final class PitchCapture
     int abandoned()
     {
         return abandoned;
+    }
+
+    /** Debug: the slowest single loc read of the file (one model's capture). */
+    long worstReadNanos()
+    {
+        return worstReadNanos;
+    }
+
+    /** Debug: the slowest {@link #step}'s loc reading (over the budget only by its last read). */
+    long worstStepNanos()
+    {
+        return worstStepNanos;
     }
 }

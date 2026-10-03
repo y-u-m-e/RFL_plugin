@@ -141,6 +141,8 @@ public class RflPlugin extends Plugin
         // The panel's toggle history starts with what today's plugin file already holds.
         final long now = System.currentTimeMillis();
         executor.execute(() -> pluginLog.loadToday(now));
+        // First-use costs (class loading, the colour table, Gson adapters) off the client thread.
+        executor.execute(replayRecorder::warmUp);
         replayRecorder.setPluginSource(() -> config.logPluginStats() ? pluginSnapshotter.snapshot() : null);
         // The panel shows the plugin list before the first POH visit too; nothing is written here.
         clientThread.invoke(() -> pluginLog.remember(pluginSnapshotter.snapshot()));

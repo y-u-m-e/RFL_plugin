@@ -273,20 +273,26 @@ final class ReplaySampler
         /** Unsigned crop of a {@code short} plane (underlay / overlay ids, stored as id + 1). */
         static int[][] crop(short[][] plane, int cx, int cy, int radius)
         {
+            return crop(plane, Window.around(cx, cy, radius));
+        }
+
+        /** Unsigned crop of a {@code short} plane to {@code w}. */
+        static int[][] crop(short[][] plane, Window w)
+        {
             final int[][] out = new int[SCENE][SCENE];
             if (plane == null)
             {
                 return out;
             }
             final int off = offset(plane.length);
-            for (int x = PitchObjects.lo(cx, radius); x <= PitchObjects.hi(cx, radius, SCENE); x++)
+            for (int x = w.x0; x <= w.x1; x++)
             {
                 final short[] col = x + off < plane.length ? plane[x + off] : null;
                 if (col == null)
                 {
                     continue;
                 }
-                for (int y = PitchObjects.lo(cy, radius); y <= PitchObjects.hi(cy, radius, SCENE); y++)
+                for (int y = w.y0; y <= w.y1; y++)
                 {
                     if (y + off < col.length)
                     {
@@ -305,21 +311,25 @@ final class ReplaySampler
          */
         static int[] paint(int[][] rgb, int cx, int cy, int radius)
         {
+            return paint(rgb, Window.around(cx, cy, radius));
+        }
+
+        /** {@link #paint(int[][], int, int, int)} cropped to {@code w}. */
+        static int[] paint(int[][] rgb, Window w)
+        {
             final int[] out = new int[SCENE * SCENE * 3];
             if (rgb == null)
             {
                 return out;
             }
-            for (int x = PitchObjects.lo(cx, radius); x <= PitchObjects.hi(cx, radius, Math.min(SCENE, rgb.length));
-                 x++)
+            for (int x = w.x0; x <= Math.min(w.x1, rgb.length - 1); x++)
             {
                 final int[] col = rgb[x];
                 if (col == null)
                 {
                     continue;
                 }
-                for (int y = PitchObjects.lo(cy, radius); y <= PitchObjects.hi(cy, radius, Math.min(SCENE, col.length));
-                     y++)
+                for (int y = w.y0; y <= Math.min(w.y1, col.length - 1); y++)
                 {
                     final int at = (x * SCENE + y) * 3;
                     out[at] = (col[y] >> 16) & 0xff;
@@ -333,20 +343,26 @@ final class ReplaySampler
         /** Unsigned crop of a {@code byte} plane (tile shapes). */
         static int[][] crop(byte[][] plane, int cx, int cy, int radius)
         {
+            return crop(plane, Window.around(cx, cy, radius));
+        }
+
+        /** Unsigned crop of a {@code byte} plane to {@code w}. */
+        static int[][] crop(byte[][] plane, Window w)
+        {
             final int[][] out = new int[SCENE][SCENE];
             if (plane == null)
             {
                 return out;
             }
             final int off = offset(plane.length);
-            for (int x = PitchObjects.lo(cx, radius); x <= PitchObjects.hi(cx, radius, SCENE); x++)
+            for (int x = w.x0; x <= w.x1; x++)
             {
                 final byte[] col = x + off < plane.length ? plane[x + off] : null;
                 if (col == null)
                 {
                     continue;
                 }
-                for (int y = PitchObjects.lo(cy, radius); y <= PitchObjects.hi(cy, radius, SCENE); y++)
+                for (int y = w.y0; y <= w.y1; y++)
                 {
                     if (y + off < col.length)
                     {
@@ -402,6 +418,82 @@ final class ReplaySampler
         static LocModel skipped(LocSkip skip)
         {
             return new LocModel(null, skip);
+        }
+    }
+
+    /**
+     * The scene tiles a pitch scans and crops to: {@code x0..x1} by {@code y0..y1}, inclusive,
+     * within the 104x104 scene (empty when {@code x0 > x1}). Inside an instance (a house) it is
+     * the bounding box of the instance's template chunks plus one tile, so a recorder standing
+     * off-centre still gets every wall; elsewhere it is {@code radius} tiles (Chebyshev) around
+     * the recorder.
+     */
+    static final class Window
+    {
+        /** No template chunk in that slot. */
+        static final int NO_CHUNK = -1;
+        static final int CHUNK_TILES = 8;
+
+        final int x0;
+        final int y0;
+        final int x1;
+        final int y1;
+
+        Window(int x0, int y0, int x1, int y1)
+        {
+            this.x0 = Math.max(0, x0);
+            this.y0 = Math.max(0, y0);
+            this.x1 = Math.min(PitchFloor.SCENE - 1, x1);
+            this.y1 = Math.min(PitchFloor.SCENE - 1, y1);
+        }
+
+        /** {@code radius} tiles around scene tile {@code (cx, cy)}; empty for an off-scene centre. */
+        static Window around(int cx, int cy, int radius)
+        {
+            return new Window(cx - radius, cy - radius, cx + radius, cy + radius);
+        }
+
+        /**
+         * The bounding box of every template chunk in {@code chunks} ({@code [plane][x][y]}, as from
+         * {@code getInstanceTemplateChunks()}; null outside an instance) that isn't
+         * {@link #NO_CHUNK}, plus one tile, clamped to the scene; {@link #around} when there is none.
+         */
+        static Window house(int[][][] chunks, int cx, int cy, int radius)
+        {
+            int minX = Integer.MAX_VALUE;
+            int minY = Integer.MAX_VALUE;
+            int maxX = -1;
+            int maxY = -1;
+            if (chunks != null)
+            {
+                for (final int[][] plane : chunks)
+                {
+                    for (int x = 0; plane != null && x < plane.length; x++)
+                    {
+                        for (int y = 0; plane[x] != null && y < plane[x].length; y++)
+                        {
+                            if (plane[x][y] != NO_CHUNK)
+                            {
+                                minX = Math.min(minX, x);
+                                minY = Math.min(minY, y);
+                                maxX = Math.max(maxX, x);
+                                maxY = Math.max(maxY, y);
+                            }
+                        }
+                    }
+                }
+            }
+            if (maxX < 0)
+            {
+                return around(cx, cy, radius);
+            }
+            return new Window(minX * CHUNK_TILES - 1, minY * CHUNK_TILES - 1,
+                (maxX + 1) * CHUNK_TILES, (maxY + 1) * CHUNK_TILES);
+        }
+
+        boolean contains(int x, int y)
+        {
+            return x >= x0 && x <= x1 && y >= y0 && y <= y1;
         }
     }
 
@@ -473,6 +565,7 @@ final class ReplaySampler
         private final List<int[]> rows = new ArrayList<>();
         private final int[] skips = new int[LocSkip.values().length];
         private final Set<String> failedKeys = new HashSet<>();
+        private long worstReadNanos;
 
         private LocPass(List<Loc> locs)
         {
@@ -486,10 +579,14 @@ final class ReplaySampler
         boolean step(long budgetNanos, LongSupplier clock)
         {
             final long start = clock.getAsLong();
+            long before = start;
             while (next < locs.size())
             {
                 read(locs.get(next++));
-                if (clock.getAsLong() - start >= budgetNanos)
+                final long now = clock.getAsLong();
+                worstReadNanos = Math.max(worstReadNanos, now - before);
+                before = now;
+                if (now - start >= budgetNanos)
                 {
                     break;
                 }
@@ -524,6 +621,12 @@ final class ReplaySampler
                 return;
             }
             rows.add(new int[] { id, loc.x, loc.y, loc.height });
+        }
+
+        /** The slowest single loc read so far (a new key's capture, or a lookup). */
+        long worstReadNanos()
+        {
+            return worstReadNanos;
         }
 
         /** Gives up on the locs not read yet, counting them {@link LocSkip#UNFINISHED}. */

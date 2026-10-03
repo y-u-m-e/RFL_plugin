@@ -277,4 +277,27 @@ public class PitchCaptureTest
         capture.step();
         assertEquals("pitch", types().get(types().size() - 1));
     }
+
+    @Test
+    public void abandonGivesUpOnAPendingPitchAtOnce()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        capture.begin(sampler, pitchLine(), locs(1300, 6));
+        capture.step();
+        int before = out.size();
+        capture.abandon();
+        assertFalse(capture.pending());
+        assertEquals(before, out.size());
+        assertEquals(1, capture.abandoned());
+        capture.abandon();
+        assertEquals("no-op when nothing is pending", 1, capture.abandoned());
+        assertEquals(COST, capture.worstReadNanos());
+        assertTrue(capture.worstStepNanos() >= BUDGET);
+    }
+
+    @Test
+    public void warmUpRunsWithoutAClient()
+    {
+        assertTrue(ReplayWarmUp.run(new com.google.gson.GsonBuilder().create()));
+    }
 }

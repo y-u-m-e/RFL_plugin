@@ -118,6 +118,20 @@ final class ReplayRecorder
     private final int[][] locVia = new int[VIA_LABELS.length][2];
     /** The pitch line's spread-out house model capture; it writes the pitch and locs lines. */
     private final PitchCapture pitch;
+    /** For {@link #warmUp}; null in tests. */
+    private final Gson gson;
+    /** The {@code plugins} line is still to write (the ClientTick after open). */
+    private boolean pluginsDue;
+    /**
+     * The pitch scan in progress: the next {@link #scanStep} stage (0 when none), the line so far,
+     * and what stage 1 fixed for the later stages.
+     */
+    private int scanStage;
+    private Map<String, Object> scanLine;
+    private List<ReplaySampler.Loc> scanLocs;
+    private Scene scanScene;
+    private int scanPlane;
+    private ReplaySampler.Window scanWindow;
     /** Debug: this ClientTick's open, pitch scan/write, and loc capture time. */
     private long tickOpenNanos;
     private long tickPitchNanos;
@@ -161,11 +175,17 @@ final class ReplayRecorder
     ReplayRecorder(RflConfig config, Gson gson, ScheduledExecutorService executor)
     {
         this(config, new ReplayWriter(gson, executor),
-            RuneLite.RUNELITE_DIR.toPath().resolve("rfl").resolve("replays"));
+            RuneLite.RUNELITE_DIR.toPath().resolve("rfl").resolve("replays"), gson);
     }
 
     ReplayRecorder(RflConfig config, ReplayWriter writer, Path dir)
     {
+        this(config, writer, dir, null);
+    }
+
+    private ReplayRecorder(RflConfig config, ReplayWriter writer, Path dir, Gson gson)
+    {
+        this.gson = gson;
         this.config = config;
         this.writer = writer;
         this.dir = dir;
@@ -190,6 +210,18 @@ final class ReplayRecorder
                 writer.writeDeferred(line, false);
             }
         }, LOC_BUDGET_NANOS, System::nanoTime);
+    }
+
+    /**
+     * Any thread but the client's (plugin start-up): runs the replay code once on made-up data so
+     * the first recorded frames don't pay first-use costs ({@link ReplayWarmUp}).
+     */
+    void warmUp()
+    {
+        if (gson != null)
+        {
+            ReplayWarmUp.run(gson);
+        }
     }
 
     /** Recording runs with Record replays on, logged in, inside a POH. */
@@ -263,16 +295,33 @@ final class ReplayRecorder
         tickOpenNanos = 0;
         tickPitchNanos = 0;
         tickCaptureNanos = 0;
+        // Record start is spread out: open (hdr), then plugins, then the three pitch scan stages,
+        // one per ClientTick; house capture steps only on ticks with none of those.
+        boolean startWork = false;
         if (sampler == null)
         {
             open(client);
+            startWork = true;
         }
         else if (pitchPending)
         {
             pitchPending = false;
-            beginPitch(client);
+            startScan();
         }
-        stepPitch();
+        if (!startWork && pluginsDue)
+        {
+            writePlugins();
+            startWork = true;
+        }
+        if (!startWork && scanStage != 0)
+        {
+            scanStep(client);
+            startWork = true;
+        }
+        if (!startWork)
+        {
+            stepPitch();
+        }
 
         final long sampleStart = System.nanoTime();
         final List<ReplaySampler.PlayerState> players = new ArrayList<>();
@@ -489,6 +538,12 @@ final class ReplayRecorder
         sampler = null;
         file = null;
         pitchPending = false;
+        pluginsDue = false;
+        scanStage = 0;
+        scanLine = null;
+        scanLocs = null;
+        scanScene = null;
+        scanWindow = null;
         pitch.reset();
         return closed;
     }
@@ -523,6 +578,7 @@ final class ReplayRecorder
         worstSampleNanos = 0;
         worstTickCycle = 0;
         pitchPending = false;
+        scanStage = 0;
         final long openStart = System.nanoTime();
         writer.open(file);
 
@@ -537,65 +593,129 @@ final class ReplayRecorder
         hdr.put("cyc", lastCycle);
         // Self-contained: model lines carry the geometry, so the viewer needs no bundle (spec 2.3).
         hdr.put("models", 2);
-        writer.write(hdr);
+        writer.writeDeferred(hdr, false);
+        // The rest of the start is spread over the next ClientTicks, one piece each (onClientTick).
+        pluginsDue = true;
+        startScan();
+        tickOpenNanos += System.nanoTime() - openStart;
+    }
+
+    /**
+     * Client thread, the ClientTick after open: the {@code plugins} line, built here and serialised
+     * on the writer's thread.
+     */
+    private void writePlugins()
+    {
+        final long start = System.nanoTime();
+        pluginsDue = false;
         final Supplier<List<PluginEntry>> source = pluginSource;
         final List<PluginEntry> plugins = source == null ? null : source.get();
         if (plugins != null)
         {
-            writer.write(pluginsLine(lastCycle, plugins));
+            writer.writeDeferred(pluginsLine(lastCycle, plugins), false);
         }
-        tickOpenNanos += System.nanoTime() - openStart;
-        beginPitch(client);
+        tickOpenNanos += System.nanoTime() - start;
     }
 
     /**
-     * Client thread, read only: builds the {@code pitch} line (spec §2.1) and starts reading its
-     * house models, spread over ClientTicks by {@link PitchCapture}, which writes the line. Every
-     * loc model line precedes the line that refers to it. A pitch still waiting on its models when
-     * a reload starts another is given up on (the scene it describes is gone). Arrays are allocated here, once per pitch, never per frame. {@code under},
-     * {@code over}, {@code shapes} and {@code rots} are 104x104 {@code [x][y]} grids for the
-     * current plane, cropped to {@link #OBJECT_RADIUS} around the recorder (0 outside, and all 0
-     * when the recorder's tile is unknown).
+     * Client thread: queues a fresh {@code pitch} scan ({@link #scanStep}, one stage per
+     * ClientTick). A pitch still waiting on its house models is given up on now, since the scene it
+     * describes is gone.
      */
-    private void beginPitch(Client client)
+    private void startScan()
+    {
+        pitch.abandon();
+        scanStage = 1;
+        scanLine = null;
+        scanLocs = null;
+    }
+
+    /**
+     * Client thread, read only: one stage of the {@code pitch} line (spec §2.1) per ClientTick, so
+     * no frame pays for the whole scan. Stage 1 reads the plane, heights and floor crops and fixes
+     * the scan window ({@link ReplaySampler.Window}: the house's template chunks plus a tile, or
+     * {@link #OBJECT_RADIUS} around the recorder outside an instance); stage 2 the objects in it; stage 3 the overlay
+     * rotations and paint, then hands the line to {@link PitchCapture}, which reads its house
+     * models over the following ClientTicks and writes it. Every key is put in stage 1, so the
+     * line keeps the v1 key order. Arrays are allocated here, once per pitch, never per frame.
+     * {@code under}, {@code over}, {@code shapes} and {@code rots} are 104x104 {@code [x][y]}
+     * grids for the current plane, cropped to that window (0 outside it). A LOADING restarts the scan
+     * ({@link #startScan}); a stop mid-scan writes no pitch.
+     */
+    private void scanStep(Client client)
     {
         final long start = System.nanoTime();
-        final WorldView wv = client.getTopLevelWorldView();
-        final int plane = wv.getPlane();
-        // Copied: the line is serialised later, on the writer's thread.
-        final int[][][] chunks = copy(wv.getInstanceTemplateChunks());
-        final int[][][] heights = wv.getTileHeights();
-        final Scene scene = wv.getScene();
-        final Player local = client.getLocalPlayer();
-        final LocalPoint at = local == null ? null : local.getLocalLocation();
-        // Unknown recorder tile: an off-scene centre makes every crop come out empty.
-        final int cx = at == null ? -OBJECT_RADIUS - 1 : at.getSceneX();
-        final int cy = at == null ? -OBJECT_RADIUS - 1 : at.getSceneY();
-        final short[][][] under = scene == null ? null : scene.getUnderlayIds();
-        final short[][][] over = scene == null ? null : scene.getOverlayIds();
-        final byte[][][] shapes = scene == null ? null : scene.getTileShapes();
-        final List<ReplaySampler.Loc> locList = new ArrayList<>();
-        final ReplaySampler.PitchObjects objs = objects(scene, plane, at, locList);
-        final Map<String, Object> line = new LinkedHashMap<>();
-        line.put("t", "pitch");
-        line.put("cyc", lastCycle);
-        line.put("plane", plane);
-        line.put("baseX", wv.getBaseX());
-        line.put("baseY", wv.getBaseY());
-        line.put("chunks", chunks == null ? null : chunks[plane]);
-        line.put("heights", heights == null ? null : scene(heights[plane]));
-        line.put("objs", objs.rows());
-        line.put("objs2", objs.rows2());
-        line.put("under", ReplaySampler.PitchFloor.crop(planeOf(under, plane), cx, cy, OBJECT_RADIUS));
-        line.put("over", ReplaySampler.PitchFloor.crop(planeOf(over, plane), cx, cy, OBJECT_RADIUS));
-        line.put("shapes", ReplaySampler.PitchFloor.crop(planeOf(shapes, plane), cx, cy, OBJECT_RADIUS));
-        line.put("rots", rotations(scene, plane, cx, cy));
-        line.put("chunksAll", chunks);
-        // Filled in when the line is written; put now so the key keeps its place.
-        line.put("locs", null);
-        line.put("paint", ReplaySampler.PitchFloor.paint(paint(scene, plane, cx, cy), cx, cy, OBJECT_RADIUS));
-        // A reload mid-capture gives up on the pending pitch (see PitchCapture).
-        pitch.begin(sampler, line, locList);
+        switch (scanStage)
+        {
+            case 1:
+            {
+                final WorldView wv = client.getTopLevelWorldView();
+                final int plane = wv.getPlane();
+                // Copied: the line is serialised later, on the writer's thread.
+                final int[][][] chunks = copy(wv.getInstanceTemplateChunks());
+                final int[][][] heights = wv.getTileHeights();
+                final Scene scene = wv.getScene();
+                final Player local = client.getLocalPlayer();
+                final LocalPoint at = local == null ? null : local.getLocalLocation();
+                // Unknown recorder tile: an off-scene centre makes the fallback window empty.
+                final int cx = at == null ? -OBJECT_RADIUS - 1 : at.getSceneX();
+                final int cy = at == null ? -OBJECT_RADIUS - 1 : at.getSceneY();
+                // The whole house (its template chunks), not just the tiles around the recorder.
+                final ReplaySampler.Window window = ReplaySampler.Window.house(wv.isInstance() ? chunks : null, cx, cy,
+                    OBJECT_RADIUS);
+                final short[][][] under = scene == null ? null : scene.getUnderlayIds();
+                final short[][][] over = scene == null ? null : scene.getOverlayIds();
+                final byte[][][] shapes = scene == null ? null : scene.getTileShapes();
+                final Map<String, Object> line = new LinkedHashMap<>();
+                line.put("t", "pitch");
+                line.put("cyc", lastCycle);
+                line.put("plane", plane);
+                line.put("baseX", wv.getBaseX());
+                line.put("baseY", wv.getBaseY());
+                line.put("chunks", chunks == null ? null : chunks[plane]);
+                line.put("heights", heights == null ? null : scene(heights[plane]));
+                // Filled in by stage 2.
+                line.put("objs", null);
+                line.put("objs2", null);
+                line.put("under", ReplaySampler.PitchFloor.crop(planeOf(under, plane), window));
+                line.put("over", ReplaySampler.PitchFloor.crop(planeOf(over, plane), window));
+                line.put("shapes", ReplaySampler.PitchFloor.crop(planeOf(shapes, plane), window));
+                // Filled in by stage 3.
+                line.put("rots", null);
+                line.put("chunksAll", chunks);
+                // Filled in when PitchCapture writes the line.
+                line.put("locs", null);
+                line.put("paint", null);
+                scanLine = line;
+                scanScene = scene;
+                scanPlane = plane;
+                scanWindow = window;
+                scanStage = 2;
+                break;
+            }
+            case 2:
+            {
+                scanLocs = new ArrayList<>();
+                final ReplaySampler.PitchObjects objs = objects(scanScene, scanPlane, scanWindow, scanLocs);
+                scanLine.put("objs", objs.rows());
+                scanLine.put("objs2", objs.rows2());
+                scanStage = 3;
+                break;
+            }
+            default:
+            {
+                scanLine.put("rots", rotations(scanScene, scanPlane, scanWindow));
+                scanLine.put("paint", ReplaySampler.PitchFloor.paint(paint(scanScene, scanPlane, scanWindow),
+                    scanWindow));
+                pitch.begin(sampler, scanLine, scanLocs);
+                scanStage = 0;
+                scanLine = null;
+                scanLocs = null;
+                scanScene = null;
+                scanWindow = null;
+                break;
+            }
+        }
         tickPitchNanos += System.nanoTime() - start;
     }
 
@@ -635,7 +755,8 @@ final class ReplayRecorder
         }
         return "locsCaptured=" + pitch.locsCaptured() + " locsSkipped=" + skipped + " locSkips=" + reasons
             + " locVia(ok/none)=" + via + " pitchTicksMax=" + pitch.ticksMax() + " pitchesAbandoned="
-            + pitch.abandoned();
+            + pitch.abandoned() + String.format(" locWorstReadUs=%.1f locWorstStepUs=%.1f",
+            pitch.worstReadNanos() / 1000.0, pitch.worstStepNanos() / 1000.0);
     }
 
     /** Debug: the worst ClientTick of the recording, split into open, pitch, house capture and sampling. */
@@ -680,11 +801,11 @@ final class ReplayRecorder
     }
 
     /**
-     * Overlay rotation (0..3) per scene tile within {@link #OBJECT_RADIUS}. Scene has no rotation
+     * Overlay rotation (0..3) per scene tile in the pitch window. Scene has no rotation
      * array, so this reads {@link SceneTileModel#getRotation()} from each tile that has a shaped
-     * tile model. Flat whole tiles (no model) and tiles outside the radius are 0.
+     * tile model. Flat whole tiles (no model) and tiles outside the window are 0.
      */
-    private static int[][] rotations(Scene scene, int plane, int cx, int cy)
+    private static int[][] rotations(Scene scene, int plane, ReplaySampler.Window w)
     {
         final int[][] out = new int[SCENE][SCENE];
         final Tile[][][] tiles = scene == null ? null : scene.getTiles();
@@ -693,16 +814,14 @@ final class ReplayRecorder
             return out;
         }
         final Tile[][] level = tiles[plane];
-        for (int x = ReplaySampler.PitchObjects.lo(cx, OBJECT_RADIUS);
-             x <= ReplaySampler.PitchObjects.hi(cx, OBJECT_RADIUS, Math.min(SCENE, level.length)); x++)
+        for (int x = w.x0; x <= Math.min(w.x1, level.length - 1); x++)
         {
             final Tile[] column = level[x];
             if (column == null)
             {
                 continue;
             }
-            for (int y = ReplaySampler.PitchObjects.lo(cy, OBJECT_RADIUS);
-                 y <= ReplaySampler.PitchObjects.hi(cy, OBJECT_RADIUS, Math.min(SCENE, column.length)); y++)
+            for (int y = w.y0; y <= Math.min(w.y1, column.length - 1); y++)
             {
                 final SceneTileModel model = column[y] == null ? null : column[y].getSceneTileModel();
                 if (model != null)
@@ -715,33 +834,30 @@ final class ReplayRecorder
     }
 
     /**
-     * Every game, wall, ground and decorative object on {@code plane} on scene tiles within
-     * {@link #OBJECT_RADIUS} (Chebyshev) of the recorder, as {@code objs} rows
+     * Every game, wall, ground and decorative object on {@code plane} on scene tiles in the pitch
+     * window ({@link ReplaySampler.Window}: the whole house), as {@code objs} rows
      * {@code [id, type, orient, x, y]} and {@code objs2} rows
      * {@code [id, kind, config, x, y, sizeX, sizeY]}. A GameObject spanning several tiles is listed
-     * once. Empty when the recorder's tile or the scene is unknown.
+     * once. Empty when the scene is unknown (or the window is, outside a house with no recorder tile).
      */
-    private ReplaySampler.PitchObjects objects(Scene scene, int plane, LocalPoint at, List<ReplaySampler.Loc> locs)
+    private ReplaySampler.PitchObjects objects(Scene scene, int plane, ReplaySampler.Window w,
+        List<ReplaySampler.Loc> locs)
     {
         final ReplaySampler.PitchObjects objs = new ReplaySampler.PitchObjects();
         final Tile[][][] tiles = scene == null ? null : scene.getTiles();
-        if (at == null || tiles == null || plane < 0 || plane >= tiles.length || tiles[plane] == null)
+        if (tiles == null || plane < 0 || plane >= tiles.length || tiles[plane] == null)
         {
             return objs;
         }
         final Tile[][] level = tiles[plane];
-        final int cx = at.getSceneX();
-        final int cy = at.getSceneY();
-        for (int x = ReplaySampler.PitchObjects.lo(cx, OBJECT_RADIUS);
-             x <= ReplaySampler.PitchObjects.hi(cx, OBJECT_RADIUS, level.length); x++)
+        for (int x = w.x0; x <= Math.min(w.x1, level.length - 1); x++)
         {
             final Tile[] column = level[x];
             if (column == null)
             {
                 continue;
             }
-            for (int y = ReplaySampler.PitchObjects.lo(cy, OBJECT_RADIUS);
-                 y <= ReplaySampler.PitchObjects.hi(cy, OBJECT_RADIUS, column.length); y++)
+            for (int y = w.y0; y <= Math.min(w.y1, column.length - 1); y++)
             {
                 final Tile tile = column[y];
                 if (tile != null)
@@ -956,12 +1072,12 @@ final class ReplayRecorder
     }
 
     /**
-     * Floor paint colour ({@code 0xRRGGBB}) per scene tile within {@link #OBJECT_RADIUS}: a flat
+     * Floor paint colour ({@code 0xRRGGBB}) per scene tile in the pitch window: a flat
      * tile's {@link SceneTilePaint#getRBG()} (the client's own RGB for that tile), and for a shaped
      * tile its overlay colour ({@link SceneTileModel#getModelOverlay()}, underlay when there is no
      * overlay). 0 where a tile has neither.
      */
-    private static int[][] paint(Scene scene, int plane, int cx, int cy)
+    private static int[][] paint(Scene scene, int plane, ReplaySampler.Window w)
     {
         final int[][] out = new int[SCENE][SCENE];
         final Tile[][][] tiles = scene == null ? null : scene.getTiles();
@@ -970,16 +1086,14 @@ final class ReplayRecorder
             return out;
         }
         final Tile[][] level = tiles[plane];
-        for (int x = ReplaySampler.PitchObjects.lo(cx, OBJECT_RADIUS);
-             x <= ReplaySampler.PitchObjects.hi(cx, OBJECT_RADIUS, Math.min(SCENE, level.length)); x++)
+        for (int x = w.x0; x <= Math.min(w.x1, level.length - 1); x++)
         {
             final Tile[] column = level[x];
             if (column == null)
             {
                 continue;
             }
-            for (int y = ReplaySampler.PitchObjects.lo(cy, OBJECT_RADIUS);
-                 y <= ReplaySampler.PitchObjects.hi(cy, OBJECT_RADIUS, Math.min(SCENE, column.length)); y++)
+            for (int y = w.y0; y <= Math.min(w.y1, column.length - 1); y++)
             {
                 final Tile tile = column[y];
                 if (tile == null)

@@ -1021,4 +1021,105 @@ public class ReplaySamplerTest
         assertEquals("l:9:10:2:1", Loc.withReasons(9, config, 1, 0, 0, 0, 0, null).key());
         assertEquals("l:9:10:2:o256", Loc.withReasons(9, config, 0, 256, 0, 0, 0, null).key());
     }
+
+    // ---- Pitch window: the whole house, not the tiles around the recorder ----
+
+    /** Template chunks like a real house: a 9x9 block at chunks (2..10, 2..10) on planes 0 and 1. */
+    private static int[][][] houseChunks()
+    {
+        int[][][] chunks = new int[4][13][13];
+        for (int[][] plane : chunks)
+        {
+            for (int[] col : plane)
+            {
+                java.util.Arrays.fill(col, ReplaySampler.Window.NO_CHUNK);
+            }
+        }
+        for (int p = 0; p < 2; p++)
+        {
+            for (int x = 2; x <= 10; x++)
+            {
+                for (int y = 2; y <= 10; y++)
+                {
+                    chunks[p][x][y] = 54270888 + x + y;
+                }
+            }
+        }
+        return chunks;
+    }
+
+    @Test
+    public void offCentreRecorderStillGetsBothHouseEdges()
+    {
+        // Recorder near the west/north part of the house, as in 2026-10-03_112831 (walls at x=31
+        // were in, the east wall line past x=71 was not).
+        int cx = 51;
+        int cy = 52;
+        ReplaySampler.Window old = ReplaySampler.Window.around(cx, cy, 20);
+        assertFalse("the old radius window misses the east edge", old.contains(87, 52));
+
+        ReplaySampler.Window house = ReplaySampler.Window.house(houseChunks(), cx, cy, 20);
+        // Chunks 2..10 are tiles 16..87; one tile of margin each side.
+        assertEquals(15, house.x0);
+        assertEquals(15, house.y0);
+        assertEquals(88, house.x1);
+        assertEquals(88, house.y1);
+        for (int edge : new int[] { 16, 87 })
+        {
+            assertTrue(house.contains(edge, 50));
+            assertTrue(house.contains(50, edge));
+        }
+
+        // Crops and paint keep both edges too.
+        short[][] under = new short[104][104];
+        under[16][40] = 5;
+        under[87][40] = 6;
+        int[][] cropped = PitchFloor.crop(under, house);
+        assertEquals(5, cropped[16][40]);
+        assertEquals(6, cropped[87][40]);
+        int[][] rgb = new int[104][104];
+        rgb[87][87] = 0x010203;
+        int[] paint = PitchFloor.paint(rgb, house);
+        int at = (87 * 104 + 87) * 3;
+        assertArrayEquals(new int[] { 1, 2, 3 }, new int[] { paint[at], paint[at + 1], paint[at + 2] });
+        assertEquals("outside the house stays 0", 0, PitchFloor.crop(under, house)[90][40]);
+    }
+
+    @Test
+    public void windowFallsBackToTheRadiusOutsideAnInstance()
+    {
+        ReplaySampler.Window w = ReplaySampler.Window.house(null, 50, 50, 20);
+        assertEquals(30, w.x0);
+        assertEquals(70, w.x1);
+        int[][][] empty = houseChunks();
+        for (int[][] plane : empty)
+        {
+            for (int[] col : plane)
+            {
+                java.util.Arrays.fill(col, ReplaySampler.Window.NO_CHUNK);
+            }
+        }
+        assertEquals(30, ReplaySampler.Window.house(empty, 50, 50, 20).x0);
+        // Unknown recorder tile and no instance: nothing.
+        ReplaySampler.Window none = ReplaySampler.Window.around(-21, -21, 20);
+        assertTrue(none.x0 > none.x1);
+        // A house touching the scene edge is clamped.
+        int[][][] edge = empty;
+        edge[0][0][12] = 7;
+        ReplaySampler.Window clamped = ReplaySampler.Window.house(edge, 0, 0, 20);
+        assertEquals(0, clamped.x0);
+        assertEquals(103, clamped.y1);
+    }
+
+    @Test
+    public void locPassReportsItsSlowestRead()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicLong clock = new AtomicLong();
+        ReplaySampler.LocPass pass = sampler.locPass(List.of(
+            Loc.withReasons(1, 10, 0, 0, 0, 0, 0, slow(clock, 300_000L, geometry(3, 0))),
+            Loc.withReasons(2, 10, 0, 0, 0, 0, 0, slow(clock, 700_000L, geometry(3, 1)))));
+        pass.step(10_000_000L, clock::get);
+        assertEquals(700_000L, pass.worstReadNanos());
+    }
 }
