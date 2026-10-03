@@ -25,6 +25,7 @@ Each fact is tagged:
 - **[code]** Games are played inside a **player-owned house (POH)**, which is an instance.
   - Detected by the POH template regions 7257, 7534, 7535, 7790, 7791, 8046, 8047, 8302 and 8303 (RuneLite's Roof Removal list).
   - Positions use `WorldPoint.fromLocalInstance`, so every player in the same house gets the same template coordinates.
+  - **[code]** Collision/incomplete log lines carry this same template `x`/`y`/`plane`, which repeats across the 52 scene chunks that share one template chunk in a POH; `sx`/`sy` is the scene tile (0–103, unique within the loaded house) of the same point, and is what disambiguates which tile (or end zone) an event happened on.
 - **[decided]** The field is **16 columns × 40 rows** of tiles, numbered from 1.
   - **Endzones:** rows 1 and 40.
   - **Out of bounds:** columns 1 and 16.

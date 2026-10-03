@@ -297,7 +297,8 @@ public class RflPlugin extends Plugin
             : WorldPoint.fromLocalInstance(client, at, client.getTopLevelWorldView().getPlane());
         collisionLog.record(new CollisionLog.Incomplete(incomplete.receiver, incomplete.contacts,
             System.currentTimeMillis(), tick, client.getWorld(),
-            tile == null ? -1 : tile.getX(), tile == null ? -1 : tile.getY(), tile == null ? -1 : tile.getPlane()));
+            tile == null ? -1 : tile.getX(), tile == null ? -1 : tile.getY(), tile == null ? -1 : tile.getPlane(),
+            at == null ? -1 : at.getSceneX(), at == null ? -1 : at.getSceneY()));
     }
 
     @Subscribe

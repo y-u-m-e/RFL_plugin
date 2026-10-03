@@ -52,13 +52,20 @@ final class CollisionLog
         final long timeMs;
         final int tick;
         final int world;
-        /** World tile under the receiver. */
+        /** World tile under the receiver; a template coordinate, see {@link #sx}. */
         final int x;
         final int y;
         final int plane;
+        /**
+         * Scene tile of the same point as {@link #x}/{@link #y}, unique within the loaded house; x/y
+         * are template coordinates that repeat across a house (every instance template chunk reuses
+         * them).
+         */
+        final int sx;
+        final int sy;
 
         Incomplete(String receiver, List<String> contacts, long timeMs, int tick, int world, int x, int y,
-            int plane)
+            int plane, int sx, int sy)
         {
             this.receiver = receiver;
             this.contacts = contacts;
@@ -68,6 +75,8 @@ final class CollisionLog
             this.x = x;
             this.y = y;
             this.plane = plane;
+            this.sx = sx;
+            this.sy = sy;
         }
     }
 

@@ -33,11 +33,11 @@ public class ContactTrackerTest
     private static final Set<String> NONE = Collections.emptySet();
     private static final Map<String, PosedMesh> NO_MESHES = Collections.emptyMap();
 
-    /** Scene x/y to a recognisable fake world tile, on world 330. */
+    /** Local x/y to a recognisable fake world tile and scene tile, on world 330. */
     private static ContactTracker tracker()
     {
-        return new ContactTracker((x, y) -> new int[]{1000 + (int) Math.floor(x), 2000 + (int) Math.floor(y), 0},
-            () -> 330);
+        return new ContactTracker((x, y) -> new int[]{1000 + (int) Math.floor(x), 2000 + (int) Math.floor(y), 0,
+            3000 + (int) Math.floor(x), 4000 + (int) Math.floor(y)}, () -> 330);
     }
 
     /** A mesh of the given triangles, shifted dx along x. */
@@ -96,6 +96,8 @@ public class ContactTrackerTest
         assertEquals(1040, ab.x);
         assertEquals(2000, ab.y);
         assertEquals(0, ab.plane);
+        assertEquals(3040, ab.sx);
+        assertEquals(4000, ab.sy);
         assertEquals(1, ab.maxTriangles);
 
         assertEquals("self pairs are tracked like any other", "Amy", self.a);

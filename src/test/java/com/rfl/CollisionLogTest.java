@@ -35,7 +35,7 @@ public class CollisionLogTest
 
     private static Collision collision(String a, long endMs)
     {
-        return new Collision(a, "Zed", List.of("Zed"), endMs - 500, endMs, 10, 11, 330, 1890, 5730, 0, 12);
+        return new Collision(a, "Zed", List.of("Zed"), endMs - 500, endMs, 10, 11, 330, 1890, 5730, 0, 14, 44, 12);
     }
 
     private static void drain(ScheduledExecutorService executor) throws InterruptedException
@@ -67,7 +67,7 @@ public class CollisionLogTest
 
         JsonObject o = new JsonParser().parse(lines.get(0)).getAsJsonObject();
         assertEquals(new TreeSet<>(List.of("type", "a", "b", "ball", "startMs", "endMs", "startTick", "endTick",
-            "world", "x", "y", "plane", "maxTriangles")), keys(o));
+            "world", "x", "y", "plane", "sx", "sy", "maxTriangles")), keys(o));
         assertEquals("collision", o.get("type").getAsString());
         assertEquals("Amy", o.get("a").getAsString());
         assertEquals("Zed", o.get("b").getAsString());
@@ -80,6 +80,8 @@ public class CollisionLogTest
         assertEquals(1890, o.get("x").getAsInt());
         assertEquals(5730, o.get("y").getAsInt());
         assertEquals(0, o.get("plane").getAsInt());
+        assertEquals(14, o.get("sx").getAsInt());
+        assertEquals(44, o.get("sy").getAsInt());
         assertEquals(12, o.get("maxTriangles").getAsInt());
         assertEquals("Bo", new JsonParser().parse(lines.get(1)).getAsJsonObject().get("a").getAsString());
     }
@@ -92,14 +94,15 @@ public class CollisionLogTest
         CollisionLog log = new CollisionLog(new GsonBuilder().create(), executor, dir, () -> true);
 
         log.record(collision("Amy", END));
-        log.record(new CollisionLog.Incomplete("Amy", List.of("Zed", "Bo"), END + 5, 42, 330, 1891, 5731, 0));
+        log.record(new CollisionLog.Incomplete("Amy", List.of("Zed", "Bo"), END + 5, 42, 330, 1891, 5731, 0, 14,
+            44));
         drain(executor);
 
         List<String> lines = Files.readAllLines(dir.resolve(CollisionLog.fileName(END)), StandardCharsets.UTF_8);
         assertEquals(2, lines.size());
         JsonObject i = new JsonParser().parse(lines.get(1)).getAsJsonObject();
         assertEquals(new TreeSet<>(List.of("type", "receiver", "contacts", "timeMs", "tick", "world", "x", "y",
-            "plane")), keys(i));
+            "plane", "sx", "sy")), keys(i));
         assertEquals("incomplete", i.get("type").getAsString());
         assertEquals("Amy", i.get("receiver").getAsString());
         assertEquals("Zed", i.getAsJsonArray("contacts").get(0).getAsString());
@@ -110,6 +113,8 @@ public class CollisionLogTest
         assertEquals(1891, i.get("x").getAsInt());
         assertEquals(5731, i.get("y").getAsInt());
         assertEquals(0, i.get("plane").getAsInt());
+        assertEquals(14, i.get("sx").getAsInt());
+        assertEquals(44, i.get("sy").getAsInt());
         // Incompletes are not collisions: the debug panel list only shows collisions.
         assertEquals(1, log.recent().size());
     }
@@ -122,7 +127,7 @@ public class CollisionLogTest
         CollisionLog log = new CollisionLog(new GsonBuilder().create(), executor, dir, () -> false);
 
         log.record(collision("Amy", END));
-        log.record(new CollisionLog.Incomplete("Amy", List.of("Zed"), END, 1, 330, 0, 0, 0));
+        log.record(new CollisionLog.Incomplete("Amy", List.of("Zed"), END, 1, 330, 0, 0, 0, 0, 0));
         drain(executor);
 
         assertFalse(Files.exists(dir));

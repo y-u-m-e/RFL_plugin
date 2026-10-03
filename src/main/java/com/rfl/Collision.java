@@ -19,15 +19,21 @@ final class Collision
     final int startTick;
     final int endTick;
     final int world;
-    /** World tile under the latest touching-triangle centroid. */
+    /** World tile under the latest touching-triangle centroid; a template coordinate, see {@link #sx}. */
     final int x;
     final int y;
     final int plane;
+    /**
+     * Scene tile of the same point as {@link #x}/{@link #y}, unique within the loaded house; x/y are
+     * template coordinates that repeat across a house (every instance template chunk reuses them).
+     */
+    final int sx;
+    final int sy;
     /** Largest sampled touching triangle-pair count while the collision lasted. */
     final int maxTriangles;
 
     Collision(String a, String b, List<String> ball, long startMs, long endMs, int startTick, int endTick,
-        int world, int x, int y, int plane, int maxTriangles)
+        int world, int x, int y, int plane, int sx, int sy, int maxTriangles)
     {
         this.a = a;
         this.b = b;
@@ -40,6 +46,8 @@ final class Collision
         this.x = x;
         this.y = y;
         this.plane = plane;
+        this.sx = sx;
+        this.sy = sy;
         this.maxTriangles = maxTriangles;
     }
 }

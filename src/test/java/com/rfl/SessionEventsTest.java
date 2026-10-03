@@ -14,7 +14,7 @@ public class SessionEventsTest
 {
     private static Collision collision(int n)
     {
-        return new Collision("A" + n, "B", List.of("B"), n, n + 1, n, n, 330, 0, 0, 0, 1);
+        return new Collision("A" + n, "B", List.of("B"), n, n + 1, n, n, 330, 0, 0, 0, 0, 0, 1);
     }
 
     @Test
@@ -40,7 +40,7 @@ public class SessionEventsTest
         Collision c = collision(1);
         s.onEvent(c);
         assertSame(c, s.latest());
-        CollisionLog.Incomplete i = new CollisionLog.Incomplete("Bob", List.of("Amy"), 5, 1, 330, 0, 0, 0);
+        CollisionLog.Incomplete i = new CollisionLog.Incomplete("Bob", List.of("Amy"), 5, 1, 330, 0, 0, 0, 0, 0);
         s.onEvent(i);
         assertSame(i, s.latest());
         assertEquals(1, s.incompleteCount());

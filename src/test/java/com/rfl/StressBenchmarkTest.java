@@ -320,7 +320,8 @@ public class StressBenchmarkTest
     static Run run(Body body, int n, double share, boolean display)
     {
         Pitch pitch = new Pitch(n, share, 1234L + n * 31 + Math.round(share * 100));
-        ContactTracker tracker = new ContactTracker((sx, sy) -> new int[]{(int) sx / TILE, (int) sy / TILE, 0});
+        ContactTracker tracker = new ContactTracker((sx, sy) -> new int[]{(int) sx / TILE, (int) sy / TILE, 0,
+            (int) sx / TILE, (int) sy / TILE});
         ReplaySampler sampler = new ReplaySampler();
         Set<String> holders = Collections.singleton(pitch.holder);
         Run run = new Run();

@@ -58,10 +58,13 @@ final class ContactTracker
         }
     }
 
-    /** Maps a scene x/y to the world tile {x, y, plane} (WorldPoint.fromLocalInstance in game). */
+    /**
+     * Maps a local x/y to {worldX, worldY, worldPlane, sceneX, sceneY} (WorldPoint.fromLocalInstance
+     * in game for the world tile; the scene tile is unique within the loaded house).
+     */
     interface Tiles
     {
-        int[] at(double sceneX, double sceneY);
+        int[] at(double localX, double localY);
     }
 
     /** One open collision. */
@@ -184,7 +187,7 @@ final class ContactTracker
         Open o = open.remove(key);
         String[] names = splitKey(key);
         finished.add(new Collision(names[0], names[1], o.ball, o.startMs, now, o.startTick, tick, o.world,
-            o.tile[0], o.tile[1], o.tile[2], o.max));
+            o.tile[0], o.tile[1], o.tile[2], o.tile[3], o.tile[4], o.max));
     }
 
     /** Finishes every open collision now (shutdown, detection off, leaving the house). */

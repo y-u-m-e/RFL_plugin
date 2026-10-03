@@ -63,7 +63,7 @@ public class ReplayRecorderTest
         log.setListener(heard::add);
 
         Collision collision = new Collision("Amy", "Zed", List.of("Zed"), 1_000L, 1_500L, 10, 11, 330, 1890, 5730,
-            0, 12);
+            0, 14, 44, 12);
         log.record(collision);
 
         executor.shutdown();

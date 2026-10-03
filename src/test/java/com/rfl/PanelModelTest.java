@@ -21,12 +21,12 @@ public class PanelModelTest
 
     private static Collision collision(String a, String b, List<String> ball, long startMs, int overlap)
     {
-        return new Collision(a, b, ball, startMs, startMs + 1200, 10, 12, 330, 1, 2, 0, overlap);
+        return new Collision(a, b, ball, startMs, startMs + 1200, 10, 12, 330, 1, 2, 0, 0, 0, overlap);
     }
 
     private static CollisionLog.Incomplete incomplete(String receiver, List<String> contacts, long timeMs)
     {
-        return new CollisionLog.Incomplete(receiver, contacts, timeMs, 20, 330, 1, 2, 0);
+        return new CollisionLog.Incomplete(receiver, contacts, timeMs, 20, 330, 1, 2, 0, 0, 0);
     }
 
     private static PanelModel model(List<Collision> collisions, List<CollisionLog.Incomplete> incompletes,

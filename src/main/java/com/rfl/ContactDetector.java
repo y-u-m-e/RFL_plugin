@@ -138,16 +138,17 @@ final class ContactDetector
     }
 
     /**
-     * World tile {x, y, plane} under a scene point. fromLocalInstance maps instance chunks to their
-     * template, so two players in the same house get the same coordinates.
+     * World tile {x, y, plane} under a local point, plus that point's scene tile {sceneX, sceneY}.
+     * fromLocalInstance maps instance chunks to their template, so two players in the same house get
+     * the same world x/y/plane; the scene tile stays unique within the loaded house (0..103).
      */
-    private int[] tile(double sceneX, double sceneY)
+    private int[] tile(double localX, double localY)
     {
         WorldView worldView = client.getTopLevelWorldView();
         int plane = worldView.getPlane();
-        WorldPoint p = WorldPoint.fromLocalInstance(client,
-            new LocalPoint((int) Math.round(sceneX), (int) Math.round(sceneY), worldView), plane);
-        return new int[]{p.getX(), p.getY(), p.getPlane()};
+        LocalPoint localPoint = new LocalPoint((int) Math.round(localX), (int) Math.round(localY), worldView);
+        WorldPoint p = WorldPoint.fromLocalInstance(client, localPoint, plane);
+        return new int[]{p.getX(), p.getY(), p.getPlane(), localPoint.getSceneX(), localPoint.getSceneY()};
     }
 
     /**
