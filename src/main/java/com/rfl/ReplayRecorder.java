@@ -114,26 +114,10 @@ final class ReplayRecorder
     private long steadyModelWorstNanos;
     /** Debug: model reads that threw. */
     private int captureFailures;
-    /** Debug: house objects with a {@code locs} row, and those without one by {@link ReplaySampler.LocSkip}. */
-    private int locsCaptured;
-    private final int[] locSkips = new int[ReplaySampler.LocSkip.values().length];
     /** Debug: loc model reads per {@link #VIA_LABELS} path, [path][0] with a model, [path][1] without. */
     private final int[][] locVia = new int[VIA_LABELS.length][2];
-    /** Debug: most ClientTicks one pitch's loc capture took, and pitches dropped by a reload. */
-    private int pitchTicksMax;
-    private int pitchesAbandoned;
-    /**
-     * The pitch line not yet written (null when none or already out) and the house model pass it
-     * waits on (null when none). See {@link #stepPitch}.
-     */
-    private Map<String, Object> pitchLine;
-    private ReplaySampler.LocPass pitchPass;
-    private int pitchTicks;
-    /** Whether the waiting pitch streams its rows (the file's first pitch), and how many are written. */
-    private boolean pitchStreams;
-    private int pitchRowsWritten;
-    /** Whether the open file has a pitch line yet. */
-    private boolean pitchWritten;
+    /** The pitch line's spread-out house model capture; it writes the pitch and locs lines. */
+    private final PitchCapture pitch;
     /** Debug: this ClientTick's open, pitch scan/write, and loc capture time. */
     private long tickOpenNanos;
     private long tickPitchNanos;
@@ -185,6 +169,27 @@ final class ReplayRecorder
         this.config = config;
         this.writer = writer;
         this.dir = dir;
+        this.pitch = new PitchCapture(new PitchCapture.Sink()
+        {
+            @Override
+            public void models(List<Map<String, Object>> lines)
+            {
+                writeAll(lines);
+            }
+
+            @Override
+            public void pitch(Map<String, Object> line)
+            {
+                // About 200 KB of JSON: serialised on the writer's thread, never on the client thread.
+                writer.writeDeferred(line, false);
+            }
+
+            @Override
+            public void locs(Map<String, Object> line)
+            {
+                writer.writeDeferred(line, false);
+            }
+        }, LOC_BUDGET_NANOS, System::nanoTime);
     }
 
     /** Recording runs with Record replays on, logged in, inside a POH. */
@@ -448,12 +453,8 @@ final class ReplayRecorder
         {
             return CompletableFuture.completedFuture(null);
         }
-        if (pitchPass != null)
-        {
-            // Stopped mid-capture: write the pitch with the locs read so far, so the file has one.
-            pitchPass.abandon();
-            finishPitch();
-        }
+        // Stopped mid-capture: the pitch goes out with the locs read so far, so the file has one.
+        pitch.stop();
         lastModels = sampler.modelsCaptured();
         final CompletableFuture<Void> closed;
         if (config.debugLogging())
@@ -488,9 +489,7 @@ final class ReplayRecorder
         sampler = null;
         file = null;
         pitchPending = false;
-        pitchLine = null;
-        pitchPass = null;
-        pitchWritten = false;
+        pitch.reset();
         return closed;
     }
 
@@ -512,17 +511,11 @@ final class ReplayRecorder
         steadyModelNanos = 0;
         steadyModelWorstNanos = 0;
         captureFailures = 0;
-        locsCaptured = 0;
-        Arrays.fill(locSkips, 0);
         for (final int[] via : locVia)
         {
             Arrays.fill(via, 0);
         }
-        pitchTicksMax = 0;
-        pitchesAbandoned = 0;
-        pitchLine = null;
-        pitchPass = null;
-        pitchWritten = false;
+        pitch.reset();
         worstTickNanos = 0;
         worstOpenNanos = 0;
         worstPitchNanos = 0;
@@ -557,7 +550,7 @@ final class ReplayRecorder
 
     /**
      * Client thread, read only: builds the {@code pitch} line (spec §2.1) and starts reading its
-     * house models, spread over ClientTicks by {@link #stepPitch}, which writes the line. Every
+     * house models, spread over ClientTicks by {@link PitchCapture}, which writes the line. Every
      * loc model line precedes the line that refers to it. A pitch still waiting on its models when
      * a reload starts another is given up on (the scene it describes is gone). Arrays are allocated here, once per pitch, never per frame. {@code under},
      * {@code over}, {@code shapes} and {@code rots} are 104x104 {@code [x][y]} grids for the
@@ -567,19 +560,6 @@ final class ReplayRecorder
     private void beginPitch(Client client)
     {
         final long start = System.nanoTime();
-        if (pitchPass != null)
-        {
-            // A reload mid-capture: the old scene is gone. A streaming pitch is already written,
-            // so count what it got; any other is dropped unwritten.
-            pitchesAbandoned++;
-            if (pitchStreams)
-            {
-                pitchPass.abandon();
-                finishPitch();
-            }
-            pitchPass = null;
-            pitchLine = null;
-        }
         final WorldView wv = client.getTopLevelWorldView();
         final int plane = wv.getPlane();
         // Copied: the line is serialised later, on the writer's thread.
@@ -614,110 +594,31 @@ final class ReplayRecorder
         // Filled in when the line is written; put now so the key keeps its place.
         line.put("locs", null);
         line.put("paint", ReplaySampler.PitchFloor.paint(paint(scene, plane, cx, cy), cx, cy, OBJECT_RADIUS));
-        pitchLine = line;
-        pitchPass = sampler.locPass(locList);
-        pitchTicks = 0;
-        pitchRowsWritten = 0;
-        // Only the file's first pitch streams: the viewer merges every locs line into it.
-        pitchStreams = !pitchWritten;
+        // A reload mid-capture gives up on the pending pitch (see PitchCapture).
+        pitch.begin(sampler, line, locList);
         tickPitchNanos += System.nanoTime() - start;
     }
 
     /**
-     * Client thread, every ClientTick while a pitch waits on house models: reads locs for up to
-     * {@link #LOC_BUDGET_NANOS} and writes the new model lines. A streaming pitch (the file's
-     * first) is written on its first step with the rows read so far, and each later step's new
-     * rows follow as a {@code locs} line after their model lines. Any other pitch is written once
-     * every loc is read.
+     * Client thread, every ClientTick while a pitch waits on house models: one
+     * {@link PitchCapture#step} (reads locs for up to {@link #LOC_BUDGET_NANOS}, then writes model,
+     * pitch and locs lines in that order).
      */
     private void stepPitch()
     {
-        if (pitchPass == null)
+        if (!pitch.pending())
         {
             return;
         }
         final long start = System.nanoTime();
-        pitchTicks++;
-        final boolean done = pitchPass.step(LOC_BUDGET_NANOS, System::nanoTime);
-        writeAll(sampler.newModelLines());
+        pitch.step();
         tickCaptureNanos += System.nanoTime() - start;
-        if (pitchStreams)
-        {
-            writeLocRows();
-        }
-        if (done)
-        {
-            finishPitch();
-        }
-    }
-
-    /**
-     * Streaming pitch: writes the pitch line (first call) or a {@code locs} line with the rows read
-     * since the last call. Rows are copied, since the line is serialised on the writer's thread.
-     */
-    private void writeLocRows()
-    {
-        final long start = System.nanoTime();
-        final List<int[]> rows = pitchPass.rows();
-        final List<int[]> fresh = new ArrayList<>(rows.subList(pitchRowsWritten, rows.size()));
-        pitchRowsWritten = rows.size();
-        if (pitchLine != null)
-        {
-            pitchLine.put("locs", fresh);
-            // About 200 KB of JSON: serialised on the writer's thread, never on the client thread.
-            writer.writeDeferred(pitchLine, false);
-            pitchLine = null;
-            pitchWritten = true;
-        }
-        else if (!fresh.isEmpty())
-        {
-            writer.write(locsLine(fresh));
-        }
-        tickPitchNanos += System.nanoTime() - start;
-    }
-
-    /** {@code {"t":"locs","locs":[[modelId, localX, localY, groundHeight], ...]}}: more rows for the first pitch. */
-    static Map<String, Object> locsLine(List<int[]> rows)
-    {
-        final Map<String, Object> line = new LinkedHashMap<>();
-        line.put("t", "locs");
-        line.put("locs", rows);
-        return line;
-    }
-
-    /**
-     * The waiting pitch is fully read (or given up on): writes it if it isn't out yet, with every
-     * row read, and adds its loc counts to the debug totals.
-     */
-    private void finishPitch()
-    {
-        final long start = System.nanoTime();
-        writeAll(sampler.newModelLines());
-        if (pitchStreams)
-        {
-            writeLocRows();
-        }
-        else
-        {
-            pitchLine.put("locs", new ArrayList<>(pitchPass.rows()));
-            writer.writeDeferred(pitchLine, false);
-            pitchWritten = true;
-        }
-        locsCaptured += pitchPass.rows().size();
-        final int[] skips = pitchPass.skips();
-        for (int k = 0; k < skips.length; k++)
-        {
-            locSkips[k] += skips[k];
-        }
-        pitchTicksMax = Math.max(pitchTicksMax, pitchTicks);
-        pitchLine = null;
-        pitchPass = null;
-        tickPitchNanos += System.nanoTime() - start;
     }
 
     /** Debug: {@code locsCaptured=.. locsSkipped=.. locSkips=.. locVia=.. pitchTicksMax=.. pitchesAbandoned=..}. */
     private String locDebug()
     {
+        final int[] locSkips = pitch.locSkips();
         int skipped = 0;
         final StringBuilder reasons = new StringBuilder();
         for (final ReplaySampler.LocSkip why : ReplaySampler.LocSkip.values())
@@ -732,8 +633,9 @@ final class ReplayRecorder
             via.append(k == 0 ? "" : ",").append(VIA_LABELS[k]).append(':').append(locVia[k][0]).append('/')
                 .append(locVia[k][1]);
         }
-        return "locsCaptured=" + locsCaptured + " locsSkipped=" + skipped + " locSkips=" + reasons
-            + " locVia(ok/none)=" + via + " pitchTicksMax=" + pitchTicksMax + " pitchesAbandoned=" + pitchesAbandoned;
+        return "locsCaptured=" + pitch.locsCaptured() + " locsSkipped=" + skipped + " locSkips=" + reasons
+            + " locVia(ok/none)=" + via + " pitchTicksMax=" + pitch.ticksMax() + " pitchesAbandoned="
+            + pitch.abandoned();
     }
 
     /** Debug: the worst ClientTick of the recording, split into open, pitch, house capture and sampling. */

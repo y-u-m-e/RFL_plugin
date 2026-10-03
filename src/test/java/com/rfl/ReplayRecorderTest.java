@@ -269,7 +269,7 @@ public class ReplayRecorderTest
     public void locsLineHasThePitchLocsRowShape()
     {
         Gson gson = new GsonBuilder().create();
-        String json = gson.toJson(ReplayRecorder.locsLine(List.of(new int[] { 3, 6464, 6592, -10 },
+        String json = gson.toJson(PitchCapture.locsLine(List.of(new int[] { 3, 6464, 6592, -10 },
             new int[] { 4, 6720, 6464, 0 })));
         assertEquals("{\"t\":\"locs\",\"locs\":[[3,6464,6592,-10],[4,6720,6464,0]]}", json);
     }
