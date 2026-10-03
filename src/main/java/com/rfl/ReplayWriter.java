@@ -102,8 +102,11 @@ final class ReplayWriter
         enqueue(() -> doClose(wasOpen));
     }
 
-    /** Queues one step and, if nothing is currently draining, submits the drain task. */
-    private void enqueue(Runnable step)
+    /**
+     * Queues one step and, if nothing is currently draining, submits the drain task.
+     * Package-private so tests can inject a throwing step without a real IO failure.
+     */
+    void enqueue(Runnable step)
     {
         steps.add(step);
         if (draining.compareAndSet(false, true))
@@ -118,6 +121,13 @@ final class ReplayWriter
      * poll} and the flag being cleared, and nothing else will schedule a drain for it once
      * {@link #draining} reads true to that producer, so this task reclaims the flag itself
      * instead of leaving that step stranded (a lost wake-up).
+     *
+     * <p>A step is never allowed to escape: if one throws, that's treated exactly like an
+     * {@link IOException} from inside the step itself — logged once, writer marked failed and
+     * closed quietly — and draining carries straight on to the next step. Letting the exception
+     * out instead would skip {@link #draining}'s reset, wedging it {@code true} forever: no
+     * later {@link #enqueue} would ever submit another drain task, so every subsequent write
+     * would just pile up in {@link #steps} unbounded, silently.
      */
     private void drain()
     {
@@ -126,7 +136,16 @@ final class ReplayWriter
             Runnable step;
             while ((step = steps.poll()) != null)
             {
-                step.run();
+                try
+                {
+                    step.run();
+                }
+                catch (RuntimeException e)
+                {
+                    log.warn("RFL replay: step failed, stopping", e);
+                    open = false;
+                    closeOut();
+                }
             }
             draining.set(false);
             if (steps.isEmpty() || !draining.compareAndSet(false, true))

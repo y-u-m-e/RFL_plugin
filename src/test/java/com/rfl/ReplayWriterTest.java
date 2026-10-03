@@ -207,4 +207,29 @@ public class ReplayWriterTest
             assertEquals(gson.toJson(expected.get(i)), lines.get(i));
         }
     }
+
+    @Test
+    public void aThrowingStepDoesNotWedgeTheWriter() throws Exception
+    {
+        com.google.gson.Gson gson = new GsonBuilder().create();
+        ReplayWriter writer = new ReplayWriter(gson, sameThreadExecutor());
+
+        // Package-private hook (see ReplayWriter.enqueue): injects a step that throws, so the
+        // recovery in drain() can be exercised without needing a real IO failure. With the
+        // same-thread executor this runs (and drain() fully processes it) synchronously, before
+        // this call even returns.
+        writer.enqueue(() ->
+        {
+            throw new RuntimeException("boom");
+        });
+
+        Path file = temp.getRoot().toPath().resolve("after-throw.gz");
+        writer.open(file);
+        writer.write(map("t", "a"));
+        writer.write(map("t", "b"));
+        writer.write(map("t", "c"));
+        writer.close();
+
+        assertEquals(3, gunzipLines(file).size());
+    }
 }
