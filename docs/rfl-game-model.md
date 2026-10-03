@@ -207,6 +207,8 @@ The true tile is exactly what **True Tile Player Indicators** reveals. That's wh
 
 ## 4. What the server does with it
 
+> **Uploads paused 2026-10-02.** The plugin is now local-only: it sends nothing and saves every handegg collision and interception to `RUNELITE_DIR/rfl/collisions/YYYY-MM-DD.jsonl`. The server code below is kept on `yume-api` `dev` but is unused.
+
 - **[code]** **Self-only reporting:** each plugin reports only its own player (a Plugin Hub requirement).
   - A contact event carries `contactId`, time, tick, tile (`x`, `y`, `plane`), overlap, and `ball: self|other` (who held the handegg at the start).
   - It never names the other player.
