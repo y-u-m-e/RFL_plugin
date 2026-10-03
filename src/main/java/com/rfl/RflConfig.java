@@ -22,7 +22,7 @@ public interface RflConfig extends Config
     @ConfigSection(
         name = "Detection",
         description = "Handegg collision detection inside a player-owned house, and saving what it finds.",
-        position = 0
+        position = 1
     )
     String DETECTION_SECTION = "detection";
 
@@ -48,12 +48,37 @@ public interface RflConfig extends Config
     String REPLAYS_SECTION = "replays";
 
     @ConfigSection(
+        name = "Audit",
+        description = "Your own plugin list, saved on this computer for league refs.",
+        position = 27
+    )
+    String AUDIT_SECTION = "audit";
+
+    @ConfigSection(
         name = "Debug",
         description = "Troubleshooting tools.",
         position = 30,
         closedByDefault = true
     )
     String DEBUG_SECTION = "debug";
+
+    // ---- Top ----
+
+    /**
+     * @return true to show the RFL sidebar panel
+     */
+    @ConfigItem(
+        keyName = "showPanel",
+        name = "Show RFL panel",
+        description = "Adds the RFL panel to the sidebar: your plugin list (banned plugins first), what "
+            + "detection sees right now, collisions in progress, the latest saved collisions with an Open "
+            + "folder button, and recent interception decisions.",
+        position = 0
+    )
+    default boolean showPanel()
+    {
+        return true;
+    }
 
     // ---- Detection ----
 
@@ -293,24 +318,26 @@ public interface RflConfig extends Config
         return false;
     }
 
-    // ---- Debug ----
+    // ---- Audit ----
 
     /**
-     * @return true to show the RFL Debug sidebar panel
+     * @return true to save the local user's own plugin list and plugin toggles to the local day file
      */
     @ConfigItem(
-        keyName = "showDebugPanel",
-        name = "Show debug panel",
-        description = "Adds an RFL Debug panel to the sidebar: what detection sees right now, collisions in "
-            + "progress, the latest saved collisions with an Open folder button, recent interception "
-            + "decisions, and how long detection takes.",
-        section = DEBUG_SECTION,
-        position = 31
+        keyName = "logPluginStats",
+        name = "Log plugin stats",
+        description = "Saves your own plugin list on this computer (rfl/plugins in the RuneLite folder) for "
+            + "league refs: every plugin and whether it is on when you enter a player-owned house, and each "
+            + "plugin you turn on or off. Nothing is sent anywhere.",
+        section = AUDIT_SECTION,
+        position = 28
     )
-    default boolean showDebugPanel()
+    default boolean logPluginStats()
     {
-        return false;
+        return true;
     }
+
+    // ---- Debug ----
 
     /**
      * @return true to log handegg projectiles, held weapons and contacts each tick

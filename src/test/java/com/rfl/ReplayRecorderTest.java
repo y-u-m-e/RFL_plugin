@@ -18,7 +18,10 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 /**
  * {@link ReplayRecorder}: when it records, what it names the file, and how it hears about
@@ -68,5 +71,35 @@ public class ReplayRecorderTest
         assertEquals(1, heard.size());
         assertSame(collision, heard.get(0));
         assertFalse("nothing saved with Save collisions off", dir.toFile().exists());
+    }
+
+    @Test
+    public void pluginLinesSitBesideTheOtherLineTypes()
+    {
+        Gson gson = new GsonBuilder().create();
+        JsonObject plugins = new JsonParser().parse(gson.toJson(ReplayRecorder.pluginsLine(812345,
+            List.of(new PluginEntry("Block Tracker", true, PluginEntry.HUB))))).getAsJsonObject();
+        assertEquals("{\"t\":\"plugins\",\"cyc\":812345,\"list\":[{\"name\":\"Block Tracker\","
+            + "\"enabled\":true,\"source\":\"hub\"}]}", plugins.toString());
+
+        JsonObject toggle = new JsonParser().parse(gson.toJson(
+            ReplayRecorder.pluginToggleLine(812400, "Agility", false))).getAsJsonObject();
+        assertEquals("{\"t\":\"plugin_toggle\",\"cyc\":812400,\"name\":\"Agility\",\"enabled\":false}",
+            toggle.toString());
+    }
+
+    @Test
+    public void pluginLinesNeedAnOpenReplay() throws Exception
+    {
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        Path dir = temp.getRoot().toPath().resolve("replays");
+        ReplayRecorder recorder = new ReplayRecorder(new RflConfig()
+        {
+        }, new ReplayWriter(new GsonBuilder().create(), executor), dir);
+        recorder.onPlugins(ReplayRecorder.pluginToggleLine(1, "Agility", true));
+        recorder.stop().get(5, TimeUnit.SECONDS);
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        assertFalse(dir.toFile().exists());
     }
 }

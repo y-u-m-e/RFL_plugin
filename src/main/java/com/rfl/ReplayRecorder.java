@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Supplier;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -34,7 +35,9 @@ import net.runelite.client.util.Text;
  *
  * <p>Each ClientTick it reads every player's pose and every handegg projectile into a
  * {@link ReplaySampler}; each GameTick it adds a {@code tick} line and appearances; finished
- * collisions and interceptions arrive through {@link #onEvent} (the {@link CollisionLog} listener).
+ * collisions and interceptions arrive through {@link #onEvent} (the {@link CollisionLog} listener),
+ * and the local user's own plugin list ({@code plugins} at open) and plugin toggles through
+ * {@link #onPlugins}.
  * Every line goes to a {@link ReplayWriter}, which does the IO off the client thread.
  *
  * <p>Lifecycle: a file opens (with {@code hdr} and {@code pitch}) when {@link #records} turns true
@@ -64,6 +67,8 @@ final class ReplayRecorder
     private boolean pitchPending;
     private long frameNanos;
     private long frames;
+    /** The local user's own plugin list for the {@code plugins} line; may be null or return null. */
+    private Supplier<List<PluginEntry>> pluginSource;
 
     @Inject
     ReplayRecorder(RflConfig config, Gson gson, ScheduledExecutorService executor)
@@ -196,6 +201,55 @@ final class ReplayRecorder
     }
 
     /**
+     * Client thread: supplies the local user's own plugin list for the {@code plugins} line written
+     * at file open, or null for none (Log plugin stats off). Null clears it.
+     */
+    void setPluginSource(Supplier<List<PluginEntry>> source)
+    {
+        this.pluginSource = source;
+    }
+
+    /**
+     * Client thread: writes one plugin line ({@link #pluginsLine} or {@link #pluginToggleLine})
+     * to the open file, beside the other line types. Nothing happens when no file is open.
+     */
+    void onPlugins(Object line)
+    {
+        if (sampler == null || line == null)
+        {
+            return;
+        }
+        writer.write(line);
+    }
+
+    /** Latest game cycle seen, for stamping plugin lines. */
+    int cycle()
+    {
+        return lastCycle;
+    }
+
+    /** {@code {"t":"plugins","cyc":..,"list":[{"name":..,"enabled":..,"source":..}]}} */
+    static Map<String, Object> pluginsLine(int cycle, List<PluginEntry> list)
+    {
+        final Map<String, Object> line = new LinkedHashMap<>();
+        line.put("t", "plugins");
+        line.put("cyc", cycle);
+        line.put("list", list);
+        return line;
+    }
+
+    /** {@code {"t":"plugin_toggle","cyc":..,"name":..,"enabled":..}} */
+    static Map<String, Object> pluginToggleLine(int cycle, String name, boolean enabled)
+    {
+        final Map<String, Object> line = new LinkedHashMap<>();
+        line.put("t", "plugin_toggle");
+        line.put("cyc", cycle);
+        line.put("name", name);
+        line.put("enabled", enabled);
+        return line;
+    }
+
+    /**
      * Client thread: closes the open file, if any. Safe to call when nothing is open. The future
      * completes once the gzip trailer is on disk (at once when nothing was open).
      */
@@ -249,6 +303,12 @@ final class ReplayRecorder
         hdr.put("cyc", lastCycle);
         writer.write(hdr);
         writePitch(client);
+        final Supplier<List<PluginEntry>> source = pluginSource;
+        final List<PluginEntry> plugins = source == null ? null : source.get();
+        if (plugins != null)
+        {
+            writer.write(pluginsLine(lastCycle, plugins));
+        }
     }
 
     private void writePitch(Client client)

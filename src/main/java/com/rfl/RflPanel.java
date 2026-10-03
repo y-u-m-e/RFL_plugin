@@ -18,23 +18,23 @@ import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.ImageUtil;
 
 /**
- * "RFL Debug" sidebar panel: an Open folder button for the saved collision files, then a read-only
- * text view of what contact detection sees and the latest saved collisions. Swing EDT only; the
- * text is built on the client thread and handed over with {@link #show}.
+ * "RFL" sidebar panel: an Open folder button for the saved collision files, then a read-only text
+ * view of the local plugin list, what contact detection sees, and the latest saved collisions.
+ * Swing EDT only; the text is built on the client thread and handed over with {@link #show}.
  */
-final class DebugPanel extends PluginPanel
+final class RflPanel extends PluginPanel
 {
     private final JTextArea text = new JTextArea();
 
     /** @param openFolder runs on the EDT when Open folder is clicked */
-    DebugPanel(Runnable openFolder)
+    RflPanel(Runnable openFolder)
     {
         super(false);
         setLayout(new BorderLayout(0, 6));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-        JLabel title = new JLabel("RFL Debug");
+        JLabel title = new JLabel("RFL");
         title.setFont(FontManager.getRunescapeBoldFont());
         title.setForeground(Color.WHITE);
         JButton open = new JButton("Open folder");
@@ -77,9 +77,10 @@ final class DebugPanel extends PluginPanel
         }
     }
 
-    /** Sidebar icon: the RFL football, scaled to the toolbar's 16 px. */
+    /** Sidebar icon: the referee whistle and players, fitted into the toolbar's 16 px square. */
     static BufferedImage icon()
     {
-        return ImageUtil.resizeImage(ImageUtil.loadImageResource(DebugPanel.class, "debug_icon.png"), 16, 16);
+        BufferedImage image = ImageUtil.loadImageResource(RflPanel.class, "rfl_icon.png");
+        return ImageUtil.resizeCanvas(ImageUtil.resizeImage(image, 16, 16, true), 16, 16);
     }
 }

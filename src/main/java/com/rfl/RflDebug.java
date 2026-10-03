@@ -19,9 +19,9 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.LinkBrowser;
 
 /**
- * Everything behind "Show debug panel" and "Debug logging": the RFL Debug sidebar panel's
- * lifecycle and text, its recent-events list, and the debug log lines (each logged only when it
- * changes, so the log stays readable). Display and logging only.
+ * Everything behind "Show RFL panel" and "Debug logging": the RFL sidebar panel's lifecycle and
+ * text (the local plugin list, then detection state), its recent-events list, and the debug log
+ * lines (each logged only when it changes, so the log stays readable). Display and logging only.
  *
  * <p>Threads: the panel and its button are touched on the Swing EDT only ({@link #syncPanel},
  * {@link #removePanel}); every other method runs on the client thread.
@@ -39,10 +39,11 @@ final class RflDebug
     private final ContactDetector contactDetector;
     private final BareBody bareBody;
     private final CollisionLog collisionLog;
+    private final PluginLog pluginLog;
     private final ScheduledExecutorService executor;
 
     // EDT only.
-    private DebugPanel panel;
+    private RflPanel panel;
     private NavigationButton button;
 
     // Client thread only.
@@ -58,8 +59,9 @@ final class RflDebug
 
     @Inject
     RflDebug(Client client, RflConfig config, ClientToolbar clientToolbar, ContactDetector contactDetector,
-        BareBody bareBody, CollisionLog collisionLog, ScheduledExecutorService executor)
+        BareBody bareBody, CollisionLog collisionLog, PluginLog pluginLog, ScheduledExecutorService executor)
     {
+        this.pluginLog = pluginLog;
         this.executor = executor;
         this.collisionLog = collisionLog;
         this.client = client;
@@ -69,10 +71,10 @@ final class RflDebug
         this.bareBody = bareBody;
     }
 
-    /** EDT: adds or removes the debug panel to match the setting. */
+    /** EDT: adds or removes the RFL panel to match the setting. */
     void syncPanel()
     {
-        if (!config.showDebugPanel())
+        if (!config.showPanel())
         {
             removePanel();
             return;
@@ -81,10 +83,10 @@ final class RflDebug
         {
             return;
         }
-        panel = new DebugPanel(this::openFolder);
+        panel = new RflPanel(this::openFolder);
         button = NavigationButton.builder()
-            .tooltip("RFL Debug")
-            .icon(DebugPanel.icon())
+            .tooltip("RFL")
+            .icon(RflPanel.icon())
             .priority(10)
             .panel(panel)
             .build();
@@ -115,7 +117,7 @@ final class RflDebug
     /** Adds a line to the panel's recent events (newest first). */
     void record(String line)
     {
-        if (!config.showDebugPanel())
+        if (!config.showPanel())
         {
             return;
         }
@@ -144,7 +146,7 @@ final class RflDebug
     void refresh(boolean inPoh)
     {
         long now = System.currentTimeMillis();
-        if (!config.showDebugPanel() || now - refreshAt < REFRESH_MS)
+        if (!config.showPanel() || now - refreshAt < REFRESH_MS)
         {
             return;
         }
@@ -177,10 +179,44 @@ final class RflDebug
         }
     }
 
+    /** Banned plugins that are on first, then how many plugins are on and off. */
+    static void appendPlugins(StringBuilder sb, List<PluginEntry> plugins, boolean saving)
+    {
+        sb.append("PLUGINS (latest snapshot)\n");
+        if (plugins.isEmpty())
+        {
+            sb.append("no snapshot yet\n");
+        }
+        else
+        {
+            List<String> banned = PluginSnapshotter.enabledBanned(plugins);
+            for (String name : banned)
+            {
+                sb.append("BANNED, ON: ").append(name).append('\n');
+            }
+            if (banned.isEmpty())
+            {
+                sb.append("no banned plugins on\n");
+            }
+            int enabled = 0;
+            for (PluginEntry e : plugins)
+            {
+                if (e.enabled)
+                {
+                    enabled++;
+                }
+            }
+            sb.append("enabled: ").append(enabled).append(", disabled: ").append(plugins.size() - enabled)
+                .append('\n');
+        }
+        sb.append("logging: ").append(saving ? "on" : "off").append("\n\n");
+    }
+
     private String text(boolean inPoh)
     {
         String source = config.hitboxSource() == RflConfig.HitboxSource.BARE_BODY ? "bare" : "equipped";
         StringBuilder sb = new StringBuilder();
+        appendPlugins(sb, pluginLog.latest(), pluginLog.saving());
         sb.append("GATE\n")
             .append("logged in: ").append(yesNo(client.getGameState() == GameState.LOGGED_IN)).append('\n')
             .append("in POH: ").append(yesNo(inPoh)).append('\n')
