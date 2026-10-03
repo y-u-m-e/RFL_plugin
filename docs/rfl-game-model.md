@@ -262,3 +262,30 @@ From two accounts walking and running set routes, that log gives:
 - **handegg flight time vs distance:** frames between the projectile appearing and disappearing
 
 Ask for "add a movement trace logger" and the plugin agent can add it behind a debug setting.
+
+---
+
+## 7. Measured from a real recording (2026-10-02)
+
+Source: `2026-10-02_192236_w354.rflr.gz`. 5 min 16 s in a POH on world 354, game revision 241, 3 players, 8 throws, 34 collisions, 2 interceptions. These are **[measured]** values. They replace the matching [osrs-verify] guesses in §2 and §5.
+
+| What | Measured | Notes |
+|---|---|---|
+| Client cycles per game tick | median **30** (28–32, one 18 during lag) | So a client cycle is ~20 ms and a tick is ~600 ms, with jitter. |
+| Walk speed (rendered) | **~4 local units/cycle** straight, ~6 diagonal | 128 units per tile ÷ 30 cycles = 4.3. |
+| Run speed (rendered) | **~8 units/cycle** straight, ~10–11 diagonal | |
+| Catch-up speed | bursts of **13–16 units/cycle** | The client speeds up when steps queue. This is where the model "jumps" toward its true tile. |
+| Turn rate | **32 orientation units/cycle** almost always | A full turn takes 64 cycles (1.28 s), a 180° turn 0.64 s. Sharp direction changes leave the model facing the old way for up to ~0.6 s. |
+| Pose animations | 808 idle, 819 walk, 824 run, 820–823 turn/sidestep variants | Counts in the recording: run 4313, walk 2655, idle 1977. |
+| Action animations | 7996 throw, 782 catch, 2111 pick up (likely) | 7996 runs on the thrower just before the projectile; 782 on the receiver at the catch. |
+| Projectile pre-roll | appears **~0.8 s before its start cycle**, parked at (0,0) | Fixed in the recorder (plugin `0da3874`): ball rows begin at the start cycle. |
+| Throw flight time | 4.2–4.8 tiles: **26–31 cycles (0.52–0.62 s)**; 8.8 tiles: 51 (1.02 s); 9.7 tiles: 56 (1.12 s) | About **5.4 cycles (0.11 s) per tile + ~3 cycles**. |
+| Throw arc | starts ~8 units above the catch height, peaks **45–115 units** higher (longer throws arc higher) | z is negative-up. |
+| Collision duration | median **360 ms**, 19 ms to 14.4 s | Long ones are players standing together. |
+| Collision overlap | median **144** touching triangle pairs, often hitting the 512 cap | |
+| Player tracking range | at least **22 tiles** from the recorder, with 2 despawns (both players leaving) | Wider than the ~15 tiles assumed. A full-size game is still needed to confirm one recorder covers the pitch. |
+
+Still not measured:
+- **Rendered position vs true tile:** recordings don't carry the server tile yet. A planned recorder addition (true tile per tick) answers it directly.
+- **PID order effects.**
+- **Long throws past 10 tiles.**
