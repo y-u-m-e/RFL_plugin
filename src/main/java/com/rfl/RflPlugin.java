@@ -17,10 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import okhttp3.OkHttpClient;
 
-import com.rfl.game.GameClient;
-import com.rfl.game.GamePanel;
-import com.rfl.game.GameSession;
-
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -38,11 +34,8 @@ import net.runelite.client.events.PluginChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.task.Schedule;
-import net.runelite.client.ui.ClientToolbar;
-import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
-import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.Text;
 
 /**
@@ -53,16 +46,15 @@ import net.runelite.client.util.Text;
  * <p>Owns the wiring between RuneLite events and the pieces that do the work: contact detection
  * each client frame ({@link ContactDetector}), interception checks each game tick
  * ({@link InterceptionDetector}), the report heartbeat ({@link ReportSender}), the per-account
- * install ID, and the identity snapshot the "RFL" game panel ({@link GamePanel}) reads. Debug
- * panel and debug logging live in {@link RflDebug}.
+ * install ID. Debug panel and debug logging live in {@link RflDebug}.
  *
- * <p>Observer mode overrides reporting: nothing is sent (no reports, no game panel requests, no
+ * <p>Observer mode overrides reporting: nothing is sent (no reports, no
  * collision_seen), and every handegg collision in view between any two players is saved on this
  * computer only ({@link ObserverLog}). It does not need Enable reporting.
  *
- * <p>Threads: detection, the install ID and the debug state are client-thread only. The game
- * panel and debug panel are created and removed on the EDT. {@link #identity} and {@link #inPoh}
- * are volatile snapshots for readers on other threads.
+ * <p>Threads: detection, the install ID and the debug state are client-thread only. The debug
+ * panel is created and removed on the EDT. {@link #inPoh} is a volatile snapshot for readers on
+ * other threads.
  */
 @Slf4j
 @PluginDescriptor(
@@ -116,15 +108,6 @@ public class RflPlugin extends Plugin
     private BareBody bareBody;
 
     @Inject
-    private ClientToolbar clientToolbar;
-
-    @Inject
-    private GameSession gameSession;
-
-    @Inject
-    private GameClient gameClient;
-
-    @Inject
     private ScheduledExecutorService executor;
 
     @Inject
@@ -141,16 +124,6 @@ public class RflPlugin extends Plugin
     // Client thread only: the install ID cached for the RS profile it was read for.
     private String installProfileKey;
     private String cachedInstallId;
-
-    /**
-     * RSN/install id/world, refreshed on the client thread each game tick so {@link GameClient}
-     * (OkHttp/EDT threads) never reads {@link Client} itself. Null while logged out.
-     */
-    private volatile GameClient.Identity identity;
-
-    // "RFL" game panel: created/added/removed on the EDT; dispose is thread-safe.
-    private volatile GamePanel gamePanel;
-    private NavigationButton gameButton;
 
     /** Recomputed each {@link GameTick}; the POH check only needs to run once per tick. */
     private volatile boolean inPoh;
@@ -171,12 +144,8 @@ public class RflPlugin extends Plugin
         overlayManager.add(hitboxOverlay);
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
-        gameClient.setIdentitySupplier(() -> identity);
-        gameClient.setEnabled(this::reporting);
         reportSender.setEnabled(this::reporting);
-        observerLog.setOnChange(() -> SwingUtilities.invokeLater(this::syncObserver));
         SwingUtilities.invokeLater(debug::syncPanel);
-        SwingUtilities.invokeLater(this::addGamePanel);
     }
 
     @Override
@@ -192,57 +161,6 @@ public class RflPlugin extends Plugin
             contactDetector.reset();
         });
         SwingUtilities.invokeLater(debug::removePanel);
-        final GamePanel panel = gamePanel;
-        if (panel != null)
-        {
-            panel.dispose();
-        }
-        SwingUtilities.invokeLater(this::removeGamePanel);
-    }
-
-    /** EDT. The "RFL" panel is present whenever the plugin runs; it polls only with reporting on. */
-    private void addGamePanel()
-    {
-        if (gameButton != null)
-        {
-            return;
-        }
-        final GamePanel panel = new GamePanel(gameClient, gameSession, () -> identity, executor);
-        gameButton = NavigationButton.builder()
-            .tooltip("RFL")
-            .icon(DebugPanel.icon())
-            .priority(9)
-            .panel(panel)
-            .build();
-        clientToolbar.addNavigation(gameButton);
-        gamePanel = panel;
-        panel.setReporting(reporting());
-        syncObserver();
-    }
-
-    /** EDT. Pushes Observer mode and the latest collisions to the game panel. */
-    private void syncObserver()
-    {
-        if (gamePanel == null)
-        {
-            return;
-        }
-        final List<String> rows = new ArrayList<>();
-        for (final ObservedCollision c : observerLog.recent())
-        {
-            rows.add(ObserverLog.row(c));
-        }
-        gamePanel.setObserver(config.observerMode(), rows, this::openObserverFolder);
-    }
-
-    /** EDT. Creates the folder off the EDT, then opens it with LinkBrowser. */
-    private void openObserverFolder()
-    {
-        executor.execute(() ->
-        {
-            observerLog.ensureDir();
-            LinkBrowser.open(observerLog.dir().toUri().toString());
-        });
     }
 
     /**
@@ -255,25 +173,10 @@ public class RflPlugin extends Plugin
         return enableReporting && !observerMode;
     }
 
-    /** Any thread: the send gate for reports, plugin toggles and the game panel. */
+    /** Any thread: the send gate for reports, and plugin toggles. */
     private boolean reporting()
     {
         return reportingAllowed(config.enableReporting(), config.observerMode());
-    }
-
-    /** EDT. */
-    private void removeGamePanel()
-    {
-        if (gamePanel != null)
-        {
-            gamePanel.dispose();
-        }
-        if (gameButton != null)
-        {
-            clientToolbar.removeNavigation(gameButton);
-        }
-        gameButton = null;
-        gamePanel = null;
     }
 
     @Subscribe
@@ -287,51 +190,13 @@ public class RflPlugin extends Plugin
         {
             SwingUtilities.invokeLater(debug::syncPanel);
         }
-        if ("enableReporting".equals(event.getKey()) || "observerMode".equals(event.getKey()))
-        {
-            SwingUtilities.invokeLater(() ->
-            {
-                if (gamePanel != null)
-                {
-                    gamePanel.setReporting(reporting());
-                }
-                syncObserver();
-            });
-        }
     }
 
     @Subscribe
     public void onGameTick(final GameTick event)
     {
         inPoh = pohDetector.inPoh(client);
-        refreshIdentity();
         checkInterceptions();
-    }
-
-    /** Client thread: snapshots RSN/install id/world; reallocates only on change. */
-    private void refreshIdentity()
-    {
-        final Player local = client.getLocalPlayer();
-        final String name = local == null ? null : local.getName();
-        if (client.getGameState() != GameState.LOGGED_IN || name == null)
-        {
-            identity = null;
-            return;
-        }
-        final String rsn = Text.sanitize(name);
-        final String installId = currentInstallId();
-        if (installId == null)
-        {
-            identity = null;
-            return;
-        }
-        final int world = client.getWorld();
-        final GameClient.Identity current = identity;
-        if (current == null || !current.rsn.equals(rsn) || !current.installId.equals(installId)
-            || current.world != world)
-        {
-            identity = new GameClient.Identity(rsn, installId, world);
-        }
     }
 
     /**
@@ -508,7 +373,6 @@ public class RflPlugin extends Plugin
         final GameState state = event.getGameState();
         if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
         {
-            identity = null;
             closeOrResetTracking(config.enableReporting());
         }
     }
@@ -594,7 +458,7 @@ public class RflPlugin extends Plugin
                 client.getWorld(),
                 System.currentTimeMillis(),
                 inPoh,
-                gameSession.gameId(),
+                "",
                 snapshotter.snapshot(),
                 drained,
                 new RflReport.Features(config.reportPlugins(), config.reportContacts()));

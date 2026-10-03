@@ -23,7 +23,7 @@ final class RflReport
     final int world;
     final long sentAt;
     final boolean inPoh;
-    /** The game the player is currently in, from {@link com.rfl.game.GameSession#gameId()}; "" when none. */
+    /** The game the player is currently in, from the retired game browser; "" when none. */
     final String gameId;
     final List<PluginEntry> plugins;
     final List<RflEvent> events;
