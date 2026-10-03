@@ -8,7 +8,7 @@ import java.util.List;
 import javax.inject.Singleton;
 
 /**
- * This session's collisions and interceptions for the RFL panel: totals, the newest {@link #MAX_ROWS}
+ * This session's collisions and incompletes for the RFL panel: totals, the newest {@link #MAX_ROWS}
  * of each (newest first), and the latest event of either kind. Fed by the {@link CollisionLog}
  * listener whether or not Save collisions is on; cleared on plugin start-up, so counts reset when
  * the plugin restarts.
@@ -21,15 +21,15 @@ final class SessionEvents
     static final int MAX_ROWS = 50;
 
     private final Deque<Collision> collisions = new ArrayDeque<>();
-    private final Deque<CollisionLog.Interception> interceptions = new ArrayDeque<>();
+    private final Deque<CollisionLog.Incomplete> incompletes = new ArrayDeque<>();
     private int collisionCount;
-    private int interceptionCount;
-    /** A {@link Collision} or {@link CollisionLog.Interception}; null before the first event. */
+    private int incompleteCount;
+    /** A {@link Collision} or {@link CollisionLog.Incomplete}; null before the first event. */
     private Object latest;
     /** Bumped on every change, so the panel can refresh right away instead of waiting for its throttle. */
     private long version;
 
-    /** A {@link Collision} or {@link CollisionLog.Interception}; anything else is ignored. */
+    /** A {@link Collision} or {@link CollisionLog.Incomplete}; anything else is ignored. */
     synchronized void onEvent(Object event)
     {
         if (event instanceof Collision)
@@ -38,11 +38,11 @@ final class SessionEvents
             trim(collisions);
             collisionCount++;
         }
-        else if (event instanceof CollisionLog.Interception)
+        else if (event instanceof CollisionLog.Incomplete)
         {
-            interceptions.addFirst((CollisionLog.Interception) event);
-            trim(interceptions);
-            interceptionCount++;
+            incompletes.addFirst((CollisionLog.Incomplete) event);
+            trim(incompletes);
+            incompleteCount++;
         }
         else
         {
@@ -63,9 +63,9 @@ final class SessionEvents
     synchronized void clear()
     {
         collisions.clear();
-        interceptions.clear();
+        incompletes.clear();
         collisionCount = 0;
-        interceptionCount = 0;
+        incompleteCount = 0;
         latest = null;
         version++;
     }
@@ -75,9 +75,9 @@ final class SessionEvents
         return collisionCount;
     }
 
-    synchronized int interceptionCount()
+    synchronized int incompleteCount()
     {
-        return interceptionCount;
+        return incompleteCount;
     }
 
     /** Newest first, at most {@link #MAX_ROWS}. */
@@ -87,9 +87,9 @@ final class SessionEvents
     }
 
     /** Newest first, at most {@link #MAX_ROWS}. */
-    synchronized List<CollisionLog.Interception> interceptions()
+    synchronized List<CollisionLog.Incomplete> incompletes()
     {
-        return new ArrayList<>(interceptions);
+        return new ArrayList<>(incompletes);
     }
 
     synchronized Object latest()

@@ -156,7 +156,7 @@ final class RflDebug
     void logGate(int tick, boolean inPoh)
     {
         String gate = "contacts=" + config.reportContacts()
-            + " inPoh=" + inPoh + " detectInterceptions=" + config.detectInterceptions();
+            + " inPoh=" + inPoh + " detectIncompletes=" + config.detectIncompletes();
         if (!gate.equals(lastGateLog))
         {
             log.info("[RFL debug] tick {} gate: {}", tick, gate);
@@ -174,7 +174,7 @@ final class RflDebug
     }
 
     /** Logs projectiles while any are drawn, weapon-slot changes, and contact changes. */
-    void logInterceptionInputs(int tick, List<String> projectiles, boolean ballInFlight,
+    void logIncompleteInputs(int tick, List<String> projectiles, boolean ballInFlight,
         Map<String, Integer> weapons, Map<String, List<String>> contacts)
     {
         String projectileLog = projectiles.toString();
@@ -189,7 +189,7 @@ final class RflDebug
             if (!entry.getValue().equals(before))
             {
                 log.info("[RFL debug] tick {} weapon {}: {} -> {}{}", tick, entry.getKey(), before, entry.getValue(),
-                    InterceptionDetector.HANDEGG_ITEMS.contains(entry.getValue()) ? " (handegg)" : "");
+                    IncompleteDetector.HANDEGG_ITEMS.contains(entry.getValue()) ? " (handegg)" : "");
             }
         }
         lastWeapons = new HashMap<>(weapons);

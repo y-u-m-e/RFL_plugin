@@ -85,14 +85,14 @@ public class CollisionLogTest
     }
 
     @Test
-    public void appendsInterceptionsToTheSameDayFileAsTheirOwnLineType() throws Exception
+    public void appendsIncompletesToTheSameDayFileAsTheirOwnLineType() throws Exception
     {
         Path dir = temp.getRoot().toPath();
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         CollisionLog log = new CollisionLog(new GsonBuilder().create(), executor, dir, () -> true);
 
         log.record(collision("Amy", END));
-        log.record(new CollisionLog.Interception("Amy", List.of("Zed", "Bo"), END + 5, 42, 330, 1891, 5731, 0));
+        log.record(new CollisionLog.Incomplete("Amy", List.of("Zed", "Bo"), END + 5, 42, 330, 1891, 5731, 0));
         drain(executor);
 
         List<String> lines = Files.readAllLines(dir.resolve(CollisionLog.fileName(END)), StandardCharsets.UTF_8);
@@ -100,7 +100,7 @@ public class CollisionLogTest
         JsonObject i = new JsonParser().parse(lines.get(1)).getAsJsonObject();
         assertEquals(new TreeSet<>(List.of("type", "receiver", "contacts", "timeMs", "tick", "world", "x", "y",
             "plane")), keys(i));
-        assertEquals("interception", i.get("type").getAsString());
+        assertEquals("incomplete", i.get("type").getAsString());
         assertEquals("Amy", i.get("receiver").getAsString());
         assertEquals("Zed", i.getAsJsonArray("contacts").get(0).getAsString());
         assertEquals("Bo", i.getAsJsonArray("contacts").get(1).getAsString());
@@ -110,7 +110,7 @@ public class CollisionLogTest
         assertEquals(1891, i.get("x").getAsInt());
         assertEquals(5731, i.get("y").getAsInt());
         assertEquals(0, i.get("plane").getAsInt());
-        // Interceptions are not collisions: the debug panel list only shows collisions.
+        // Incompletes are not collisions: the debug panel list only shows collisions.
         assertEquals(1, log.recent().size());
     }
 
@@ -122,7 +122,7 @@ public class CollisionLogTest
         CollisionLog log = new CollisionLog(new GsonBuilder().create(), executor, dir, () -> false);
 
         log.record(collision("Amy", END));
-        log.record(new CollisionLog.Interception("Amy", List.of("Zed"), END, 1, 330, 0, 0, 0));
+        log.record(new CollisionLog.Incomplete("Amy", List.of("Zed"), END, 1, 330, 0, 0, 0));
         drain(executor);
 
         assertFalse(Files.exists(dir));

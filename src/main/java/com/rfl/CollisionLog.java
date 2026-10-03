@@ -26,9 +26,9 @@ import net.runelite.client.RuneLite;
 
 /**
  * The plugin's output, on this computer only: appends one JSON line per finished {@link Collision}
- * ({@code "type":"collision"}) and per {@link Interception} ({@code "type":"interception"}) to
+ * ({@code "type":"collision"}) and per {@link Incomplete} ({@code "type":"incomplete"}) to
  * {@code RUNELITE_DIR/rfl/collisions/YYYY-MM-DD.jsonl} (local date of the collision's end or the
- * interception), while Save collisions is on. The latest {@link #RECENT} collisions are kept in
+ * incomplete), while Save collisions is on. The latest {@link #RECENT} collisions are kept in
  * memory for the debug panel either way. Nothing here is ever sent anywhere.
  *
  * <p>Threads: {@link #record} from any thread (the client thread in practice); the encoding and
@@ -42,10 +42,10 @@ final class CollisionLog
     static final int RECENT = 20;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-    /** One interception, saved as its own line type. Field names are the JSON keys. */
-    static final class Interception
+    /** One incomplete, saved as its own line type. Field names are the JSON keys. */
+    static final class Incomplete
     {
-        final String type = "interception";
+        final String type = "incomplete";
         final String receiver;
         /** Who the receiver was in contact with when they caught it. */
         final List<String> contacts;
@@ -57,7 +57,7 @@ final class CollisionLog
         final int y;
         final int plane;
 
-        Interception(String receiver, List<String> contacts, long timeMs, int tick, int world, int x, int y,
+        Incomplete(String receiver, List<String> contacts, long timeMs, int tick, int world, int x, int y,
             int plane)
         {
             this.receiver = receiver;
@@ -77,7 +77,7 @@ final class CollisionLog
     private final BooleanSupplier save;
     /** Newest first; guarded by this. */
     private final Deque<Collision> recent = new ArrayDeque<>();
-    /** Told about each recorded collision and interception (the replay recorder); may be null. */
+    /** Told about each recorded collision and incomplete (the replay recorder); may be null. */
     private volatile Consumer<Object> listener;
 
     @Inject
@@ -103,7 +103,7 @@ final class CollisionLog
     }
 
     /**
-     * Called with each {@link Collision} or {@link Interception} passed to {@code record}, on the
+     * Called with each {@link Collision} or {@link Incomplete} passed to {@code record}, on the
      * caller's thread, whether or not Save collisions is on. Null clears it.
      */
     void setListener(Consumer<Object> listener)
@@ -124,7 +124,7 @@ final class CollisionLog
         write(c, c.endMs);
     }
 
-    void record(Interception i)
+    void record(Incomplete i)
     {
         write(i, i.timeMs);
     }

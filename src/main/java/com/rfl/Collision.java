@@ -8,7 +8,7 @@ import java.util.List;
  */
 final class Collision
 {
-    /** Line type in the day file; interceptions are {@code "interception"}. */
+    /** Line type in the day file; incompletes are {@code "incomplete"}. */
     final String type = "collision";
     final String a;
     final String b;

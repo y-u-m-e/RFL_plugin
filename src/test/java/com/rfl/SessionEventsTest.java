@@ -40,11 +40,11 @@ public class SessionEventsTest
         Collision c = collision(1);
         s.onEvent(c);
         assertSame(c, s.latest());
-        CollisionLog.Interception i = new CollisionLog.Interception("Bob", List.of("Amy"), 5, 1, 330, 0, 0, 0);
+        CollisionLog.Incomplete i = new CollisionLog.Incomplete("Bob", List.of("Amy"), 5, 1, 330, 0, 0, 0);
         s.onEvent(i);
         assertSame(i, s.latest());
-        assertEquals(1, s.interceptionCount());
-        assertEquals(List.of(i), s.interceptions());
+        assertEquals(1, s.incompleteCount());
+        assertEquals(List.of(i), s.incompletes());
         assertNotEquals(v0, s.version());
 
         s.onEvent("ignored");
@@ -52,7 +52,7 @@ public class SessionEventsTest
 
         s.clear();
         assertEquals(0, s.collisionCount());
-        assertEquals(0, s.interceptionCount());
+        assertEquals(0, s.incompleteCount());
         assertNull(s.latest());
         assertEquals(List.of(), s.collisions());
     }

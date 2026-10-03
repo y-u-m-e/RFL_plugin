@@ -45,11 +45,11 @@ final class ContactHighlightOverlay extends Overlay
 
         for (ContactHighlights.Highlight h : highlights.active(System.currentTimeMillis(), config.highlightDurationMs()))
         {
-            if (!h.interception && !config.highlightContacts())
+            if (!h.incomplete && !config.highlightContacts())
             {
                 continue;
             }
-            Color base = h.interception ? config.interceptionColor() : config.contactHighlightColor();
+            Color base = h.incomplete ? config.incompleteColor() : config.contactHighlightColor();
             Polygon tile = Perspective.getCanvasTilePoly(client, new LocalPoint(h.x, h.y, worldView));
             if (tile == null)
             {

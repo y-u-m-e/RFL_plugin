@@ -24,15 +24,15 @@ public class PanelModelTest
         return new Collision(a, b, ball, startMs, startMs + 1200, 10, 12, 330, 1, 2, 0, overlap);
     }
 
-    private static CollisionLog.Interception interception(String receiver, List<String> contacts, long timeMs)
+    private static CollisionLog.Incomplete incomplete(String receiver, List<String> contacts, long timeMs)
     {
-        return new CollisionLog.Interception(receiver, contacts, timeMs, 20, 330, 1, 2, 0);
+        return new CollisionLog.Incomplete(receiver, contacts, timeMs, 20, 330, 1, 2, 0);
     }
 
-    private static PanelModel model(List<Collision> collisions, List<CollisionLog.Interception> interceptions,
+    private static PanelModel model(List<Collision> collisions, List<CollisionLog.Incomplete> incompletes,
         Object latest, String debug)
     {
-        return PanelModel.of(true, true, collisions.size(), interceptions.size(), collisions, interceptions, latest,
+        return PanelModel.of(true, true, collisions.size(), incompletes.size(), collisions, incompletes, latest,
             debug, UTC);
     }
 
@@ -57,17 +57,17 @@ public class PanelModelTest
     {
         PanelModel m = PanelModel.of(true, false, 73, 4, List.of(), List.of(), null, null, UTC);
         assertEquals(73, m.getCollisionCount());
-        assertEquals(4, m.getInterceptionCount());
+        assertEquals(4, m.getIncompleteCount());
     }
 
     @Test
-    public void latestInterceptionText()
+    public void latestIncompleteText()
     {
-        CollisionLog.Interception i = interception("Bob", List.of("Amy"), T);
+        CollisionLog.Incomplete i = incomplete("Bob", List.of("Amy"), T);
         PanelModel m = model(List.of(), List.of(i), i, null);
-        assertEquals(PanelModel.Kind.INTERCEPTION, m.getLatest().getKind());
+        assertEquals(PanelModel.Kind.INCOMPLETE, m.getLatest().getKind());
         assertEquals("Bob caught it in contact with Amy", m.getLatest().getBody());
-        assertEquals("Interception: Bob caught it in contact with Amy, 19:42:10", m.getLatest().text());
+        assertEquals("Incomplete: Bob caught it in contact with Amy, 19:42:10", m.getLatest().text());
     }
 
     @Test
@@ -108,9 +108,9 @@ public class PanelModelTest
     }
 
     @Test
-    public void interceptionRow()
+    public void incompleteRow()
     {
-        PanelModel.InterceptionRow row = PanelModel.interceptionRow(interception("Bob", List.of("Amy", "Cy"), T), UTC);
+        PanelModel.IncompleteRow row = PanelModel.incompleteRow(incomplete("Bob", List.of("Amy", "Cy"), T), UTC);
         assertEquals("19:42:10", row.getTime());
         assertEquals("Bob", row.getReceiver());
         assertEquals("in contact with Amy, Cy", row.getContacts());

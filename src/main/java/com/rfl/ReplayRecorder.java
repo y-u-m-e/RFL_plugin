@@ -43,7 +43,7 @@ import net.runelite.client.util.Text;
  *
  * <p>Each ClientTick it reads every player's pose, spot anims and every handegg projectile into a
  * {@link ReplaySampler}; each GameTick it adds a {@code tick} line, appearances and true tiles; finished
- * collisions and interceptions arrive through {@link #onEvent} (the {@link CollisionLog} listener),
+ * collisions and incompletes arrive through {@link #onEvent} (the {@link CollisionLog} listener),
  * and the local user's own plugin list ({@code plugins} at open) and plugin toggles through
  * {@link #onPlugins}.
  * Every line goes to a {@link ReplayWriter}, which does the IO off the client thread.
@@ -162,7 +162,7 @@ final class ReplayRecorder
         final List<ReplaySampler.Ball> balls = new ArrayList<>();
         for (final Projectile p : client.getProjectiles())
         {
-            if (InterceptionDetector.HANDEGG_PROJECTILES.contains(p.getId()))
+            if (IncompleteDetector.HANDEGG_PROJECTILES.contains(p.getId()))
             {
                 balls.add(new ReplaySampler.Ball(p.getId(), p.getStartCycle(), p.getX(), p.getY(), p.getZ(),
                     p.getOrientation()));
@@ -220,17 +220,17 @@ final class ReplayRecorder
         }
     }
 
-    /** Client thread (the {@link CollisionLog} listener): one finished Collision or Interception. */
-    void onEvent(Object collisionOrInterception)
+    /** Client thread (the {@link CollisionLog} listener): one finished Collision or Incomplete. */
+    void onEvent(Object collisionOrIncomplete)
     {
-        if (sampler == null || collisionOrInterception == null)
+        if (sampler == null || collisionOrIncomplete == null)
         {
             return;
         }
         final Map<String, Object> line = new LinkedHashMap<>();
         line.put("t", "ev");
         line.put("cyc", lastCycle);
-        line.put("e", collisionOrInterception);
+        line.put("e", collisionOrIncomplete);
         writer.write(line);
     }
 

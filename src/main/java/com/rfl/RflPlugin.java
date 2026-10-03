@@ -36,11 +36,11 @@ import net.runelite.client.util.Text;
 
 /**
  * RFL local collision plugin. Inside a player-owned house, detects handegg collisions between any
- * two players in view ({@link ContactDetector}) and interceptions ({@link InterceptionDetector}),
+ * two players in view ({@link ContactDetector}) and incompletes ({@link IncompleteDetector}),
  * draws them, and saves them on this computer ({@link CollisionLog}). Nothing is sent anywhere.
  *
  * <p>Owns the wiring between RuneLite events and the pieces that do the work: contact detection
- * each client frame, interception checks each game tick, and the replay recorder
+ * each client frame, incomplete checks each game tick, and the replay recorder
  * ({@link ReplayRecorder}), and the local user's own plugin log ({@link PluginLog}): a snapshot on
  * entering and leaving a POH and a line per plugin toggle while logged in. The RFL panel lives in
  * {@link RflPanelController} (this session's events in {@link SessionEvents}); debug logging and
@@ -110,7 +110,7 @@ public class RflPlugin extends Plugin
     @Inject
     private ScheduledExecutorService executor;
 
-    private final InterceptionDetector interceptionDetector = new InterceptionDetector();
+    private final IncompleteDetector incompleteDetector = new IncompleteDetector();
 
     /** Recomputed each {@link GameTick}; the POH check only needs to run once per tick. */
     private volatile boolean inPoh;
@@ -156,7 +156,7 @@ public class RflPlugin extends Plugin
         // contactDetector.reset() saves any open collisions as ended.
         clientThread.invoke(() ->
         {
-            interceptionDetector.reset();
+            incompleteDetector.reset();
             contactDetector.reset();
             wasWatching = false;
             // So the next start-up inside a POH counts as entering it and takes a plugin snapshot.
@@ -184,7 +184,7 @@ public class RflPlugin extends Plugin
     public void onGameTick(final GameTick event)
     {
         setInPoh(pohDetector.inPoh(client));
-        checkInterceptions();
+        checkIncompletes();
         replayRecorder.onGameTick(client);
     }
 
@@ -202,9 +202,9 @@ public class RflPlugin extends Plugin
 
     /**
      * Once per game tick: a player who starts holding a handegg right after a thrown one stopped
-     * being drawn, while in contact with someone, intercepted it.
+     * being drawn, while in contact with someone, caught it in contact — ruled an incomplete pass.
      */
-    private void checkInterceptions()
+    private void checkIncompletes()
     {
         final boolean logging = config.debugLogging();
         final int tick = client.getTickCount();
@@ -217,9 +217,9 @@ public class RflPlugin extends Plugin
                 debug.logOverlaps(tick);
             }
         }
-        if (!watching || !config.detectInterceptions())
+        if (!watching || !config.detectIncompletes())
         {
-            interceptionDetector.reset();
+            incompleteDetector.reset();
             return;
         }
 
@@ -228,7 +228,7 @@ public class RflPlugin extends Plugin
         for (final Projectile projectile : client.getProjectiles())
         {
             projectiles.add(projectile.getId() + "(" + projectile.getRemainingCycles() + ")");
-            if (InterceptionDetector.HANDEGG_PROJECTILES.contains(projectile.getId()))
+            if (IncompleteDetector.HANDEGG_PROJECTILES.contains(projectile.getId()))
             {
                 ballInFlight = true;
             }
@@ -238,12 +238,12 @@ public class RflPlugin extends Plugin
         final Map<String, List<String>> contacts = contactDetector.collidingNow();
         if (logging)
         {
-            debug.logInterceptionInputs(tick, projectiles, ballInFlight, weapons, contacts);
+            debug.logIncompleteInputs(tick, projectiles, ballInFlight, weapons, contacts);
         }
 
-        final List<InterceptionDetector.Interception> found = interceptionDetector.onTick(
-            tick, ballInFlight, InterceptionDetector.holders(weapons), contacts);
-        final String check = interceptionDetector.lastCheck();
+        final List<IncompleteDetector.Incomplete> found = incompleteDetector.onTick(
+            tick, ballInFlight, IncompleteDetector.holders(weapons), contacts);
+        final String check = incompleteDetector.lastCheck();
         if (check != null)
         {
             debug.record(check);
@@ -258,44 +258,44 @@ public class RflPlugin extends Plugin
             {
                 log.info("[RFL debug] tick {} no mesh built for {}", tick, contactDetector.missingMeshes());
             }
-            for (final InterceptionDetector.Interception i : found)
+            for (final IncompleteDetector.Incomplete i : found)
             {
-                log.info("[RFL debug] tick {} INTERCEPTION receiver={} contacts={}", tick, i.receiver, i.contacts);
+                log.info("[RFL debug] tick {} INCOMPLETE receiver={} contacts={}", tick, i.receiver, i.contacts);
             }
         }
-        for (final InterceptionDetector.Interception interception : found)
+        for (final IncompleteDetector.Incomplete incomplete : found)
         {
-            showInterception(interception);
-            saveInterception(interception, tick);
+            showIncomplete(incomplete);
+            saveIncomplete(incomplete, tick);
         }
     }
 
-    /** Chat message and receiver tile highlight for one interception, per the settings. */
-    private void showInterception(final InterceptionDetector.Interception interception)
+    /** Chat message and receiver tile highlight for one incomplete, per the settings. */
+    private void showIncomplete(final IncompleteDetector.Incomplete incomplete)
     {
-        if (config.interceptionChatMessage())
+        if (config.incompleteChatMessage())
         {
-            final String label = ColorUtil.wrapWithColorTag("Interception:", config.interceptionColor());
+            final String label = ColorUtil.wrapWithColorTag("Incomplete:", config.incompleteColor());
             client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-                label + " " + interception.receiver + " caught the handegg in contact with "
-                    + String.join(", ", interception.contacts), null);
+                label + " " + incomplete.receiver + " caught the handegg in contact with "
+                    + String.join(", ", incomplete.contacts), null);
         }
-        final Player receiver = contactDetector.players().get(interception.receiver);
+        final Player receiver = contactDetector.players().get(incomplete.receiver);
         final LocalPoint at = receiver == null ? null : receiver.getLocalLocation();
-        if (config.highlightInterceptions() && at != null)
+        if (config.highlightIncompletes() && at != null)
         {
-            contactHighlights.addInterception(at.getX(), at.getY(), System.currentTimeMillis());
+            contactHighlights.addIncomplete(at.getX(), at.getY(), System.currentTimeMillis());
         }
     }
 
-    /** Appends the interception to the day file (when Save collisions is on), with the receiver's tile. */
-    private void saveInterception(final InterceptionDetector.Interception interception, final int tick)
+    /** Appends the incomplete to the day file (when Save collisions is on), with the receiver's tile. */
+    private void saveIncomplete(final IncompleteDetector.Incomplete incomplete, final int tick)
     {
-        final Player receiver = contactDetector.players().get(interception.receiver);
+        final Player receiver = contactDetector.players().get(incomplete.receiver);
         final LocalPoint at = receiver == null ? null : receiver.getLocalLocation();
         final WorldPoint tile = at == null ? null
             : WorldPoint.fromLocalInstance(client, at, client.getTopLevelWorldView().getPlane());
-        collisionLog.record(new CollisionLog.Interception(interception.receiver, interception.contacts,
+        collisionLog.record(new CollisionLog.Incomplete(incomplete.receiver, incomplete.contacts,
             System.currentTimeMillis(), tick, client.getWorld(),
             tile == null ? -1 : tile.getX(), tile == null ? -1 : tile.getY(), tile == null ? -1 : tile.getPlane()));
     }

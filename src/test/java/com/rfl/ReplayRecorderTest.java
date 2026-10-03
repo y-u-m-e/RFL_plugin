@@ -25,7 +25,7 @@ import com.google.gson.JsonParser;
 
 /**
  * {@link ReplayRecorder}: when it records, what it names the file, and how it hears about
- * finished collisions and interceptions (the {@link CollisionLog} listener).
+ * finished collisions and incompletes (the {@link CollisionLog} listener).
  */
 public class ReplayRecorderTest
 {

@@ -77,18 +77,19 @@ Each fact is tagged:
 - **[rulebook]** A **tackle** is a defender touching any part of the **body** of an offensive player who has the ball. Touching the ball is not a tackle, and headgear touching (a unicorn horn, say) is neither a tackle nor an incomplete. The plugin's default bare-body model matches this.
 - **[rulebook]** A play is dead when a majority of referees call **D** (down) or **Inc**.
 
-### Interceptions
+### Incompletes
 
-- **[decided] [code]** Checked on exactly **one tick per throw**: the tick the in-flight handegg stops being drawn. On that tick, the interceptor is the player who meets all three conditions:
+- **[decided] [code]** Checked on exactly **one tick per throw**: the tick the in-flight handegg stops being drawn. On that tick, the receiver is ruled incomplete if they're the player who meets all three conditions:
   - now has a handegg equipped
   - did **not** hold one before the throw
   - is colliding with another player on that same tick (models touching)
-- **[code]** Hand-to-hand passes without a throw, and uncontested catches, are **not** interceptions.
-- **[code]** Detected locally and shown in chat and as a tile highlight. Interceptions are not sent to the server yet.
-- **Conflict with the rulebook.** The rulebook defines these differently:
+- **[code]** Hand-to-hand passes without a throw, and uncontested catches, are **not** incompletes.
+- **[code]** Detected locally and shown in chat and as a tile highlight. Incompletes are not sent to the server yet.
+- **[decided]** Owner ruling 2026-10-03: a catch while in contact is an incomplete pass; the server picks the receiver at the throw, so the flight is cosmetic.
+- This resolves what used to be a conflict with the rulebook's own terms:
   - **Incomplete:** a defender touches, or stands on, the intended receiver as the receiver catches the ball.
   - **Interception:** a defender catches a pass, **or** the same player is ruled incomplete **twice in a row** on one drive. If several players are ruled incomplete on one play, all of them are on track for an interception on the next play.
-  - What the plugin calls an interception (a catch made while the catcher's model is touching someone) is the rulebook's **incomplete** when an offensive receiver is the one touched. A defender's clean catch, which the plugin ignores, is the rulebook's interception.
+  - What the plugin detects (a catch made while the catcher's model is touching someone) is the rulebook's **incomplete**, per the ruling above — not an interception. The plugin still has no way to detect a true rulebook interception (a defender becoming the server-picked target), since that isn't visible as a catch-while-in-contact.
 - **[rulebook]** A **catch** happens the moment the receiver has both hands on the ball and the ball can no longer be seen in the air. Once the arms start moving down, an incomplete can no longer happen. The plugin's check on "the tick the projectile stops being drawn" lines up with this.
 
 ### Fair play
@@ -131,7 +132,7 @@ Each fact is tagged:
 
 ### Turnovers
 
-- **[rulebook]** **Interception:** see the conflict note above. If the second incomplete in a row falls on 4th down, the team taking over starts from the original line of scrimmage.
+- **[rulebook]** **Interception:** see Incompletes above. If the second incomplete in a row falls on 4th down, the team taking over starts from the original line of scrimmage.
 - **[rulebook]** **Fumble:** the center snaps the ball to a defender, **or** one player has two sacks or tackles for loss, in any combination, on back-to-back plays.
 - **[rulebook]** **Turnover on downs:** no score in 4 plays.
 
@@ -151,13 +152,12 @@ Each fact is tagged:
 - **[decided]** **Line of scrimmage:** the row the ball is snapped on. **Offsides** is either team crossing that row before the snap.
 - **[decided]** If the carrier enters the endzone on the **same tick** they are touched, it's a **down at the 1-yard line** (row 2 / 39), not a touchdown.
 - **[decided]** **Stamina potions do nothing** under the rules. The sim treats players as always able to run.
+- **[decided]** Re-centring is on the middle of the 14-wide in-play area, columns 8–9. The owner answered "yes" to "column 8 or 9?" and has been asked which tile the ball actually sits on.
+- **[decided]** The tackle row is where the **models intersect** (the contact tile from the collision detector), not the carrier's server tile.
+- **[decided]** After any dead ball (out of bounds, incomplete, sack, turnover), players line up on their sides of the line of scrimmage and the ball is hiked back to the QB from there. The rulebook's spots apply. Sim default until the owner says otherwise: out of bounds = the exit row, incomplete = the previous line of scrimmage, sack = the contact row, turnover = the dead-ball row with the direction flipped.
 
 ### Still not defined
 
-- **[gap]** **The centre column.** In-play columns are 2–15, which is 14 wide, so there's no single middle tile. Does re-centring put the ball on column 8 or 9?
-- **[gap]** **Which tile is the tackle row:** the carrier's true (server) tile or the contact tile? They can be up to 2 rows apart while running (§2).
-- **[gap]** **Spots after out of bounds, an incomplete, a sack and a turnover.** Presumably these are the row of the exit, the previous line of scrimmage, the sack row, and the reverse spot, but none of that is written down.
-- **[gap]** **Interception conflict:** a throw is aimed at a player, so the plugin's "caught while touching someone" check finds contested catches, which the rulebook calls incompletes, not interceptions. Should the plugin flag those as **incompletes** instead, and detect interceptions as a defender becoming the target?
 - **[osrs-verify]** Does a catch interrupt the receiver's movement? The wiki says catching interrupts the receiver's current action. In the recordings, 4 of the 24 receivers were moving within half a second of the landing, but every receiver was standing still at the throw, so the recordings can't confirm or rule it out.
 
 ---
@@ -223,7 +223,7 @@ The true tile is exactly what **True Tile Player Indicators** reveals. That's wh
 
 ## 4. What the server does with it
 
-> **Uploads paused 2026-10-02.** The plugin is now local-only: it sends nothing and saves every handegg collision and interception to `RUNELITE_DIR/rfl/collisions/YYYY-MM-DD.jsonl`. The server code below is kept on `yume-api` `dev` but is unused.
+> **Uploads paused 2026-10-02.** The plugin is now local-only: it sends nothing and saves every handegg collision and incomplete to `RUNELITE_DIR/rfl/collisions/YYYY-MM-DD.jsonl`. The server code below is kept on `yume-api` `dev` but is unused.
 
 - **[code]** **Self-only reporting:** each plugin reports only its own player (a Plugin Hub requirement).
   - A contact event carries `contactId`, time, tick, tile (`x`, `y`, `plane`), overlap, and `ball: self|other` (who held the handegg at the start).
@@ -283,7 +283,7 @@ Ask for "add a movement trace logger" and the plugin agent can add it behind a d
 
 ## 7. Measured from a real recording (2026-10-02)
 
-Source: `2026-10-02_192236_w354.rflr.gz`. 5 min 16 s in a POH on world 354, game revision 241, 3 players, 8 throws, 34 collisions, 2 interceptions. These are **[measured]** values. They replace the matching [osrs-verify] guesses in §2 and §5.
+Source: `2026-10-02_192236_w354.rflr.gz`. 5 min 16 s in a POH on world 354, game revision 241, 3 players, 8 throws, 34 collisions, 2 incompletes. These are **[measured]** values. They replace the matching [osrs-verify] guesses in §2 and §5.
 
 | What | Measured | Notes |
 |---|---|---|

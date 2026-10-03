@@ -34,11 +34,11 @@ public interface RflConfig extends Config
     String DISPLAY_SECTION = "display";
 
     @ConfigSection(
-        name = "Interceptions",
-        description = "A player catching a thrown handegg while in contact with another player.",
+        name = "Incompletes",
+        description = "A catch made while in contact with another player is an incomplete pass.",
         position = 20
     )
-    String INTERCEPTIONS_SECTION = "interceptions";
+    String INCOMPLETES_SECTION = "incompletes";
 
     @ConfigSection(
         name = "Replays",
@@ -72,7 +72,7 @@ public interface RflConfig extends Config
         name = "Show RFL panel",
         description = "Adds the RFL panel to the sidebar: your plugin list, what detection sees right now, "
             + "collisions in progress, the latest saved collisions with an Open folder button, and recent "
-            + "interception decisions.",
+            + "incomplete decisions.",
         position = 0
     )
     default boolean showPanel()
@@ -89,7 +89,7 @@ public interface RflConfig extends Config
         keyName = "reportContacts",
         name = "Detect contacts",
         description = "Inside a player-owned house, detects when any two players in view touch while either "
-            + "of them holds a handegg. Interceptions need this on.",
+            + "of them holds a handegg. Incompletes need this on.",
         section = DETECTION_SECTION,
         position = 1
     )
@@ -122,13 +122,13 @@ public interface RflConfig extends Config
     }
 
     /**
-     * @return true to append each collision and interception to the local day file
+     * @return true to append each collision and incomplete to the local day file
      */
     @ConfigItem(
         keyName = "saveCollisions",
         name = "Save collisions",
         description = "Saves every handegg collision (both names, who held the handegg, time, tile) and every "
-            + "interception to .runelite/rfl/collisions, one file per day. Stays on this computer.",
+            + "incomplete to .runelite/rfl/collisions, one file per day. Stays on this computer.",
         section = DETECTION_SECTION,
         position = 3
     )
@@ -171,14 +171,14 @@ public interface RflConfig extends Config
     }
 
     /**
-     * @return how long a contact or interception highlight takes to fade out, in milliseconds
+     * @return how long a contact or incomplete highlight takes to fade out, in milliseconds
      */
     @Range(min = 200, max = 5000)
     @Units(Units.MILLISECONDS)
     @ConfigItem(
         keyName = "highlightDurationMs",
         name = "Highlight duration",
-        description = "How long a contact or interception tile highlight takes to fade out.",
+        description = "How long a contact or incomplete tile highlight takes to fade out.",
         section = DISPLAY_SECTION,
         position = 13
     )
@@ -236,66 +236,67 @@ public interface RflConfig extends Config
         return new Color(255, 255, 255, 57);
     }
 
-    // ---- Interceptions ----
+    // ---- Incompletes ----
 
     /**
-     * @return true to detect interceptions
+     * @return true to detect incompletes
      */
     @ConfigItem(
-        keyName = "detectInterceptions",
-        name = "Detect interceptions",
-        description = "Detects a handegg caught after a throw by a player who is in contact with another "
-            + "player. Needs Detect contacts on. Saved with collisions when Save collisions is on.",
-        section = INTERCEPTIONS_SECTION,
+        keyName = "detectIncompletes",
+        name = "Detect incompletes",
+        description = "A catch made while in contact with another player is an incomplete pass. Needs Detect "
+            + "contacts on. Saved with collisions when Save collisions is on.",
+        section = INCOMPLETES_SECTION,
         position = 21
     )
-    default boolean detectInterceptions()
+    default boolean detectIncompletes()
     {
         return true;
     }
 
     /**
-     * @return true to post a chat message for each interception
+     * @return true to post a chat message for each incomplete
      */
     @ConfigItem(
-        keyName = "interceptionChatMessage",
+        keyName = "incompleteChatMessage",
         name = "Chat message",
-        description = "Posts a game message naming who intercepted and who they were in contact with.",
-        section = INTERCEPTIONS_SECTION,
+        description = "Posts a game message naming who caught the handegg in contact and who they were in "
+            + "contact with.",
+        section = INCOMPLETES_SECTION,
         position = 22
     )
-    default boolean interceptionChatMessage()
+    default boolean incompleteChatMessage()
     {
         return true;
     }
 
     /**
-     * @return true to highlight the receiver's tile on an interception
+     * @return true to highlight the receiver's tile on an incomplete
      */
     @ConfigItem(
-        keyName = "highlightInterceptions",
-        name = "Highlight interceptions",
-        description = "Briefly highlights the tile under the player who intercepted.",
-        section = INTERCEPTIONS_SECTION,
+        keyName = "highlightIncompletes",
+        name = "Highlight incompletes",
+        description = "Briefly highlights the tile under the player who caught the handegg in contact.",
+        section = INCOMPLETES_SECTION,
         position = 23
     )
-    default boolean highlightInterceptions()
+    default boolean highlightIncompletes()
     {
         return true;
     }
 
     /**
-     * @return colour of the interception highlight, including transparency
+     * @return colour of the incomplete highlight, including transparency
      */
     @Alpha
     @ConfigItem(
-        keyName = "interceptionColor",
-        name = "Interception colour",
-        description = "Colour of the interception tile highlight and chat label.",
-        section = INTERCEPTIONS_SECTION,
+        keyName = "incompleteColor",
+        name = "Incomplete colour",
+        description = "Colour of the incomplete tile highlight and chat label.",
+        section = INCOMPLETES_SECTION,
         position = 24
     )
-    default Color interceptionColor()
+    default Color incompleteColor()
     {
         return new Color(0, 200, 255, 180);
     }
@@ -345,7 +346,7 @@ public interface RflConfig extends Config
     @ConfigItem(
         keyName = "debugLogging",
         name = "Debug logging",
-        description = "Writes handegg projectiles, weapon changes, contacts and interception checks to the "
+        description = "Writes handegg projectiles, weapon changes, contacts and incomplete checks to the "
             + "RuneLite client log, for troubleshooting.",
         section = DEBUG_SECTION,
         position = 32

@@ -36,8 +36,8 @@ import net.runelite.client.util.ImageUtil;
 
 /**
  * The "RFL" sidebar panel. Top to bottom: a status strip (house, recording); the session's
- * collision and interception counts with the latest event as a highlighted card;
- * Collisions / Interceptions / Debug tabs; and a footer with Copy plugin history, the record
+ * collision and incomplete counts with the latest event as a highlighted card;
+ * Collisions / Incompletes / Debug tabs; and a footer with Copy plugin history, the record
  * button and Open folder. It renders a {@link PanelModel} and formats nothing itself. No plugin
  * list or toggle history is shown here; league refs read the plugin log directly.
  *
@@ -46,7 +46,7 @@ import net.runelite.client.util.ImageUtil;
 final class RflPanel extends PluginPanel
 {
     private static final Color COLLISION = ColorScheme.BRAND_ORANGE;
-    private static final Color INTERCEPTION = new Color(0, 200, 255);
+    private static final Color INCOMPLETE = new Color(0, 200, 255);
     private static final Color ALERT = new Color(200, 40, 40);
     private static final Color OK = ColorScheme.PROGRESS_COMPLETE_COLOR;
     /** Width for wrapped HTML text in a card, in CSS pixels. */
@@ -60,7 +60,7 @@ final class RflPanel extends PluginPanel
 
     // Hero.
     private final JLabel collisionCount = bigNumber(COLLISION);
-    private final JLabel interceptionCount = bigNumber(INTERCEPTION);
+    private final JLabel incompleteCount = bigNumber(INCOMPLETE);
     private final JPanel latestCard = new JPanel(new BorderLayout(0, 3));
     private final JLabel latestKind = new JLabel();
     private final JLabel latestTime = new JLabel();
@@ -68,7 +68,7 @@ final class RflPanel extends PluginPanel
 
     // Tabs.
     private final JPanel collisionsList = vertical();
-    private final JPanel interceptionsList = vertical();
+    private final JPanel incompletesList = vertical();
 
     // Footer.
     private final JLabel copyResult = new JLabel(" ");
@@ -109,11 +109,11 @@ final class RflPanel extends PluginPanel
         tabs.setLayout(new GridLayout(0, 2, 4, 4));
         tabs.setAlignmentX(LEFT_ALIGNMENT);
         collisionsTab = new MaterialTab("Collisions", tabs, collisionsTab());
-        MaterialTab interceptionsTab = new MaterialTab("Interceptions", tabs, interceptionsTab());
+        MaterialTab incompletesTab = new MaterialTab("Incompletes", tabs, incompletesTab());
         debugTab = new MaterialTab("Debug", tabs, debugTab());
         debugTab.setVisible(false);
         tabs.addTab(collisionsTab);
-        tabs.addTab(interceptionsTab);
+        tabs.addTab(incompletesTab);
         tabs.addTab(debugTab);
         top.add(tabs);
         add(top, BorderLayout.NORTH);
@@ -184,7 +184,7 @@ final class RflPanel extends PluginPanel
         row.setOpaque(false);
         row.setAlignmentX(LEFT_ALIGNMENT);
         row.add(tile(collisionCount, "COLLISIONS", COLLISION));
-        row.add(tile(interceptionCount, "INTERCEPTIONS", INTERCEPTION));
+        row.add(tile(incompleteCount, "INCOMPLETES", INCOMPLETE));
         return capHeight(row);
     }
 
@@ -228,11 +228,11 @@ final class RflPanel extends PluginPanel
         return tab;
     }
 
-    private JComponent interceptionsTab()
+    private JComponent incompletesTab()
     {
         JPanel tab = vertical();
         tab.add(hint("Newest first."));
-        tab.add(interceptionsList);
+        tab.add(incompletesList);
         return tab;
     }
 
@@ -275,16 +275,16 @@ final class RflPanel extends PluginPanel
         recording.setVisible(m.isRecording());
 
         collisionCount.setText(String.valueOf(m.getCollisionCount()));
-        interceptionCount.setText(String.valueOf(m.getInterceptionCount()));
+        incompleteCount.setText(String.valueOf(m.getIncompleteCount()));
         showLatest(m.getLatest());
 
         if (was == null || !m.getCollisions().equals(was.getCollisions()))
         {
             showCollisions(m.getCollisions());
         }
-        if (was == null || !m.getInterceptions().equals(was.getInterceptions()))
+        if (was == null || !m.getIncompletes().equals(was.getIncompletes()))
         {
-            showInterceptions(m.getInterceptions());
+            showIncompletes(m.getIncompletes());
         }
 
         boolean debug = m.getDebugText() != null;
@@ -329,10 +329,10 @@ final class RflPanel extends PluginPanel
             latestKind.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
             latestTime.setText("");
             latestBody.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-            latestBody.setText(wrap("No collisions or interceptions yet this session."));
+            latestBody.setText(wrap("No collisions or incompletes yet this session."));
             return;
         }
-        Color accent = e.getKind() == PanelModel.Kind.INTERCEPTION ? INTERCEPTION : COLLISION;
+        Color accent = e.getKind() == PanelModel.Kind.INCOMPLETE ? INCOMPLETE : COLLISION;
         latestCard.setBackground(blend(ColorScheme.DARKER_GRAY_COLOR, accent, 0.18f));
         latestCard.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createMatteBorder(0, 4, 0, 0, accent),
@@ -364,26 +364,26 @@ final class RflPanel extends PluginPanel
         }
     }
 
-    private void showInterceptions(List<PanelModel.InterceptionRow> rows)
+    private void showIncompletes(List<PanelModel.IncompleteRow> rows)
     {
-        interceptionsList.removeAll();
+        incompletesList.removeAll();
         if (rows.isEmpty())
         {
-            interceptionsList.add(empty("No interceptions this session."));
+            incompletesList.add(empty("No incompletes this session."));
         }
-        for (PanelModel.InterceptionRow r : rows)
+        for (PanelModel.IncompleteRow r : rows)
         {
             JPanel row = row();
             row.add(small(r.getTime()), BorderLayout.NORTH);
             JLabel receiver = new JLabel(r.getReceiver());
             receiver.setFont(FontManager.getRunescapeBoldFont());
-            receiver.setForeground(INTERCEPTION);
+            receiver.setForeground(INCOMPLETE);
             row.add(receiver, BorderLayout.CENTER);
             JLabel contacts = new JLabel(wrap(PanelModel.html(r.getContacts())));
             contacts.setFont(FontManager.getRunescapeSmallFont());
             contacts.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
             row.add(contacts, BorderLayout.SOUTH);
-            interceptionsList.add(row);
+            incompletesList.add(row);
         }
     }
 

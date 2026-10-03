@@ -96,7 +96,7 @@ final class ContactDetector
                     players.put(name, player);
                     PlayerComposition composition = player.getPlayerComposition();
                     if (composition != null
-                        && InterceptionDetector.HANDEGG_ITEMS.contains(composition.getEquipmentId(KitType.WEAPON)))
+                        && IncompleteDetector.HANDEGG_ITEMS.contains(composition.getEquipmentId(KitType.WEAPON)))
                     {
                         holders.add(name);
                     }

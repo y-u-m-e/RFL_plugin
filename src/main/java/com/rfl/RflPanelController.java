@@ -157,8 +157,8 @@ final class RflPanelController
         }
         seenArmed = armed;
 
-        PanelModel model = PanelModel.of(inPoh, recording, session.collisionCount(), session.interceptionCount(),
-            session.collisions(), session.interceptions(), session.latest(),
+        PanelModel model = PanelModel.of(inPoh, recording, session.collisionCount(), session.incompleteCount(),
+            session.collisions(), session.incompletes(), session.latest(),
             config.debugLogging() ? debug.text(inPoh) : null, ZoneId.systemDefault());
         if (!force && model.equals(lastModel))
         {

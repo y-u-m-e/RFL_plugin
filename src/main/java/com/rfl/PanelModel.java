@@ -26,7 +26,7 @@ final class PanelModel
     enum Kind
     {
         COLLISION("Collision"),
-        INTERCEPTION("Interception");
+        INCOMPLETE("Incomplete");
 
         final String label;
 
@@ -36,7 +36,7 @@ final class PanelModel
         }
     }
 
-    /** The latest collision or interception, for the hero card. */
+    /** The latest collision or incomplete, for the hero card. */
     @Value
     static class LatestEvent
     {
@@ -45,7 +45,7 @@ final class PanelModel
         /** "Bob caught it in contact with Amy" / "Amy ↔ Bob, Bob had the ball". */
         String body;
 
-        /** One line: "Interception: Bob caught it in contact with Amy, 19:42:10". */
+        /** One line: "Incomplete: Bob caught it in contact with Amy, 19:42:10". */
         String text()
         {
             return kind.label + ": " + body + ", " + time;
@@ -70,7 +70,7 @@ final class PanelModel
     }
 
     @Value
-    static class InterceptionRow
+    static class IncompleteRow
     {
         String time;
         String receiver;
@@ -81,24 +81,24 @@ final class PanelModel
     boolean inPoh;
     boolean recording;
     int collisionCount;
-    int interceptionCount;
+    int incompleteCount;
     /** Null before the first event this session. */
     LatestEvent latest;
     /** Newest first. */
     List<CollisionRow> collisions;
     /** Newest first. */
-    List<InterceptionRow> interceptions;
+    List<IncompleteRow> incompletes;
     /** The Debug tab's text; null when Debug logging is off, which hides the tab. */
     String debugText;
 
     /**
      * @param collisions this session's collisions, newest first
-     * @param interceptions this session's interceptions, newest first
-     * @param latest the latest {@link Collision} or {@link CollisionLog.Interception}, or null
+     * @param incompletes this session's incompletes, newest first
+     * @param latest the latest {@link Collision} or {@link CollisionLog.Incomplete}, or null
      * @param debugText null to hide the Debug tab
      */
-    static PanelModel of(boolean inPoh, boolean recording, int collisionCount, int interceptionCount,
-        List<Collision> collisions, List<CollisionLog.Interception> interceptions, Object latest, String debugText,
+    static PanelModel of(boolean inPoh, boolean recording, int collisionCount, int incompleteCount,
+        List<Collision> collisions, List<CollisionLog.Incomplete> incompletes, Object latest, String debugText,
         ZoneId zone)
     {
         List<CollisionRow> collisionRows = new ArrayList<>(collisions.size());
@@ -106,13 +106,13 @@ final class PanelModel
         {
             collisionRows.add(collisionRow(c, zone));
         }
-        List<InterceptionRow> interceptionRows = new ArrayList<>(interceptions.size());
-        for (CollisionLog.Interception i : interceptions)
+        List<IncompleteRow> incompleteRows = new ArrayList<>(incompletes.size());
+        for (CollisionLog.Incomplete i : incompletes)
         {
-            interceptionRows.add(interceptionRow(i, zone));
+            incompleteRows.add(incompleteRow(i, zone));
         }
-        return new PanelModel(inPoh, recording, collisionCount, interceptionCount, latestEvent(latest, zone),
-            Collections.unmodifiableList(collisionRows), Collections.unmodifiableList(interceptionRows), debugText);
+        return new PanelModel(inPoh, recording, collisionCount, incompleteCount, latestEvent(latest, zone),
+            Collections.unmodifiableList(collisionRows), Collections.unmodifiableList(incompleteRows), debugText);
     }
 
     /** The record button's label: what a click does. {@code armed} is the Record replays setting. */
@@ -149,9 +149,9 @@ final class PanelModel
             c.maxTriangles);
     }
 
-    static InterceptionRow interceptionRow(CollisionLog.Interception i, ZoneId zone)
+    static IncompleteRow incompleteRow(CollisionLog.Incomplete i, ZoneId zone)
     {
-        return new InterceptionRow(time(i.timeMs, zone), i.receiver, contacts(i.contacts));
+        return new IncompleteRow(time(i.timeMs, zone), i.receiver, contacts(i.contacts));
     }
 
     /** "in contact with X, Y", or "no contact recorded". */
@@ -177,12 +177,12 @@ final class PanelModel
 
     static LatestEvent latestEvent(Object event, ZoneId zone)
     {
-        if (event instanceof CollisionLog.Interception)
+        if (event instanceof CollisionLog.Incomplete)
         {
-            CollisionLog.Interception i = (CollisionLog.Interception) event;
+            CollisionLog.Incomplete i = (CollisionLog.Incomplete) event;
             String body = i.receiver + " caught it"
                 + (i.contacts == null || i.contacts.isEmpty() ? "" : " " + contacts(i.contacts));
-            return new LatestEvent(Kind.INTERCEPTION, time(i.timeMs, zone), body);
+            return new LatestEvent(Kind.INCOMPLETE, time(i.timeMs, zone), body);
         }
         if (event instanceof Collision)
         {

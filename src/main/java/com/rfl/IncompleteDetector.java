@@ -10,12 +10,13 @@ import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.SpotanimID;
 
 /**
- * Interception rule, checked on exactly one tick per throw: the tick the thrown handegg (any of
+ * Incomplete rule, checked on exactly one tick per throw: the tick the thrown handegg (any of
  * Holy, Peaceful or Chaotic) stops being drawn. On that tick, a player who has a handegg equipped
- * (and did not before the throw) and is colliding with another player right then intercepted it.
- * Hand-to-hand passes without a throw and uncontested catches do not count.
+ * (and did not before the throw) and is colliding with another player right then caught it in
+ * contact, ruled an incomplete pass. Hand-to-hand passes without a throw and uncontested catches
+ * do not count.
  */
-final class InterceptionDetector
+final class IncompleteDetector
 {
     /** Holy, Peaceful and Chaotic handegg (Easter 2018). */
     static final Set<Integer> HANDEGG_ITEMS = Set.of(
@@ -26,12 +27,12 @@ final class InterceptionDetector
         SpotanimID.EASTER18_HANDEGG_TRAVEL_SARA, SpotanimID.EASTER18_HANDEGG_TRAVEL_GUTH,
         SpotanimID.EASTER18_HANDEGG_TRAVEL_ZAM);
 
-    static final class Interception
+    static final class Incomplete
     {
         final String receiver;
         final List<String> contacts;
 
-        Interception(String receiver, List<String> contacts)
+        Incomplete(String receiver, List<String> contacts)
         {
             this.receiver = receiver;
             this.contacts = contacts;
@@ -65,9 +66,9 @@ final class InterceptionDetector
      * @param holders sanitized names of players with a handegg equipped this tick
      * @param colliding sanitized name to the names they are colliding with this tick
      */
-    List<Interception> onTick(int tick, boolean ballInFlight, Set<String> holders, Map<String, List<String>> colliding)
+    List<Incomplete> onTick(int tick, boolean ballInFlight, Set<String> holders, Map<String, List<String>> colliding)
     {
-        List<Interception> found = new ArrayList<>();
+        List<Incomplete> found = new ArrayList<>();
         lastCheck = null;
         if (ballInFlight && !wasInFlight)
         {
@@ -86,8 +87,8 @@ final class InterceptionDetector
                 List<String> with = colliding.getOrDefault(holder, Collections.emptyList());
                 if (!with.isEmpty())
                 {
-                    found.add(new Interception(holder, with));
-                    decision = "INTERCEPTION " + holder + " with " + with;
+                    found.add(new Incomplete(holder, with));
+                    decision = "INCOMPLETE " + holder + " with " + with;
                     break;
                 }
                 decision = "uncontested catch by " + holder;
