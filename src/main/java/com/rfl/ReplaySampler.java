@@ -64,6 +64,13 @@ final class ReplaySampler
          */
         final Supplier<ModelCapture.Geometry> model;
 
+        /**
+         * {@link Appearance#hash(int, int[], int[])} of the player's composition read this frame, or
+         * null when unknown. When it differs from the last {@link #tick} hash, the look changed
+         * since that tick, so the sampler waits for the next tick before capturing.
+         */
+        final Integer look;
+
         PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame)
         {
             this(name, x, y, orient, anim, animFrame, pose, poseFrame, NO_SPOTS);
@@ -78,7 +85,14 @@ final class ReplaySampler
         PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame,
             int[] spots, Supplier<ModelCapture.Geometry> model)
         {
+            this(name, x, y, orient, anim, animFrame, pose, poseFrame, spots, model, null);
+        }
+
+        PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame,
+            int[] spots, Supplier<ModelCapture.Geometry> model, Integer look)
+        {
             this.model = model;
+            this.look = look;
             this.name = name;
             this.x = x;
             this.y = y;
@@ -112,7 +126,13 @@ final class ReplaySampler
             this.colors = colors;
         }
 
-        private int hash()
+        int hash()
+        {
+            return hash(gender, equipment, colors);
+        }
+
+        /** The appearance hash, also computed per frame by the recorder (no allocation beyond boxing). */
+        static int hash(int gender, int[] equipment, int[] colors)
         {
             return Objects.hash(gender, Arrays.hashCode(equipment), Arrays.hashCode(colors));
         }
@@ -469,6 +489,16 @@ final class ReplaySampler
     private final Map<String, Integer> lastPm = new LinkedHashMap<>();
     private long lastModelNanos;
     private boolean lastFrameNewModels;
+    /**
+     * ClientTicks a player's capture has waited on an active spot anim, with no clean model for the
+     * pose. Cleared when the spot anims clear and on despawn.
+     */
+    private final Map<String, Integer> spotDeferred = new LinkedHashMap<>();
+    /** Last model key per player (debug and tests). */
+    private final Map<String, String> lastPlayerKey = new LinkedHashMap<>();
+
+    /** ClientTicks (about 1 s) to wait for a spot anim to end before capturing with it merged. */
+    static final int SPOT_DEFER_CAP = 50;
 
     /** Distinct model keys captured so far. */
     int modelsCaptured()
@@ -536,6 +566,7 @@ final class ReplaySampler
                 lastTrueTile.remove(name);
                 lastSpots.remove(name);
                 lastPm.remove(name);
+                spotDeferred.remove(name);
             }
         }
 
@@ -824,12 +855,47 @@ final class ReplaySampler
             return -1;
         }
         final Integer appearance = modelAppearance.get(p.name);
-        if (appearance == null)
+        if (appearance == null || (p.look != null && p.look.intValue() != appearance))
         {
+            // Unknown look, or the composition changed since the last tick hashed it: capturing
+            // now would file the new look under the old key. The next tick re-hashes.
             return -1;
         }
         final String key = "p:" + appearance + ":" + p.anim + ":" + p.animFrame + ":" + p.pose + ":" + p.poseFrame;
-        return modelId(key, PLAYER, p.spots.length > 0 ? null : p.model, appearance);
+        if (p.spots.length == 0)
+        {
+            spotDeferred.remove(p.name);
+            lastPlayerKey.put(p.name, key);
+            return modelId(key, PLAYER, p.model, appearance);
+        }
+        // A spot anim is merged into the client's player model. Use the clean pose if it is known;
+        // otherwise wait up to SPOT_DEFER_CAP ClientTicks for the spot anim to end, then capture
+        // under a key naming the spot ids, so the merged model never takes the clean key.
+        final int clean = modelId(key, PLAYER, null, appearance);
+        if (clean >= 0)
+        {
+            lastPlayerKey.put(p.name, key);
+            return clean;
+        }
+        final int deferred = spotDeferred.merge(p.name, 1, Integer::sum);
+        if (deferred <= SPOT_DEFER_CAP)
+        {
+            return -1;
+        }
+        sortSpots(p.spots);
+        final StringBuilder spotKey = new StringBuilder(key).append(":s");
+        for (int k = 0; k + 2 < p.spots.length; k += 3)
+        {
+            spotKey.append(k == 0 ? "" : ",").append(p.spots[k]);
+        }
+        lastPlayerKey.put(p.name, spotKey.toString());
+        return modelId(spotKey.toString(), PLAYER, p.model, appearance);
+    }
+
+    /** The model key last used for a player, for tests. */
+    String lastPlayerKey(String name)
+    {
+        return lastPlayerKey.get(name);
     }
 
     /**

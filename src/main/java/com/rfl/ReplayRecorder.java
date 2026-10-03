@@ -178,7 +178,7 @@ final class ReplayRecorder
             // Player#getModel() builds the posed model: the sampler calls this only on a new key.
             players.add(new ReplaySampler.PlayerState(name, at.getX(), at.getY(), player.getCurrentOrientation(),
                 player.getAnimation(), player.getAnimationFrame(), player.getPoseAnimation(),
-                player.getPoseAnimationFrame(), spots(player), () -> capture(player)));
+                player.getPoseAnimationFrame(), spots(player), () -> capture(player), look(player)));
         }
         final List<ReplaySampler.Ball> balls = new ArrayList<>();
         for (final Projectile p : client.getProjectiles())
@@ -764,6 +764,19 @@ final class ReplayRecorder
                 writer.write(line);
             }
         }
+    }
+
+    /**
+     * The player's appearance hash as of this frame, or null without a composition. Hashes the
+     * composition's own equipment and colour arrays in place (17 ints, no copy), which is cheaper
+     * than any other correct change signal: the arrays can be mutated in place, so an identity
+     * check on the composition would miss changes.
+     */
+    private static Integer look(Player player)
+    {
+        final PlayerComposition comp = player.getPlayerComposition();
+        return comp == null ? null
+            : ReplaySampler.Appearance.hash(comp.getGender(), comp.getEquipmentIds(), comp.getColors());
     }
 
     /** Model lines go through {@link ReplayWriter#writeDeferred}; every other line is serialised at once. */

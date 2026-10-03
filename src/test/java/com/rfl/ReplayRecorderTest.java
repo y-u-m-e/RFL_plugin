@@ -130,6 +130,18 @@ public class ReplayRecorderTest
         executor.shutdown();
 
         List<String> types = new ArrayList<>();
+        for (JsonObject o : readBack(file))
+        {
+            types.add(o.get("t").getAsString());
+        }
+        assertTrue(types.toString(), types.indexOf("model") < types.indexOf("pm"));
+        assertTrue(types.toString(), types.lastIndexOf("model") < types.indexOf("ball"));
+        assertEquals(2, types.stream().filter("model"::equals).count());
+    }
+
+    private static List<JsonObject> readBack(Path file) throws Exception
+    {
+        List<JsonObject> out = new ArrayList<>();
         try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
             new java.util.zip.GZIPInputStream(java.nio.file.Files.newInputStream(file)),
             java.nio.charset.StandardCharsets.UTF_8)))
@@ -137,12 +149,82 @@ public class ReplayRecorderTest
             String s;
             while ((s = r.readLine()) != null)
             {
-                types.add(new JsonParser().parse(s).getAsJsonObject().get("t").getAsString());
+                out.add(new JsonParser().parse(s).getAsJsonObject());
             }
         }
-        assertTrue(types.toString(), types.indexOf("model") < types.indexOf("pm"));
-        assertTrue(types.toString(), types.lastIndexOf("model") < types.indexOf("ball"));
-        assertEquals(2, types.stream().filter("model"::equals).count());
+        return out;
+    }
+
+    private static int[] ints(com.google.gson.JsonElement array)
+    {
+        com.google.gson.JsonArray a = array.getAsJsonArray();
+        int[] out = new int[a.size()];
+        for (int k = 0; k < out.length; k++)
+        {
+            out[k] = a.get(k).getAsInt();
+        }
+        return out;
+    }
+
+    @Test
+    public void deltaPoseRoundTripsThroughTheFile() throws Exception
+    {
+        // Two poses of one appearance and topology: the second is written as base + dv, and a reader
+        // rebuilding v = base.v + dv gets the source geometry back exactly.
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        ReplayWriter writer = new ReplayWriter(new GsonBuilder().create(), executor);
+        Path file = temp.getRoot().toPath().resolve("delta.rflr.gz");
+        ReplaySampler sampler = new ReplaySampler();
+        int[] faces = { 0, 1, 2, 1, 2, 3 };
+        int[] colors = { 200, 10, 10, 10, 200, 10 };
+        ModelCapture.Geometry first = new ModelCapture.Geometry(new int[] { 0, -100, 5, 12, -220, -7, -30, 0, 40,
+            64, -64, 0 }, faces.clone(), colors.clone());
+        ModelCapture.Geometry second = new ModelCapture.Geometry(new int[] { 3, -98, 5, -15, -201, 9, -30, 0, 40,
+            70, -60, -2 }, faces.clone(), colors.clone());
+        sampler.tick(1, 1, List.of(new ReplaySampler.Appearance("A", 0, new int[] { 1 }, new int[] { 2 })));
+
+        writer.open(file);
+        for (int c = 0; c < 2; c++)
+        {
+            ModelCapture.Geometry g = c == 0 ? first : second;
+            for (java.util.Map<String, Object> line : sampler.frame(5 + c, List.of(new ReplaySampler.PlayerState("A",
+                1, 2, 0, 100 + c, 0, 808, 0, ReplaySampler.NO_SPOTS, () -> g)), List.of()))
+            {
+                if (ReplayRecorder.isModelLine(line))
+                {
+                    writer.writeDeferred(line);
+                }
+                else
+                {
+                    writer.write(line);
+                }
+            }
+        }
+        writer.close().get(5, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        java.util.Map<Integer, JsonObject> models = new java.util.HashMap<>();
+        for (JsonObject o : readBack(file))
+        {
+            if ("model".equals(o.get("t").getAsString()))
+            {
+                models.put(o.get("id").getAsInt(), o);
+            }
+        }
+        JsonObject delta = models.get(1);
+        assertTrue(delta.toString(), delta.has("base") && delta.has("dv") && !delta.has("v"));
+        JsonObject base = models.get(delta.get("base").getAsInt());
+        int[] baseV = ints(base.get("v"));
+        int[] dv = ints(delta.get("dv"));
+        int[] rebuilt = new int[dv.length];
+        for (int k = 0; k < dv.length; k++)
+        {
+            rebuilt[k] = baseV[k] + dv[k];
+        }
+        org.junit.Assert.assertArrayEquals(first.vertices, baseV);
+        org.junit.Assert.assertArrayEquals(second.vertices, rebuilt);
+        org.junit.Assert.assertArrayEquals(faces, ints(base.get("f")));
+        org.junit.Assert.assertArrayEquals(colors, ints(base.get("c")));
     }
 
     @Test

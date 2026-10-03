@@ -774,6 +774,70 @@ public class ReplaySamplerTest
         assertEquals(1, calls.get());
     }
 
+    private static PlayerState spotted(String name, int[] spots, Supplier<ModelCapture.Geometry> model)
+    {
+        return new PlayerState(name, 100, 200, 0, 1, 0, 808, 0, spots, model);
+    }
+
+    @Test
+    public void spawnedWithSpotAnimGetsPmAfterTheCap()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicInteger calls = new AtomicInteger();
+        sampler.tick(1, 1, List.of(look("A", 0)));
+        for (int c = 1; c <= ReplaySampler.SPOT_DEFER_CAP; c++)
+        {
+            assertFalse("cycle " + c, types(sampler.frame(c, List.of(spotted("A", new int[] { 90, c, 0, 85, c, 0 },
+                counting(calls, geometry(4, 0)))), List.of())).contains("pm"));
+        }
+        assertEquals(0, calls.get());
+
+        // Past the cap: captured anyway, under a key carrying the sorted spot ids.
+        List<Map<String, Object>> capped = sampler.frame(ReplaySampler.SPOT_DEFER_CAP + 1, List.of(spotted("A",
+            new int[] { 90, 0, 0, 85, 0, 0 }, counting(calls, geometry(4, 0)))), List.of());
+        assertArrayEquals(new int[] { 0, 0 }, pmRows(capped).get(0));
+        assertEquals(1, calls.get());
+        assertEquals("p:" + look("A", 0).hash() + ":1:0:808:0:s85,90", sampler.lastPlayerKey("A"));
+
+        // The spot anim ends: the clean pose key is captured on its own, not taken from the merged model.
+        List<Map<String, Object>> clean = sampler.frame(ReplaySampler.SPOT_DEFER_CAP + 2,
+            List.of(posed("A", 1, counting(calls, geometry(3, 0)))), List.of());
+        assertArrayEquals(new int[] { 0, 1 }, pmRows(clean).get(0));
+        assertEquals(2, calls.get());
+        assertEquals(9, ((int[]) firstOfType(clean, "model").get("v")).length);
+
+        // The counter reset when the spot anim cleared: a new spot anim defers again.
+        assertFalse(types(sampler.frame(ReplaySampler.SPOT_DEFER_CAP + 3, List.of(new PlayerState("A", 100, 200, 0, 2,
+            0, 808, 0, new int[] { 85, 0, 0 }, counting(calls, geometry(4, 0)))), List.of())).contains("pm"));
+        assertEquals(2, calls.get());
+    }
+
+    @Test
+    public void noCaptureBetweenAnAppearanceChangeAndTheNextTick()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicInteger calls = new AtomicInteger();
+        sampler.tick(1, 1, List.of(look("A", 0)));
+        int newLook = look("A", 1).hash();
+
+        // The composition already changed (new look), the tick hash is still the old one: wait.
+        PlayerState changed = new PlayerState("A", 100, 200, 0, 1, 0, 808, 0, ReplaySampler.NO_SPOTS,
+            counting(calls, geometry(3, 0)), newLook);
+        assertFalse(types(sampler.frame(1, List.of(changed), List.of())).contains("pm"));
+        assertEquals(0, calls.get());
+
+        // The next tick re-hashes: captured under the new look's key.
+        sampler.tick(2, 2, List.of(look("A", 1)));
+        assertTrue(types(sampler.frame(2, List.of(changed), List.of())).contains("pm"));
+        assertEquals(1, calls.get());
+        assertTrue(sampler.lastPlayerKey("A").startsWith("p:" + newLook + ":"));
+
+        // An unknown frame look (no composition) never blocks capture.
+        PlayerState unknown = new PlayerState("A", 100, 200, 0, 2, 0, 808, 0, ReplaySampler.NO_SPOTS,
+            counting(calls, geometry(3, 0)), null);
+        assertTrue(types(sampler.frame(3, List.of(unknown), List.of())).contains("pm"));
+    }
+
     @Test
     public void respawnWritesPmAgain()
     {
@@ -788,28 +852,36 @@ public class ReplaySamplerTest
     @Test
     public void modelPassCostWithNoNewKeys()
     {
-        // 12 players, every key already known: only a key build and a lookup per player.
+        // 12 players, every key already known: per player, the recorder's frame-time look hash
+        // (Appearance.hash over the composition arrays), then a key build and a lookup.
         ReplaySampler sampler = new ReplaySampler();
         List<Appearance> looks = new ArrayList<>();
-        List<PlayerState> players = new ArrayList<>();
         for (int i = 0; i < 12; i++)
         {
             looks.add(look("P" + i, i));
-            players.add(posed("P" + i, 1, () -> geometry(3, 0)));
         }
         sampler.tick(1, 1, looks);
-        for (int c = 0; c < 20_000; c++)
-        {
-            sampler.frame(c, players, List.of());
-        }
         long total = 0;
         long worst = 0;
+        int warm = 20_000;
         int n = 20_000;
-        for (int c = 0; c < n; c++)
+        for (int c = 0; c < warm + n; c++)
         {
-            sampler.frame(20_000 + c, players, List.of());
-            total += sampler.lastModelNanos();
-            worst = Math.max(worst, sampler.lastModelNanos());
+            long t0 = System.nanoTime();
+            List<PlayerState> players = new ArrayList<>(12);
+            for (Appearance a : looks)
+            {
+                players.add(new PlayerState(a.name, 100, 200, 0, 1, 0, 808, 0, ReplaySampler.NO_SPOTS,
+                    () -> geometry(3, 0), Appearance.hash(a.gender, a.equipment, a.colors)));
+            }
+            long lookNanos = System.nanoTime() - t0;
+            sampler.frame(c, players, List.of());
+            if (c >= warm)
+            {
+                long spent = lookNanos + sampler.lastModelNanos();
+                total += spent;
+                worst = Math.max(worst, spent);
+            }
         }
         double avgMicros = total / (double) n / 1000.0;
         System.out.printf("model pass, 12 players, no new keys: avg %.2f us, worst %.1f us%n", avgMicros,
