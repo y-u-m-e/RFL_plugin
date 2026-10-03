@@ -7,7 +7,10 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPOutputStream;
 
@@ -20,6 +23,15 @@ import lombok.extern.slf4j.Slf4j;
  * caller's thread, then queues the resulting string onto the injected executor, which does the
  * actual gzip/file IO — never the RuneLite client thread.
  *
+ * <p>The injected executor is shared with the rest of the plugin and is not guaranteed to be
+ * single-threaded or to run tasks in submission order, so ordering is this class's own
+ * responsibility: every step ({@link #doOpen}, {@link #doWrite}, {@link #doClose}) is appended
+ * to {@link #steps}, a FIFO queue, and only one {@link #drain} task is ever active on the
+ * executor at a time (guarded by {@link #draining}). That single drain task runs steps strictly
+ * in the order they were queued, however many worker threads the executor has, which also
+ * batches a run of rapid writes (e.g. 50 Hz sampling) into far fewer executor tasks than one
+ * per write.
+ *
  * <p>After any IO failure, the writer logs once, closes what it can and marks itself not open;
  * every later {@link #write} call is then a no-op rather than retrying every frame.
  */
@@ -29,7 +41,12 @@ final class ReplayWriter
     private final Gson gson;
     private final ExecutorService executor;
 
-    /** Set and read only on the executor thread. */
+    /** Pending steps, FIFO. Only ever drained by the single active {@link #drain} task. */
+    private final Queue<Runnable> steps = new ConcurrentLinkedQueue<>();
+    /** True while a {@link #drain} task is scheduled or running. Guards against two at once. */
+    private final AtomicBoolean draining = new AtomicBoolean(false);
+
+    /** Set and read only on the drain task. */
     private volatile Writer out;
     /** True from {@link #open} until {@link #close} or a write failure; read from any thread. */
     private volatile boolean open;
@@ -47,7 +64,7 @@ final class ReplayWriter
         closeQuietly();
         open = true;
         bytesWritten.set(0);
-        executor.execute(() -> doOpen(file));
+        enqueue(() -> doOpen(file));
     }
 
     /** Serialises the line with Gson on the caller's thread; the write happens on the executor. */
@@ -58,7 +75,7 @@ final class ReplayWriter
             return;
         }
         String json = gson.toJson(line);
-        executor.execute(() -> doWrite(json));
+        enqueue(() -> doWrite(json));
     }
 
     /** Finishes the gzip (trailer) and closes. Safe to call when nothing is open. */
@@ -82,10 +99,44 @@ final class ReplayWriter
     {
         boolean wasOpen = open;
         open = false;
-        executor.execute(() -> doClose(wasOpen));
+        enqueue(() -> doClose(wasOpen));
     }
 
-    /** Executor only. */
+    /** Queues one step and, if nothing is currently draining, submits the drain task. */
+    private void enqueue(Runnable step)
+    {
+        steps.add(step);
+        if (draining.compareAndSet(false, true))
+        {
+            executor.execute(this::drain);
+        }
+    }
+
+    /**
+     * Runs queued steps in order until the queue is empty, then clears {@link #draining}. Races
+     * one more look at the queue after clearing it: a step can land between the last {@code
+     * poll} and the flag being cleared, and nothing else will schedule a drain for it once
+     * {@link #draining} reads true to that producer, so this task reclaims the flag itself
+     * instead of leaving that step stranded (a lost wake-up).
+     */
+    private void drain()
+    {
+        while (true)
+        {
+            Runnable step;
+            while ((step = steps.poll()) != null)
+            {
+                step.run();
+            }
+            draining.set(false);
+            if (steps.isEmpty() || !draining.compareAndSet(false, true))
+            {
+                return;
+            }
+        }
+    }
+
+    /** Drain task only. */
     private void doOpen(Path file)
     {
         try
@@ -102,7 +153,7 @@ final class ReplayWriter
         }
     }
 
-    /** Executor only. */
+    /** Drain task only. */
     private void doWrite(String json)
     {
         if (out == null)
@@ -123,7 +174,7 @@ final class ReplayWriter
         }
     }
 
-    /** Executor only. Closing the previous file's writer is a no-op once it's already null. */
+    /** Drain task only. Closing the previous file's writer is a no-op once it's already null. */
     private void doClose(boolean wasOpen)
     {
         if (!wasOpen)
@@ -133,7 +184,7 @@ final class ReplayWriter
         closeOut();
     }
 
-    /** Executor only. */
+    /** Drain task only. */
     private void closeOut()
     {
         Writer w = out;

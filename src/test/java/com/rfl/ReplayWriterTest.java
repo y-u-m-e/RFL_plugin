@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 
@@ -168,5 +169,42 @@ public class ReplayWriterTest
         writer.close();
 
         assertFalse(Files.exists(file));
+    }
+
+    @Test
+    public void stepsRunInOrderOnAMultiThreadedExecutor() throws Exception
+    {
+        // A real multi-threaded, non-FIFO-guaranteed executor: ordering has to be the writer's
+        // own job (the internal queue + single active drain task), not something borrowed from
+        // the executor.
+        com.google.gson.Gson gson = new GsonBuilder().create();
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+        ReplayWriter writer = new ReplayWriter(gson, executor);
+        Path file = temp.getRoot().toPath().resolve("ordered.gz");
+
+        List<Map<String, Object>> expected = new ArrayList<>();
+        writer.open(file);
+        for (int i = 0; i < 500; i++)
+        {
+            Map<String, Object> line = map("t", "n");
+            line.put("n", i);
+            expected.add(line);
+            writer.write(line);
+        }
+        writer.close();
+
+        // Wait for every queued step - the open, all 500 writes and the close - to actually run.
+        // shutdown() lets already-submitted tasks (the drain task, and any follow-up drain tasks
+        // the lost-wake-up recheck scheduled) finish before the pool terminates.
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        assertFalse(writer.isOpen());
+
+        List<String> lines = gunzipLines(file);
+        assertEquals(500, lines.size());
+        for (int i = 0; i < 500; i++)
+        {
+            assertEquals(gson.toJson(expected.get(i)), lines.get(i));
+        }
     }
 }
