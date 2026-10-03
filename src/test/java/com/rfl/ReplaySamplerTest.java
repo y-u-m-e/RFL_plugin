@@ -2,6 +2,7 @@ package com.rfl;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.util.List;
@@ -11,7 +12,9 @@ import org.junit.Test;
 
 import com.rfl.ReplaySampler.Appearance;
 import com.rfl.ReplaySampler.Ball;
+import com.rfl.ReplaySampler.PitchObjects;
 import com.rfl.ReplaySampler.PlayerState;
+import com.rfl.ReplaySampler.TrueTile;
 
 /**
  * {@link ReplaySampler}: turns per-cycle player/ball/appearance state into the NDJSON line
@@ -239,5 +242,155 @@ public class ReplaySamplerTest
         List<Map<String, Object>> afterRespawn = sampler.tick(3, 102, List.of(a));
         assertEquals(2, afterRespawn.size());
         assertEquals("app", afterRespawn.get(1).get("t"));
+    }
+
+    private static PlayerState spotted(String name, int... spots)
+    {
+        return new PlayerState(name, 100, 200, 0, 1, 2, 3, 4, spots);
+    }
+
+    private static long count(List<Map<String, Object>> lines, String type)
+    {
+        return lines.stream().filter(l -> type.equals(l.get("t"))).count();
+    }
+
+    @Test
+    public void trueTileWritesOnlyChangedPlayers()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.frame(1, List.of(player("A", 100, 200, 0, 1, 2, 3, 4), player("B", 110, 210, 1, 2, 3, 4, 5)),
+            List.of());
+
+        List<Map<String, Object>> tick1 = sampler.tick(1, 100, List.of(),
+            List.of(new TrueTile("A", 64, 192), new TrueTile("B", 192, 320)));
+        Map<String, Object> tt1 = firstOfType(tick1, "tt");
+        assertEquals(1, tt1.get("cyc"));
+        assertEquals(2, rows(tt1).size());
+        assertArrayEquals(new int[] { 0, 64, 192 }, (int[]) rows(tt1).get(0));
+        assertArrayEquals(new int[] { 1, 192, 320 }, (int[]) rows(tt1).get(1));
+
+        List<Map<String, Object>> tick2 = sampler.tick(2, 101, List.of(),
+            List.of(new TrueTile("A", 64, 192), new TrueTile("B", 320, 320)));
+        Map<String, Object> tt2 = firstOfType(tick2, "tt");
+        assertEquals(1, rows(tt2).size());
+        assertArrayEquals(new int[] { 1, 320, 320 }, (int[]) rows(tt2).get(0));
+    }
+
+    @Test
+    public void trueTileUnchangedWritesNoLine()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.frame(1, List.of(player("A", 100, 200, 0, 1, 2, 3, 4)), List.of());
+        sampler.tick(1, 100, List.of(), List.of(new TrueTile("A", 64, 192)));
+
+        List<Map<String, Object>> tick2 = sampler.tick(2, 101, List.of(), List.of(new TrueTile("A", 64, 192)));
+
+        assertEquals(0, count(tick2, "tt"));
+        assertEquals(1, tick2.size());
+    }
+
+    @Test
+    public void trueTileWaitsForSpawnAndDespawnClears()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        TrueTile a = new TrueTile("A", 64, 192);
+
+        assertEquals(0, count(sampler.tick(1, 100, List.of(), List.of(a)), "tt"));
+        assertEquals(-1, sampler.indexOf("A"));
+
+        sampler.frame(1, List.of(player("A", 100, 200, 0, 1, 2, 3, 4)), List.of());
+        assertEquals(1, count(sampler.tick(2, 101, List.of(), List.of(a)), "tt"));
+
+        sampler.frame(2, List.of(), List.of());
+        assertEquals(0, count(sampler.tick(3, 102, List.of(), List.of(a)), "tt"));
+
+        sampler.frame(3, List.of(player("A", 100, 200, 0, 1, 2, 3, 4)), List.of());
+        Map<String, Object> tt = firstOfType(sampler.tick(4, 103, List.of(), List.of(a)), "tt");
+        assertArrayEquals(new int[] { 0, 64, 192 }, (int[]) rows(tt).get(0));
+    }
+
+    @Test
+    public void spotAnimChangeWritesLine()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.frame(1, List.of(spotted("A")), List.of());
+
+        List<Map<String, Object>> lines = sampler.frame(2, List.of(spotted("A", 1234, 3, 92)), List.of());
+
+        Map<String, Object> spot = firstOfType(lines, "spot");
+        assertEquals(2, spot.get("cyc"));
+        assertEquals(0, spot.get("i"));
+        @SuppressWarnings("unchecked")
+        List<Object> s = (List<Object>) spot.get("s");
+        assertEquals(1, s.size());
+        assertArrayEquals(new int[] { 1234, 3, 92 }, (int[]) s.get(0));
+    }
+
+    @Test
+    public void spotAnimUnchangedWritesNoLine()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.frame(1, List.of(spotted("A", 1234, 3, 92, 50, 0, 0)), List.of());
+
+        // Same set in a different iteration order is no change.
+        List<Map<String, Object>> lines = sampler.frame(2, List.of(spotted("A", 50, 0, 0, 1234, 3, 92)), List.of());
+
+        assertTrue(lines.isEmpty());
+    }
+
+    @Test
+    public void spotAnimNoneOnSpawnWritesNoLine()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        assertEquals(0, count(sampler.frame(1, List.of(spotted("A")), List.of()), "spot"));
+    }
+
+    @Test
+    public void spotAnimClearedWritesEmptySet()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.frame(1, List.of(spotted("A", 1234, 3, 92)), List.of());
+
+        Map<String, Object> spot = firstOfType(sampler.frame(2, List.of(spotted("A")), List.of()), "spot");
+
+        assertEquals(0, spot.get("i"));
+        assertTrue(((List<?>) spot.get("s")).isEmpty());
+    }
+
+    @Test
+    public void spotAnimRespawnWritesAgain()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.frame(1, List.of(spotted("A", 1234, 3, 92)), List.of());
+        sampler.frame(2, List.of(), List.of());
+
+        List<Map<String, Object>> lines = sampler.frame(3, List.of(spotted("A", 1234, 3, 92)), List.of());
+
+        assertEquals(1, count(lines, "spot"));
+    }
+
+    @Test
+    public void pitchObjectsBoxIsChebyshevClippedToScene()
+    {
+        assertEquals(0, PitchObjects.lo(10, 20));
+        assertEquals(32, PitchObjects.lo(52, 20));
+        assertEquals(103, PitchObjects.hi(100, 20, 104));
+        assertEquals(72, PitchObjects.hi(52, 20, 104));
+    }
+
+    @Test
+    public void pitchObjectsDedupeByTypeAndHash()
+    {
+        PitchObjects objs = new PitchObjects();
+        assertTrue(objs.add(PitchObjects.GAME, 77L, 100, 512, 6400, 6400));
+        // Same multi-tile GameObject seen again from a second tile.
+        assertFalse(objs.add(PitchObjects.GAME, 77L, 100, 512, 6400, 6400));
+        // Same hash on a different layer is a different object.
+        assertTrue(objs.add(PitchObjects.WALL, 77L, 200, 1, 6528, 6400));
+
+        List<int[]> rows = objs.rows();
+        assertEquals(2, rows.size());
+        assertArrayEquals(new int[] { 100, 0, 512, 6400, 6400 }, rows.get(0));
+        assertArrayEquals(new int[] { 200, 1, 1, 6528, 6400 }, rows.get(1));
     }
 }

@@ -19,13 +19,21 @@ import javax.inject.Singleton;
 import com.google.gson.Gson;
 
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ActorSpotAnim;
 import net.runelite.api.Client;
+import net.runelite.api.DecorativeObject;
+import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
+import net.runelite.api.GroundObject;
+import net.runelite.api.IterableHashTable;
 import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
 import net.runelite.api.Projectile;
+import net.runelite.api.Tile;
+import net.runelite.api.WallObject;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.RuneLite;
 import net.runelite.client.util.Text;
 
@@ -33,8 +41,8 @@ import net.runelite.client.util.Text;
  * Records each player-owned house visit to {@code RUNELITE_DIR/rfl/replays/<fileName>}, a gzipped
  * NDJSON file the RFL replay viewer reads, while Record replays is on. Nothing is sent anywhere.
  *
- * <p>Each ClientTick it reads every player's pose and every handegg projectile into a
- * {@link ReplaySampler}; each GameTick it adds a {@code tick} line and appearances; finished
+ * <p>Each ClientTick it reads every player's pose, spot anims and every handegg projectile into a
+ * {@link ReplaySampler}; each GameTick it adds a {@code tick} line, appearances and true tiles; finished
  * collisions and interceptions arrive through {@link #onEvent} (the {@link CollisionLog} listener),
  * and the local user's own plugin list ({@code plugins} at open) and plugin toggles through
  * {@link #onPlugins}.
@@ -53,6 +61,8 @@ final class ReplayRecorder
 {
     private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss");
     private static final int SCENE = 104;
+    /** Chebyshev radius, in tiles around the recorder, of the objects listed in {@code pitch.objs}. */
+    private static final int OBJECT_RADIUS = 20;
 
     private final RflConfig config;
     private final ReplayWriter writer;
@@ -147,7 +157,7 @@ final class ReplayRecorder
             }
             players.add(new ReplaySampler.PlayerState(name, at.getX(), at.getY(), player.getCurrentOrientation(),
                 player.getAnimation(), player.getAnimationFrame(), player.getPoseAnimation(),
-                player.getPoseAnimationFrame()));
+                player.getPoseAnimationFrame(), spots(player)));
         }
         final List<ReplaySampler.Ball> balls = new ArrayList<>();
         for (final Projectile p : client.getProjectiles())
@@ -163,26 +173,38 @@ final class ReplayRecorder
         frames++;
     }
 
-    /** Client thread, every GameTick: a {@code tick} line and any changed appearances. */
+    /** Client thread, every GameTick: a {@code tick} line, changed appearances and changed true tiles. */
     void onGameTick(Client client)
     {
         if (sampler == null)
         {
             return;
         }
+        final WorldView wv = client.getTopLevelWorldView();
         final List<ReplaySampler.Appearance> appearances = new ArrayList<>();
-        for (final Player player : client.getTopLevelWorldView().players())
+        final List<ReplaySampler.TrueTile> trueTiles = new ArrayList<>();
+        for (final Player player : wv.players())
         {
             final String name = player == null ? null : sanitizedName(player);
-            final PlayerComposition comp = name == null ? null : player.getPlayerComposition();
-            if (comp == null)
+            if (name == null)
             {
                 continue;
             }
-            appearances.add(new ReplaySampler.Appearance(name, comp.getGender(), comp.getEquipmentIds(),
-                comp.getColors()));
+            final PlayerComposition comp = player.getPlayerComposition();
+            if (comp != null)
+            {
+                appearances.add(new ReplaySampler.Appearance(name, comp.getGender(), comp.getEquipmentIds(),
+                    comp.getColors()));
+            }
+            // The true tile's centre in local units, so it compares directly with the f rows' x/y.
+            final WorldPoint world = player.getWorldLocation();
+            final LocalPoint tile = world == null ? null : LocalPoint.fromWorld(wv, world);
+            if (tile != null)
+            {
+                trueTiles.add(new ReplaySampler.TrueTile(name, tile.getX(), tile.getY()));
+            }
         }
-        writeAll(sampler.tick(client.getGameCycle(), client.getTickCount(), appearances));
+        writeAll(sampler.tick(client.getGameCycle(), client.getTickCount(), appearances, trueTiles));
     }
 
     /** Client thread: closes on HOPPING / LOGIN_SCREEN; a LOADING while open queues a new pitch. */
@@ -347,7 +369,120 @@ final class ReplayRecorder
         line.put("baseY", wv.getBaseY());
         line.put("chunks", chunks == null ? null : chunks[plane]);
         line.put("heights", heights == null ? null : scene(heights[plane]));
+        line.put("objs", objects(wv, plane, client.getLocalPlayer()));
         writer.write(line);
+    }
+
+    /**
+     * Every game, wall, ground and decorative object on {@code plane} on scene tiles within
+     * {@link #OBJECT_RADIUS} (Chebyshev) of the recorder, as {@code [id, type, orient, x, y]} with
+     * local x/y. A GameObject spanning several tiles is listed once. Empty when the recorder's
+     * tile or the scene is unknown.
+     */
+    private static List<int[]> objects(WorldView wv, int plane, Player local)
+    {
+        final ReplaySampler.PitchObjects objs = new ReplaySampler.PitchObjects();
+        final LocalPoint at = local == null ? null : local.getLocalLocation();
+        final Tile[][][] tiles = wv.getScene() == null ? null : wv.getScene().getTiles();
+        if (at == null || tiles == null || plane < 0 || plane >= tiles.length || tiles[plane] == null)
+        {
+            return objs.rows();
+        }
+        final Tile[][] level = tiles[plane];
+        final int cx = at.getSceneX();
+        final int cy = at.getSceneY();
+        for (int x = ReplaySampler.PitchObjects.lo(cx, OBJECT_RADIUS);
+             x <= ReplaySampler.PitchObjects.hi(cx, OBJECT_RADIUS, level.length); x++)
+        {
+            final Tile[] column = level[x];
+            if (column == null)
+            {
+                continue;
+            }
+            for (int y = ReplaySampler.PitchObjects.lo(cy, OBJECT_RADIUS);
+                 y <= ReplaySampler.PitchObjects.hi(cy, OBJECT_RADIUS, column.length); y++)
+            {
+                final Tile tile = column[y];
+                if (tile != null)
+                {
+                    addObjects(objs, tile);
+                }
+            }
+        }
+        return objs.rows();
+    }
+
+    private static void addObjects(ReplaySampler.PitchObjects objs, Tile tile)
+    {
+        final GameObject[] games = tile.getGameObjects();
+        if (games != null)
+        {
+            for (final GameObject o : games)
+            {
+                final LocalPoint lp = o == null ? null : o.getLocalLocation();
+                if (lp != null)
+                {
+                    objs.add(ReplaySampler.PitchObjects.GAME, o.getHash(), o.getId(), o.getOrientation(),
+                        lp.getX(), lp.getY());
+                }
+            }
+        }
+        final WallObject wall = tile.getWallObject();
+        final LocalPoint wallAt = wall == null ? null : wall.getLocalLocation();
+        if (wallAt != null)
+        {
+            objs.add(ReplaySampler.PitchObjects.WALL, wall.getHash(), wall.getId(), wall.getOrientationA(),
+                wallAt.getX(), wallAt.getY());
+        }
+        final GroundObject ground = tile.getGroundObject();
+        final LocalPoint groundAt = ground == null ? null : ground.getLocalLocation();
+        if (groundAt != null)
+        {
+            objs.add(ReplaySampler.PitchObjects.GROUND, ground.getHash(), ground.getId(), 0,
+                groundAt.getX(), groundAt.getY());
+        }
+        final DecorativeObject deco = tile.getDecorativeObject();
+        final LocalPoint decoAt = deco == null ? null : deco.getLocalLocation();
+        if (decoAt != null)
+        {
+            objs.add(ReplaySampler.PitchObjects.DECORATIVE, deco.getHash(), deco.getId(), 0,
+                decoAt.getX(), decoAt.getY());
+        }
+    }
+
+    /**
+     * A player's spot anims as flat {@code (id, frame, height)} triples, or the shared
+     * {@link ReplaySampler#NO_SPOTS} when there are none, so the common case allocates no array.
+     */
+    private static int[] spots(Player player)
+    {
+        final IterableHashTable<ActorSpotAnim> table = player.getSpotAnims();
+        if (table == null)
+        {
+            return ReplaySampler.NO_SPOTS;
+        }
+        int n = 0;
+        for (final ActorSpotAnim ignored : table)
+        {
+            n++;
+        }
+        if (n == 0)
+        {
+            return ReplaySampler.NO_SPOTS;
+        }
+        final int[] out = new int[n * 3];
+        int k = 0;
+        for (final ActorSpotAnim a : table)
+        {
+            if (k >= out.length)
+            {
+                break;
+            }
+            out[k++] = a.getId();
+            out[k++] = a.getFrame();
+            out[k++] = a.getHeight();
+        }
+        return k == out.length ? out : Arrays.copyOf(out, k);
     }
 
     /** The 104x104 scene part of a plane's tile heights (the client keeps one extra edge row). */
