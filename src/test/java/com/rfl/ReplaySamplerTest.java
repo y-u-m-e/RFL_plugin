@@ -143,6 +143,16 @@ public class ReplaySamplerTest
     }
 
     @Test
+    public void noBallLinesBeforeTheProjectileStarts()
+    {
+        // The client creates the projectile ~0.8 s early, parked at (0, 0) until its start cycle.
+        ReplaySampler sampler = new ReplaySampler();
+        Ball early = new Ball(1528, 100, 0.0, 0.0, 0.0, 0);
+        assertTrue(sampler.frame(99, List.of(), List.of(early)).isEmpty());
+        assertEquals(1, sampler.frame(100, List.of(), List.of(new Ball(1528, 100, 8896, 5696, -651, 1175))).size());
+    }
+
+    @Test
     public void ballLinesEveryCycleWhileInFlight()
     {
         ReplaySampler sampler = new ReplaySampler();

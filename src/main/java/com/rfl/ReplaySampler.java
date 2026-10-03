@@ -166,6 +166,11 @@ final class ReplaySampler
 
         for (Ball b : balls)
         {
+            // The client creates a projectile before its start cycle, parked at (0, 0): not in flight yet.
+            if (cycle < b.startCycle)
+            {
+                continue;
+            }
             lines.add(ballLine(cycle, b));
         }
 
