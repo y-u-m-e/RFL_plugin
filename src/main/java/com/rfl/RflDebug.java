@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.ScheduledExecutorService;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import javax.swing.SwingUtilities;
@@ -15,6 +16,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.util.LinkBrowser;
 
 /**
  * Everything behind "Show debug panel" and "Debug logging": the RFL Debug sidebar panel's
@@ -37,6 +39,7 @@ final class RflDebug
     private final ContactDetector contactDetector;
     private final BareBody bareBody;
     private final CollisionLog collisionLog;
+    private final ScheduledExecutorService executor;
 
     // EDT only.
     private DebugPanel panel;
@@ -55,8 +58,9 @@ final class RflDebug
 
     @Inject
     RflDebug(Client client, RflConfig config, ClientToolbar clientToolbar, ContactDetector contactDetector,
-        BareBody bareBody, CollisionLog collisionLog)
+        BareBody bareBody, CollisionLog collisionLog, ScheduledExecutorService executor)
     {
+        this.executor = executor;
         this.collisionLog = collisionLog;
         this.client = client;
         this.config = config;
@@ -77,7 +81,7 @@ final class RflDebug
         {
             return;
         }
-        panel = new DebugPanel();
+        panel = new DebugPanel(this::openFolder);
         button = NavigationButton.builder()
             .tooltip("RFL Debug")
             .icon(DebugPanel.icon())
@@ -85,6 +89,16 @@ final class RflDebug
             .panel(panel)
             .build();
         clientToolbar.addNavigation(button);
+    }
+
+    /** EDT: creates the collisions folder off the EDT, then opens it with LinkBrowser. */
+    private void openFolder()
+    {
+        executor.execute(() ->
+        {
+            collisionLog.ensureDir();
+            LinkBrowser.open(collisionLog.dir().toUri().toString());
+        });
     }
 
     /** EDT. */
@@ -149,6 +163,7 @@ final class RflDebug
     private void appendCollisions(StringBuilder sb)
     {
         sb.append("\nCOLLISIONS (saved locally)\n");
+        sb.append("saving: ").append(config.saveCollisions() ? "on, " + collisionLog.dir() : "off").append('\n');
         List<String> open = contactDetector.inProgress();
         sb.append("in progress: ").append(open.isEmpty() ? "none" : String.join(", ", open)).append('\n');
         List<Collision> recent = collisionLog.recent();
