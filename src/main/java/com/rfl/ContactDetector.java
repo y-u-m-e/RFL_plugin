@@ -119,7 +119,8 @@ final class ContactDetector
         latestMissing = missing;
         // Drawing touching triangles needs every pair (other players too) fully counted each frame.
         boolean display = config.showHitboxes() || config.showTouchingTriangles();
-        boolean detail = display || config.showPanel() || config.debugLogging();
+        // The panel shows per-tick samples; only drawn overlays and debug logging need every frame fully counted.
+        boolean detail = display || config.debugLogging();
         List<PosedMesh.Hits> started = tracker.update(meshes, holders, display, now, client.getTickCount(), detail);
         saveFinished();
         endMeshFrame(now);
