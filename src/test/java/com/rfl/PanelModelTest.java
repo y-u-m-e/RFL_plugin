@@ -176,4 +176,16 @@ public class PanelModelTest
         assertEquals(2, PanelModel.lineCount("{\"a\":1}\n{\"b\":2}\n"));
         assertEquals(2, PanelModel.lineCount("{\"a\":1}\r\n\r\n{\"b\":2}"));
     }
+
+    @Test
+    public void recordButtonSaysWhatAClickDoesAndTheTipSaysWhatIsHappening()
+    {
+        assertEquals("Start recording", PanelModel.recordButtonText(false));
+        assertEquals("Stop recording", PanelModel.recordButtonText(true));
+        assertEquals("Records each house visit to a replay file in rfl/replays.",
+            PanelModel.recordButtonTip(false, false));
+        assertEquals("Waiting for a house: recording starts when you enter one.",
+            PanelModel.recordButtonTip(true, false));
+        assertEquals("Recording. Click to stop and save the replay file.", PanelModel.recordButtonTip(true, true));
+    }
 }

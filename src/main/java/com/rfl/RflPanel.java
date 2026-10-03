@@ -57,6 +57,7 @@ final class RflPanel extends PluginPanel
     // Status strip and banner.
     private final JLabel status = new JLabel();
     private final JLabel recording = new JLabel("Recording");
+    private final JButton recordButton = new JButton();
     private final JPanel banner = new JPanel(new BorderLayout());
     private final JLabel bannerText = new JLabel();
 
@@ -87,8 +88,9 @@ final class RflPanel extends PluginPanel
     /**
      * @param openFolder runs on the EDT when Open folder is clicked
      * @param copyHistory runs on the EDT when Copy plugin history is clicked
+     * @param toggleRecording runs on the EDT when the record button is clicked
      */
-    RflPanel(Runnable openFolder, Runnable copyHistory)
+    RflPanel(Runnable openFolder, Runnable copyHistory, Runnable toggleRecording)
     {
         super(false);
         setLayout(new BorderLayout(0, 6));
@@ -128,11 +130,18 @@ final class RflPanel extends PluginPanel
         scroll.getVerticalScrollBar().setUnitIncrement(16);
         add(scroll, BorderLayout.CENTER);
 
+        recordButton.setFocusable(false);
+        recordButton.addActionListener(e -> toggleRecording.run());
+        setRecording(false, false);
         JButton open = new JButton("Open folder");
         open.setToolTipText("Opens the RFL folder: collisions, plugin history and replays.");
         open.setFocusable(false);
         open.addActionListener(e -> openFolder.run());
-        add(open, BorderLayout.SOUTH);
+        JPanel footer = new JPanel(new GridLayout(1, 2, 4, 0));
+        footer.setOpaque(false);
+        footer.add(recordButton);
+        footer.add(open);
+        add(footer, BorderLayout.SOUTH);
 
         copyResultTimer.setRepeats(false);
         tabs.select(collisionsTab);
@@ -280,6 +289,17 @@ final class RflPanel extends PluginPanel
     }
 
     // ---- Updates ----
+
+    /**
+     * EDT: the record button for the Record replays setting ({@code armed}) and whether a file is
+     * open right now. Red text while armed, so stopping is one obvious click away.
+     */
+    void setRecording(boolean armed, boolean recording)
+    {
+        recordButton.setText(PanelModel.recordButtonText(armed));
+        recordButton.setToolTipText(PanelModel.recordButtonTip(armed, recording));
+        recordButton.setForeground(armed ? ALERT.brighter() : ColorScheme.LIGHT_GRAY_COLOR);
+    }
 
     /** EDT: renders a model, rebuilding only the parts that changed. */
     void update(PanelModel m)

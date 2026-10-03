@@ -149,6 +149,23 @@ final class PanelModel
             Collections.unmodifiableList(toggleRows), debugText);
     }
 
+    /** The record button's label: what a click does. {@code armed} is the Record replays setting. */
+    static String recordButtonText(boolean armed)
+    {
+        return armed ? "Stop recording" : "Start recording";
+    }
+
+    /** The record button's tooltip: what is happening now. */
+    static String recordButtonTip(boolean armed, boolean recording)
+    {
+        if (!armed)
+        {
+            return "Records each house visit to a replay file in rfl/replays.";
+        }
+        return recording ? "Recording. Click to stop and save the replay file."
+            : "Waiting for a house: recording starts when you enter one.";
+    }
+
     /** Status strip text. */
     String status()
     {

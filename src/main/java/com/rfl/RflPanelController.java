@@ -14,6 +14,7 @@ import javax.swing.SwingUtilities;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.RuneLite;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.LinkBrowser;
@@ -39,6 +40,7 @@ final class RflPanelController
     private final PluginLog pluginLog;
     private final ReplayRecorder replayRecorder;
     private final ScheduledExecutorService executor;
+    private final ConfigManager configManager;
 
     // EDT only.
     private RflPanel panel;
@@ -50,14 +52,17 @@ final class RflPanelController
     private long seenPluginVersion = -1;
     private boolean seenInPoh;
     private boolean seenRecording;
+    private boolean seenArmed;
     private PanelModel lastModel;
     /** Set on the EDT when a new panel is created, so the next refresh sends a model unconditionally. */
     private volatile boolean resend;
 
     @Inject
     RflPanelController(RflConfig config, ClientToolbar clientToolbar, RflDebug debug, SessionEvents session,
-        PluginLog pluginLog, ReplayRecorder replayRecorder, ScheduledExecutorService executor)
+        PluginLog pluginLog, ReplayRecorder replayRecorder, ScheduledExecutorService executor,
+        ConfigManager configManager)
     {
+        this.configManager = configManager;
         this.config = config;
         this.clientToolbar = clientToolbar;
         this.debug = debug;
@@ -85,7 +90,7 @@ final class RflPanelController
         {
             return;
         }
-        panel = new RflPanel(this::openFolder, this::copyPluginHistory);
+        panel = new RflPanel(this::openFolder, this::copyPluginHistory, this::toggleRecording);
         button = NavigationButton.builder()
             .tooltip("RFL")
             .icon(RflPanel.icon())
@@ -128,19 +133,32 @@ final class RflPanelController
         long sessionVersion = session.version();
         long pluginVersion = pluginLog.version();
         boolean recording = replayRecorder.recording();
+        boolean armed = config.recordReplays();
         boolean force = resend;
         resend = false;
         boolean changed = force || sessionVersion != seenSessionVersion || pluginVersion != seenPluginVersion
-            || inPoh != seenInPoh || recording != seenRecording;
+            || inPoh != seenInPoh || recording != seenRecording || armed != seenArmed;
         if (!changed && now - refreshAt < REFRESH_MS)
         {
             return;
         }
+        boolean buttonChanged = force || armed != seenArmed || recording != seenRecording;
         refreshAt = now;
         seenSessionVersion = sessionVersion;
         seenPluginVersion = pluginVersion;
         seenInPoh = inPoh;
         seenRecording = recording;
+        if (buttonChanged)
+        {
+            SwingUtilities.invokeLater(() ->
+            {
+                if (panel != null)
+                {
+                    panel.setRecording(armed, recording);
+                }
+            });
+        }
+        seenArmed = armed;
 
         PanelModel model = PanelModel.of(inPoh, recording, pluginLog.latest(), session.collisionCount(),
             session.interceptionCount(), session.collisions(), session.interceptions(), session.latest(),
@@ -157,6 +175,16 @@ final class RflPanelController
                 panel.update(model);
             }
         });
+    }
+
+    /**
+     * EDT: flips the Record replays setting. The recorder opens or closes the file on its next
+     * ClientTick (closing saves it), and the next refresh relabels the button.
+     */
+    private void toggleRecording()
+    {
+        configManager.setConfiguration(RflConfig.GROUP, "recordReplays", !config.recordReplays());
+        invalidate();
     }
 
     /** EDT: creates {@code RUNELITE_DIR/rfl} off the EDT, then opens it as a plain path. */
