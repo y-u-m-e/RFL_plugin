@@ -49,7 +49,6 @@ final class RflPanelController
     // Client thread only.
     private long refreshAt;
     private long seenSessionVersion = -1;
-    private long seenPluginVersion = -1;
     private boolean seenInPoh;
     private boolean seenRecording;
     private boolean seenArmed;
@@ -131,12 +130,11 @@ final class RflPanelController
         }
         long now = System.currentTimeMillis();
         long sessionVersion = session.version();
-        long pluginVersion = pluginLog.version();
         boolean recording = replayRecorder.recording();
         boolean armed = config.recordReplays();
         boolean force = resend;
         resend = false;
-        boolean changed = force || sessionVersion != seenSessionVersion || pluginVersion != seenPluginVersion
+        boolean changed = force || sessionVersion != seenSessionVersion
             || inPoh != seenInPoh || recording != seenRecording || armed != seenArmed;
         if (!changed && now - refreshAt < REFRESH_MS)
         {
@@ -145,7 +143,6 @@ final class RflPanelController
         boolean buttonChanged = force || armed != seenArmed || recording != seenRecording;
         refreshAt = now;
         seenSessionVersion = sessionVersion;
-        seenPluginVersion = pluginVersion;
         seenInPoh = inPoh;
         seenRecording = recording;
         if (buttonChanged)
@@ -160,9 +157,9 @@ final class RflPanelController
         }
         seenArmed = armed;
 
-        PanelModel model = PanelModel.of(inPoh, recording, pluginLog.latest(), session.collisionCount(),
-            session.interceptionCount(), session.collisions(), session.interceptions(), session.latest(),
-            pluginLog.toggles(now), config.debugLogging() ? debug.text(inPoh) : null, ZoneId.systemDefault());
+        PanelModel model = PanelModel.of(inPoh, recording, session.collisionCount(), session.interceptionCount(),
+            session.collisions(), session.interceptions(), session.latest(),
+            config.debugLogging() ? debug.text(inPoh) : null, ZoneId.systemDefault());
         if (!force && model.equals(lastModel))
         {
             return;

@@ -56,7 +56,7 @@ public class PluginLogTest
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         PluginLog log = new PluginLog(new GsonBuilder().create(), executor, dir, () -> true);
 
-        log.snapshot(NOW, "Ref", 330, plugins());
+        log.snapshot(NOW, "Ref", 330, plugins(), "enter");
         drain(executor);
 
         Path file = dir.resolve(CollisionLog.fileName(NOW));
@@ -64,11 +64,13 @@ public class PluginLogTest
         List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
         assertEquals(1, lines.size());
         JsonObject o = parse(lines.get(0));
-        assertEquals(new TreeSet<>(List.of("type", "timeMs", "rsn", "world", "plugins")), new TreeSet<>(o.keySet()));
+        assertEquals(new TreeSet<>(List.of("type", "timeMs", "rsn", "world", "plugins", "event")),
+            new TreeSet<>(o.keySet()));
         assertEquals("snapshot", o.get("type").getAsString());
         assertEquals(NOW, o.get("timeMs").getAsLong());
         assertEquals("Ref", o.get("rsn").getAsString());
         assertEquals(330, o.get("world").getAsInt());
+        assertEquals("enter", o.get("event").getAsString());
         JsonArray list = o.getAsJsonArray("plugins");
         assertEquals(3, list.size());
         JsonObject first = list.get(0).getAsJsonObject();
@@ -82,13 +84,28 @@ public class PluginLogTest
     }
 
     @Test
+    public void snapshotLineCarriesTheLeaveEvent() throws Exception
+    {
+        Path dir = temp.getRoot().toPath().resolve("rfl").resolve("plugins");
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        PluginLog log = new PluginLog(new GsonBuilder().create(), executor, dir, () -> true);
+
+        log.snapshot(NOW, "Ref", 330, plugins(), "leave");
+        drain(executor);
+
+        List<String> lines = Files.readAllLines(dir.resolve(CollisionLog.fileName(NOW)), StandardCharsets.UTF_8);
+        assertEquals(1, lines.size());
+        assertEquals("leave", parse(lines.get(0)).get("event").getAsString());
+    }
+
+    @Test
     public void toggleLinesAppendAndUpdateTheRememberedList() throws Exception
     {
         Path dir = temp.getRoot().toPath();
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         PluginLog log = new PluginLog(new GsonBuilder().create(), executor, dir, () -> true);
 
-        log.snapshot(NOW, "Ref", 330, plugins());
+        log.snapshot(NOW, "Ref", 330, plugins(), "enter");
         log.toggle(NOW + 1, "Ref", 330, "Block Tracker", true);
         log.toggle(NOW + 2, "Ref", 330, "Agility", false);
         drain(executor);
@@ -116,7 +133,7 @@ public class PluginLogTest
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         PluginLog log = new PluginLog(new GsonBuilder().create(), executor, dir, () -> false);
 
-        log.snapshot(NOW, "Ref", 330, plugins());
+        log.snapshot(NOW, "Ref", 330, plugins(), "enter");
         log.toggle(NOW + 1, "Ref", 330, "Block Tracker", true);
         drain(executor);
 
@@ -151,7 +168,7 @@ public class PluginLogTest
         Path dir = temp.getRoot().toPath().resolve("plugins");
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         PluginLog writer = new PluginLog(new GsonBuilder().create(), executor, dir, () -> true);
-        writer.snapshot(NOW, "Ref", 330, plugins());
+        writer.snapshot(NOW, "Ref", 330, plugins(), "enter");
         writer.toggle(NOW + 1, "Ref", 330, "Block Tracker", true);
         drain(executor);
         Files.write(writer.dayFile(NOW), "{torn line\n".getBytes(StandardCharsets.UTF_8),
@@ -178,7 +195,7 @@ public class PluginLogTest
         PluginLog log = new PluginLog(new GsonBuilder().create(), executor, dir, () -> true);
         assertEquals(null, log.readToday(NOW));
 
-        log.snapshot(NOW, "Ref", 330, plugins());
+        log.snapshot(NOW, "Ref", 330, plugins(), "enter");
         log.toggle(NOW + 1, "Ref", 330, "Block Tracker", true);
         drain(executor);
 

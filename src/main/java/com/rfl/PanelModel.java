@@ -78,20 +78,8 @@ final class PanelModel
         String contacts;
     }
 
-    @Value
-    static class ToggleRow
-    {
-        String time;
-        String plugin;
-        boolean on;
-    }
-
     boolean inPoh;
     boolean recording;
-    /** Whether a plugin list has been read yet; until then the counts are meaningless. */
-    boolean pluginsKnown;
-    int enabledCount;
-    int disabledCount;
     int collisionCount;
     int interceptionCount;
     /** Null before the first event this session. */
@@ -100,31 +88,19 @@ final class PanelModel
     List<CollisionRow> collisions;
     /** Newest first. */
     List<InterceptionRow> interceptions;
-    /** Today's plugin toggles, newest first. */
-    List<ToggleRow> toggles;
     /** The Debug tab's text; null when Debug logging is off, which hides the tab. */
     String debugText;
 
     /**
-     * @param plugins the latest known plugin list (empty when not read yet)
      * @param collisions this session's collisions, newest first
      * @param interceptions this session's interceptions, newest first
      * @param latest the latest {@link Collision} or {@link CollisionLog.Interception}, or null
-     * @param toggles today's toggles, newest first
      * @param debugText null to hide the Debug tab
      */
-    static PanelModel of(boolean inPoh, boolean recording, List<PluginEntry> plugins, int collisionCount,
-        int interceptionCount, List<Collision> collisions, List<CollisionLog.Interception> interceptions,
-        Object latest, List<PluginLog.Toggle> toggles, String debugText, ZoneId zone)
+    static PanelModel of(boolean inPoh, boolean recording, int collisionCount, int interceptionCount,
+        List<Collision> collisions, List<CollisionLog.Interception> interceptions, Object latest, String debugText,
+        ZoneId zone)
     {
-        int enabled = 0;
-        for (PluginEntry e : plugins)
-        {
-            if (e.enabled)
-            {
-                enabled++;
-            }
-        }
         List<CollisionRow> collisionRows = new ArrayList<>(collisions.size());
         for (Collision c : collisions)
         {
@@ -135,15 +111,8 @@ final class PanelModel
         {
             interceptionRows.add(interceptionRow(i, zone));
         }
-        List<ToggleRow> toggleRows = new ArrayList<>(toggles.size());
-        for (PluginLog.Toggle t : toggles)
-        {
-            toggleRows.add(new ToggleRow(time(t.timeMs, zone), t.name, t.enabled));
-        }
-        return new PanelModel(inPoh, recording, !plugins.isEmpty(), enabled, plugins.size() - enabled,
-            collisionCount, interceptionCount, latestEvent(latest, zone),
-            Collections.unmodifiableList(collisionRows), Collections.unmodifiableList(interceptionRows),
-            Collections.unmodifiableList(toggleRows), debugText);
+        return new PanelModel(inPoh, recording, collisionCount, interceptionCount, latestEvent(latest, zone),
+            Collections.unmodifiableList(collisionRows), Collections.unmodifiableList(interceptionRows), debugText);
     }
 
     /** The record button's label: what a click does. {@code armed} is the Record replays setting. */

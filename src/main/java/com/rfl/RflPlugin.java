@@ -42,7 +42,7 @@ import net.runelite.client.util.Text;
  * <p>Owns the wiring between RuneLite events and the pieces that do the work: contact detection
  * each client frame, interception checks each game tick, and the replay recorder
  * ({@link ReplayRecorder}), and the local user's own plugin log ({@link PluginLog}): a snapshot on
- * entering a POH and a line per plugin toggle while logged in. The RFL panel lives in
+ * entering and leaving a POH and a line per plugin toggle while logged in. The RFL panel lives in
  * {@link RflPanelController} (this session's events in {@link SessionEvents}); debug logging and
  * the Debug tab's text in {@link RflDebug}.
  *
@@ -330,7 +330,7 @@ public class RflPlugin extends Plugin
         // scene change and the next tick don't run on the old value (detection and replays both read it).
         if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
         {
-            inPoh = false;
+            setInPoh(false);
             stopTracking();
         }
         else if (state == GameState.LOGGED_IN)
@@ -340,16 +340,19 @@ public class RflPlugin extends Plugin
         replayRecorder.onGameStateChanged(state);
     }
 
-    /** Client thread: updates {@link #inPoh} and snapshots the local plugin list on entering a POH. */
+    /**
+     * Client thread: updates {@link #inPoh} and, on a change, snapshots the local plugin list
+     * tagged "enter" or "leave" for a player-owned house, whether or not anything was toggled.
+     */
     private void setInPoh(final boolean now)
     {
         final boolean was = inPoh;
         inPoh = now;
-        if (now && !was)
+        if (now != was)
         {
             final Player local = client.getLocalPlayer();
             pluginLog.snapshot(System.currentTimeMillis(), local == null ? null : sanitizedName(local),
-                client.getWorld(), pluginSnapshotter.snapshot());
+                client.getWorld(), pluginSnapshotter.snapshot(), now ? "enter" : "leave");
         }
     }
 

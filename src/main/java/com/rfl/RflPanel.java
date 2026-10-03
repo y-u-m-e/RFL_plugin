@@ -37,8 +37,9 @@ import net.runelite.client.util.ImageUtil;
 /**
  * The "RFL" sidebar panel. Top to bottom: a status strip (house, recording); the session's
  * collision and interception counts with the latest event as a highlighted card;
- * Collisions / Interceptions / Plugins / Debug tabs; and an Open folder footer. It renders a
- * {@link PanelModel} and formats nothing itself.
+ * Collisions / Interceptions / Debug tabs; and a footer with Copy plugin history, the record
+ * button and Open folder. It renders a {@link PanelModel} and formats nothing itself. No plugin
+ * list or toggle history is shown here; league refs read the plugin log directly.
  *
  * <p>Threads: Swing EDT only. Models arrive through {@link #update}.
  */
@@ -48,8 +49,6 @@ final class RflPanel extends PluginPanel
     private static final Color INTERCEPTION = new Color(0, 200, 255);
     private static final Color ALERT = new Color(200, 40, 40);
     private static final Color OK = ColorScheme.PROGRESS_COMPLETE_COLOR;
-    private static final Color ON = new Color(90, 200, 90);
-    private static final Color OFF = new Color(220, 90, 90);
     /** Width for wrapped HTML text in a card, in CSS pixels. */
     private static final int WRAP = 165;
     private static final int COPY_MESSAGE_MS = 3000;
@@ -70,11 +69,8 @@ final class RflPanel extends PluginPanel
     // Tabs.
     private final JPanel collisionsList = vertical();
     private final JPanel interceptionsList = vertical();
-    private final JLabel enabledCount = bigNumberSmall();
-    private final JLabel disabledCount = bigNumberSmall();
-    private JComponent pluginCounts;
-    private final JLabel pluginsNotice = empty("Plugin list not read yet.");
-    private final JPanel togglesList = vertical();
+
+    // Footer.
     private final JLabel copyResult = new JLabel(" ");
     private final Timer copyResultTimer = new Timer(COPY_MESSAGE_MS, e -> setCopyText(" "));
     private final JTextArea debugText = new JTextArea();
@@ -109,17 +105,15 @@ final class RflPanel extends PluginPanel
         ScrollingDisplay display = new ScrollingDisplay();
         tabs = new MaterialTabGroup(display);
         // MaterialTabGroup's FlowLayout sizes itself for one row, so at sidebar width the tabs that
-        // wrap (Plugins, Debug) were clipped out of sight. Two per row, sized for every row.
+        // wrap were clipped out of sight. Two per row, sized for every row.
         tabs.setLayout(new GridLayout(0, 2, 4, 4));
         tabs.setAlignmentX(LEFT_ALIGNMENT);
         collisionsTab = new MaterialTab("Collisions", tabs, collisionsTab());
         MaterialTab interceptionsTab = new MaterialTab("Interceptions", tabs, interceptionsTab());
-        MaterialTab pluginsTab = new MaterialTab("Plugins", tabs, pluginsTab(copyHistory));
         debugTab = new MaterialTab("Debug", tabs, debugTab());
         debugTab.setVisible(false);
         tabs.addTab(collisionsTab);
         tabs.addTab(interceptionsTab);
-        tabs.addTab(pluginsTab);
         tabs.addTab(debugTab);
         top.add(tabs);
         add(top, BorderLayout.NORTH);
@@ -138,15 +132,32 @@ final class RflPanel extends PluginPanel
         open.setToolTipText("Opens the RFL folder: collisions, plugin history and replays.");
         open.setFocusable(false);
         open.addActionListener(e -> openFolder.run());
-        JPanel footer = new JPanel(new GridLayout(1, 2, 4, 0));
+
+        JButton copy = new JButton("Copy plugin history");
+        copy.setToolTipText("Copies today's plugin log file (rfl/plugins) to the clipboard, as is.");
+        copy.setFocusable(false);
+        copy.addActionListener(e -> copyHistory.run());
+        JPanel copyRow = new JPanel(new BorderLayout(0, 2));
+        copyRow.setOpaque(false);
+        copyResult.setFont(FontManager.getRunescapeSmallFont());
+        copyResult.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+        copyRow.add(copy, BorderLayout.NORTH);
+        copyRow.add(copyResult, BorderLayout.SOUTH);
+
+        JPanel buttonsRow = new JPanel(new GridLayout(1, 2, 4, 0));
+        buttonsRow.setOpaque(false);
+        buttonsRow.add(recordButton);
+        buttonsRow.add(open);
+
+        JPanel footer = new JPanel(new GridLayout(0, 1, 0, 4));
         footer.setOpaque(false);
-        footer.add(recordButton);
-        footer.add(open);
+        footer.add(copyRow);
+        footer.add(buttonsRow);
         add(footer, BorderLayout.SOUTH);
 
         copyResultTimer.setRepeats(false);
         tabs.select(collisionsTab);
-        update(PanelModel.of(false, false, List.of(), 0, 0, List.of(), List.of(), null, List.of(), null,
+        update(PanelModel.of(false, false, 0, 0, List.of(), List.of(), null, null,
             java.time.ZoneId.systemDefault()));
     }
 
@@ -225,39 +236,6 @@ final class RflPanel extends PluginPanel
         return tab;
     }
 
-    private JComponent pluginsTab(Runnable copyHistory)
-    {
-        JPanel tab = vertical();
-        tab.add(pluginsNotice);
-
-        JPanel counts = new JPanel(new GridLayout(1, 2, 6, 0));
-        counts.setOpaque(false);
-        counts.setAlignmentX(LEFT_ALIGNMENT);
-        counts.add(tile(enabledCount, "ENABLED", ON));
-        counts.add(tile(disabledCount, "DISABLED", ColorScheme.MEDIUM_GRAY_COLOR));
-        pluginCounts = capHeight(counts);
-        tab.add(pluginCounts);
-        tab.add(Box.createVerticalStrut(8));
-
-        JButton copy = new JButton("Copy plugin history");
-        copy.setToolTipText("Copies today's plugin log file (rfl/plugins) to the clipboard, as is.");
-        copy.setFocusable(false);
-        copy.addActionListener(e -> copyHistory.run());
-        JPanel copyRow = new JPanel(new BorderLayout(0, 2));
-        copyRow.setOpaque(false);
-        copyRow.setAlignmentX(LEFT_ALIGNMENT);
-        copyResult.setFont(FontManager.getRunescapeSmallFont());
-        copyResult.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-        copyRow.add(copy, BorderLayout.NORTH);
-        copyRow.add(copyResult, BorderLayout.SOUTH);
-        tab.add(capHeight(copyRow));
-        tab.add(Box.createVerticalStrut(6));
-
-        tab.add(header("TODAY'S TOGGLES"));
-        tab.add(togglesList);
-        return tab;
-    }
-
     private JComponent debugTab()
     {
         debugText.setEditable(false);
@@ -307,14 +285,6 @@ final class RflPanel extends PluginPanel
         if (was == null || !m.getInterceptions().equals(was.getInterceptions()))
         {
             showInterceptions(m.getInterceptions());
-        }
-        pluginsNotice.setVisible(!m.isPluginsKnown());
-        pluginCounts.setVisible(m.isPluginsKnown());
-        enabledCount.setText(m.isPluginsKnown() ? String.valueOf(m.getEnabledCount()) : "-");
-        disabledCount.setText(m.isPluginsKnown() ? String.valueOf(m.getDisabledCount()) : "-");
-        if (was == null || !m.getToggles().equals(was.getToggles()))
-        {
-            showToggles(m.getToggles());
         }
 
         boolean debug = m.getDebugText() != null;
@@ -417,31 +387,6 @@ final class RflPanel extends PluginPanel
         }
     }
 
-    private void showToggles(List<PanelModel.ToggleRow> rows)
-    {
-        togglesList.removeAll();
-        if (rows.isEmpty())
-        {
-            togglesList.add(empty("No plugins turned on or off today."));
-        }
-        for (PanelModel.ToggleRow r : rows)
-        {
-            JPanel row = row();
-            row.setLayout(new BorderLayout(6, 0));
-            row.add(small(r.getTime()), BorderLayout.WEST);
-            JLabel name = new JLabel(r.getPlugin());
-            name.setFont(FontManager.getRunescapeSmallFont());
-            name.setForeground(Color.WHITE);
-            name.setToolTipText(r.getPlugin());
-            row.add(name, BorderLayout.CENTER);
-            JLabel state = new JLabel(r.isOn() ? "ON" : "OFF");
-            state.setFont(FontManager.getRunescapeBoldFont());
-            state.setForeground(r.isOn() ? ON : OFF);
-            row.add(state, BorderLayout.EAST);
-            togglesList.add(row);
-        }
-    }
-
     // ---- Small builders ----
 
     private static JLabel bigNumber(Color color)
@@ -449,14 +394,6 @@ final class RflPanel extends PluginPanel
         JLabel label = new JLabel("0");
         label.setFont(FontManager.getRunescapeBoldFont().deriveFont(32f));
         label.setForeground(color);
-        return label;
-    }
-
-    private static JLabel bigNumberSmall()
-    {
-        JLabel label = new JLabel("-");
-        label.setFont(FontManager.getRunescapeBoldFont().deriveFont(24f));
-        label.setForeground(Color.WHITE);
         return label;
     }
 
@@ -513,16 +450,6 @@ final class RflPanel extends PluginPanel
         return label;
     }
 
-    private static JLabel header(String text)
-    {
-        JLabel label = new JLabel(text);
-        label.setFont(FontManager.getRunescapeSmallFont());
-        label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-        label.setBorder(BorderFactory.createEmptyBorder(2, 0, 3, 0));
-        label.setAlignmentX(LEFT_ALIGNMENT);
-        return label;
-    }
-
     private static JLabel empty(String text)
     {
         JLabel label = small(text);
@@ -569,7 +496,7 @@ final class RflPanel extends PluginPanel
             Math.round(base.getBlue() + (tint.getBlue() - base.getBlue()) * amount));
     }
 
-    /** A small filled circle, for the status strip and plugin lines. */
+    /** A small filled circle, for the status strip. */
     private static final class Dot implements Icon
     {
         private final Color color;

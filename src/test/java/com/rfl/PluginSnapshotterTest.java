@@ -44,21 +44,4 @@ public class PluginSnapshotterTest
         // Not in net.runelite.client.plugins and no Hub manifest.
         assertEquals(PluginEntry.SIDELOADED, entries.get(0).source);
     }
-
-    @Test
-    public void panelCountsEnabledAndDisabledPlugins()
-    {
-        PanelModel m = PanelModel.of(true, false, List.of(
-            new PluginEntry("Agility", true, PluginEntry.BUILTIN),
-            new PluginEntry("Block Tracker", true, PluginEntry.HUB),
-            new PluginEntry("Zoom", false, PluginEntry.BUILTIN)), 0, 0, List.of(), List.of(), null, List.of(), null,
-            java.time.ZoneOffset.UTC);
-        assertEquals(2, m.getEnabledCount());
-        assertEquals(1, m.getDisabledCount());
-        assertTrue(m.isPluginsKnown());
-
-        PanelModel empty = PanelModel.of(false, false, List.of(), 0, 0, List.of(), List.of(), null, List.of(), null,
-            java.time.ZoneOffset.UTC);
-        assertFalse(empty.isPluginsKnown());
-    }
 }

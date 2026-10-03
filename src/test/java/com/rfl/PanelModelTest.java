@@ -29,11 +29,11 @@ public class PanelModelTest
         return new CollisionLog.Interception(receiver, contacts, timeMs, 20, 330, 1, 2, 0);
     }
 
-    private static PanelModel model(List<PluginEntry> plugins, List<Collision> collisions,
-        List<CollisionLog.Interception> interceptions, Object latest, List<PluginLog.Toggle> toggles, String debug)
+    private static PanelModel model(List<Collision> collisions, List<CollisionLog.Interception> interceptions,
+        Object latest, String debug)
     {
-        return PanelModel.of(true, true, plugins, collisions.size(), interceptions.size(), collisions, interceptions,
-            latest, toggles, debug, UTC);
+        return PanelModel.of(true, true, collisions.size(), interceptions.size(), collisions, interceptions, latest,
+            debug, UTC);
     }
 
     @Test
@@ -46,8 +46,8 @@ public class PanelModelTest
     @Test
     public void statusText()
     {
-        assertEquals("In a house", model(List.of(), List.of(), List.of(), null, List.of(), null).status());
-        PanelModel out = PanelModel.of(false, false, List.of(), 0, 0, List.of(), List.of(), null, List.of(), null, UTC);
+        assertEquals("In a house", model(List.of(), List.of(), null, null).status());
+        PanelModel out = PanelModel.of(false, false, 0, 0, List.of(), List.of(), null, null, UTC);
         assertEquals("Not in a house", out.status());
         assertFalse(out.isRecording());
     }
@@ -55,7 +55,7 @@ public class PanelModelTest
     @Test
     public void countsComeFromTheSessionNotTheRowCap()
     {
-        PanelModel m = PanelModel.of(true, false, List.of(), 73, 4, List.of(), List.of(), null, List.of(), null, UTC);
+        PanelModel m = PanelModel.of(true, false, 73, 4, List.of(), List.of(), null, null, UTC);
         assertEquals(73, m.getCollisionCount());
         assertEquals(4, m.getInterceptionCount());
     }
@@ -64,7 +64,7 @@ public class PanelModelTest
     public void latestInterceptionText()
     {
         CollisionLog.Interception i = interception("Bob", List.of("Amy"), T);
-        PanelModel m = model(List.of(), List.of(), List.of(i), i, List.of(), null);
+        PanelModel m = model(List.of(), List.of(i), i, null);
         assertEquals(PanelModel.Kind.INTERCEPTION, m.getLatest().getKind());
         assertEquals("Bob caught it in contact with Amy", m.getLatest().getBody());
         assertEquals("Interception: Bob caught it in contact with Amy, 19:42:10", m.getLatest().text());
@@ -122,34 +122,26 @@ public class PanelModelTest
     {
         List<Collision> collisions = List.of(collision("C", "D", List.of("C"), T + 5000, 2),
             collision("A", "B", List.of("A"), T, 1));
-        PanelModel m = model(List.of(), collisions, List.of(), collisions.get(0), List.of(), null);
+        PanelModel m = model(collisions, List.of(), collisions.get(0), null);
         assertEquals("C", m.getCollisions().get(0).getA());
         assertEquals("A", m.getCollisions().get(1).getA());
     }
 
     @Test
-    public void toggleRows()
-    {
-        PanelModel m = model(List.of(), List.of(), List.of(), null,
-            List.of(new PluginLog.Toggle(T, "Ref", 330, "Block Tracker", true)), null);
-        assertEquals(List.of(new PanelModel.ToggleRow("19:42:10", "Block Tracker", true)), m.getToggles());
-    }
-
-    @Test
     public void debugTextHidesTheTabWhenNull()
     {
-        assertNull(model(List.of(), List.of(), List.of(), null, List.of(), null).getDebugText());
-        assertEquals("GATE", model(List.of(), List.of(), List.of(), null, List.of(), "GATE").getDebugText());
+        assertNull(model(List.of(), List.of(), null, null).getDebugText());
+        assertEquals("GATE", model(List.of(), List.of(), null, "GATE").getDebugText());
     }
 
     @Test
     public void equalInputsGiveEqualModels()
     {
         Collision c = collision("Amy", "Bob", List.of("Bob"), T, 12);
-        PanelModel a = model(List.of(), List.of(c), List.of(), c, List.of(), null);
-        PanelModel b = model(List.of(), List.of(c), List.of(), c, List.of(), null);
+        PanelModel a = model(List.of(c), List.of(), c, null);
+        PanelModel b = model(List.of(c), List.of(), c, null);
         assertEquals(a, b);
-        assertNotEquals(a, model(List.of(), List.of(c), List.of(), c, List.of(), "x"));
+        assertNotEquals(a, model(List.of(c), List.of(), c, "x"));
     }
 
     @Test

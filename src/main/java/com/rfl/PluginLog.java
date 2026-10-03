@@ -28,7 +28,8 @@ import net.runelite.client.RuneLite;
 
 /**
  * The local user's own plugin list, saved on this computer for league refs to collect later: a
- * {@code "type":"snapshot"} line (every installed plugin) on entering a player-owned house, and a
+ * {@code "type":"snapshot"} line (every installed plugin, tagged {@code "event":"enter"} or
+ * {@code "event":"leave"}) on entering and leaving a player-owned house, and a
  * {@code "type":"toggle"} line when a plugin is turned on or off while logged in, appended to
  * {@code RUNELITE_DIR/rfl/plugins/YYYY-MM-DD.jsonl} while Log plugin stats is on. Nothing here is
  * ever sent anywhere, and no other player's plugins are known or logged.
@@ -45,7 +46,7 @@ import net.runelite.client.RuneLite;
 @Singleton
 final class PluginLog
 {
-    /** One snapshot line. Field names are the JSON keys. */
+    /** One snapshot line. Field names are the JSON keys. {@code event} is "enter" or "leave". */
     static final class Snapshot
     {
         final String type = "snapshot";
@@ -53,13 +54,15 @@ final class PluginLog
         final String rsn;
         final int world;
         final List<PluginEntry> plugins;
+        final String event;
 
-        Snapshot(long timeMs, String rsn, int world, List<PluginEntry> plugins)
+        Snapshot(long timeMs, String rsn, int world, List<PluginEntry> plugins, String event)
         {
             this.timeMs = timeMs;
             this.rsn = rsn;
             this.world = world;
             this.plugins = plugins;
+            this.event = event;
         }
     }
 
@@ -144,11 +147,14 @@ final class PluginLog
         version.incrementAndGet();
     }
 
-    /** Remembers the list and, with Log plugin stats on, appends a snapshot line. */
-    void snapshot(long timeMs, String rsn, int world, List<PluginEntry> plugins)
+    /**
+     * Remembers the list and, with Log plugin stats on, appends a snapshot line tagged
+     * {@code event} ("enter" or "leave").
+     */
+    void snapshot(long timeMs, String rsn, int world, List<PluginEntry> plugins, String event)
     {
         remember(plugins);
-        write(new Snapshot(timeMs, rsn, world, latest), timeMs);
+        write(new Snapshot(timeMs, rsn, world, latest, event), timeMs);
     }
 
     /** Updates the remembered list for a toggle; nothing is written. */
