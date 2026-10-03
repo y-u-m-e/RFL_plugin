@@ -19,9 +19,16 @@ import java.util.Set;
  *
  * <p>State kept across calls: a stable name-&gt;index assignment (first-seen order, never
  * reused or shrunk), each player's last <em>written</em> {@code f} tuple, the set of names
- * present on the previous {@link #frame} call, and each player's last appearance hash. A
- * despawned player's last-written tuple is forgotten, so a later respawn always gets a fresh
- * full row in {@code f} even if their pose happens to match what was last sent.
+ * present on the previous {@link #frame} call, the set of names {@link #frame} has currently
+ * spawned, and each player's last appearance hash. A despawned player's last-written tuple is
+ * forgotten, so a later respawn always gets a fresh full row in {@code f} even if their pose
+ * happens to match what was last sent.
+ *
+ * <p>{@link #tick} only emits {@code app} for names {@link #frame} has spawned — an appearance
+ * for a name nobody has spawned yet is dropped, and dropping it never assigns that name an
+ * index. Spawning a name (first time, or a respawn after a despawn) clears its stored
+ * appearance hash, so the next {@link #tick} always writes a fresh {@code app} for it, even if
+ * the appearance happens to match what was last sent.
  */
 final class ReplaySampler
 {
@@ -102,6 +109,8 @@ final class ReplaySampler
     private final Map<String, int[]> lastWritten = new LinkedHashMap<>();
     private final Map<String, Integer> lastAppearanceHash = new LinkedHashMap<>();
     private Set<String> present = new LinkedHashSet<>();
+    /** Names {@link #frame} has currently spawned; only its own spawn emission adds to this. */
+    private final Set<String> spawned = new LinkedHashSet<>();
 
     /** Lines for one ClientTick: despawn, spawn, f, then ball lines, in that order. */
     List<Map<String, Object>> frame(int cycle, List<PlayerState> players, List<Ball> balls)
@@ -120,8 +129,10 @@ final class ReplaySampler
             {
                 lines.add(despawnLine(cycle, indexOf(name)));
                 // Forget the last tuple so a later respawn always writes a fresh full row,
-                // even if the pose on return happens to match what was last sent.
+                // even if the pose on return happens to match what was last sent. Also
+                // un-spawn the name so tick() stops emitting app for it until it respawns.
                 lastWritten.remove(name);
+                spawned.remove(name);
             }
         }
 
@@ -130,6 +141,10 @@ final class ReplaySampler
             if (!present.contains(p.name))
             {
                 lines.add(spawnLine(cycle, indexFor(p.name), p.name));
+                spawned.add(p.name);
+                // Forget the last appearance hash so the next tick() always writes a fresh
+                // app for this name, even if the appearance happens to match what was last sent.
+                lastAppearanceHash.remove(p.name);
             }
         }
 
@@ -158,7 +173,11 @@ final class ReplaySampler
         return lines;
     }
 
-    /** Lines for one GameTick: tick, then app lines for players whose appearance changed. */
+    /**
+     * Lines for one GameTick: tick, then app lines for spawned players whose appearance
+     * changed. An appearance for a name {@link #frame} hasn't spawned (yet, or anymore) is
+     * skipped and never assigned an index.
+     */
     List<Map<String, Object>> tick(int cycle, int tick, List<Appearance> appearances)
     {
         List<Map<String, Object>> lines = new ArrayList<>();
@@ -166,11 +185,15 @@ final class ReplaySampler
 
         for (Appearance a : appearances)
         {
+            if (!spawned.contains(a.name))
+            {
+                continue;
+            }
             int hash = a.hash();
             Integer lastHash = lastAppearanceHash.get(a.name);
             if (lastHash == null || lastHash != hash)
             {
-                lines.add(appLine(cycle, indexFor(a.name), a));
+                lines.add(appLine(cycle, indexOf(a.name), a));
                 lastAppearanceHash.put(a.name, hash);
             }
         }

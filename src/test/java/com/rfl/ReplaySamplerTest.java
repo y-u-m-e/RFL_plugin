@@ -171,6 +171,7 @@ public class ReplaySamplerTest
     public void appearanceOnlyWhenChanged()
     {
         ReplaySampler sampler = new ReplaySampler();
+        sampler.frame(1, List.of(player("A", 100, 200, 0, 1, 2, 3, 4)), List.of());
         int[] eq = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
         int[] col = { 1, 2, 3, 4, 5 };
         Appearance a = new Appearance("A", 0, eq, col);
@@ -195,5 +196,35 @@ public class ReplaySamplerTest
         assertEquals(2, tick3.size());
         assertEquals("app", tick3.get(1).get("t"));
         assertArrayEquals(eq2, (int[]) tick3.get(1).get("eq"));
+    }
+
+    @Test
+    public void appearanceWaitsForSpawn()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        int[] eq = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+        int[] col = { 1, 2, 3, 4, 5 };
+        Appearance a = new Appearance("A", 0, eq, col);
+
+        List<Map<String, Object>> beforeSpawn = sampler.tick(1, 100, List.of(a));
+        assertEquals(1, beforeSpawn.size());
+        assertEquals("tick", beforeSpawn.get(0).get("t"));
+        assertEquals(-1, sampler.indexOf("A"));
+
+        List<Map<String, Object>> spawnFrame = sampler.frame(1, List.of(player("A", 100, 200, 0, 1, 2, 3, 4)),
+            List.of());
+        assertEquals(0, firstOfType(spawnFrame, "spawn").get("i"));
+
+        List<Map<String, Object>> afterSpawn = sampler.tick(2, 101, List.of(a));
+        assertEquals(2, afterSpawn.size());
+        assertEquals("app", afterSpawn.get(1).get("t"));
+        assertEquals(0, afterSpawn.get(1).get("i"));
+
+        sampler.frame(2, List.of(), List.of());
+        sampler.frame(3, List.of(player("A", 100, 200, 0, 1, 2, 3, 4)), List.of());
+
+        List<Map<String, Object>> afterRespawn = sampler.tick(3, 102, List.of(a));
+        assertEquals(2, afterRespawn.size());
+        assertEquals("app", afterRespawn.get(1).get("t"));
     }
 }
