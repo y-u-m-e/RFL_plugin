@@ -65,6 +65,8 @@ final class ReplayRecorder
     /** Latest game cycle seen by {@link #onClientTick}, so {@link #onEvent} doesn't need the client. */
     private int lastCycle;
     private boolean pitchPending;
+    /** Set by {@link #shutdown}: the client is exiting, so no new file may open. */
+    private boolean shutDown;
     private long frameNanos;
     private long frames;
     /** The local user's own plugin list for the {@code plugins} line; may be null or return null. */
@@ -106,6 +108,10 @@ final class ReplayRecorder
     /** Client thread, every ClientTick: opens/closes per {@link #records}, then samples the frame. */
     void onClientTick(Client client, boolean inPoh)
     {
+        if (shutDown)
+        {
+            return;
+        }
         final long start = System.nanoTime();
         final GameState state = client.getGameState();
         // LOADING counts as logged in so a scene reload inside the house doesn't split the file.
@@ -253,6 +259,16 @@ final class ReplayRecorder
         line.put("name", name);
         line.put("enabled", enabled);
         return line;
+    }
+
+    /**
+     * Client thread, on client exit: closes the open file and never opens another. The client
+     * keeps ticking for a moment after ClientShutdown, and a file opened then would be cut off.
+     */
+    CompletableFuture<Void> shutdown()
+    {
+        shutDown = true;
+        return stop();
     }
 
     /**

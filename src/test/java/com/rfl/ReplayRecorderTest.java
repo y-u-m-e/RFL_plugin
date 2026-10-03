@@ -102,4 +102,27 @@ public class ReplayRecorderTest
         assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
         assertFalse(dir.toFile().exists());
     }
+
+    @Test
+    public void neverReopensAfterClientShutdown() throws Exception
+    {
+        // Exiting from inside a house with Record replays on: the frames after the shutdown stop
+        // must not open a fresh file the dying client can't finish (left a 10-byte stub before).
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        Path dir = temp.getRoot().toPath().resolve("replays");
+        ReplayRecorder recorder = new ReplayRecorder(new RflConfig()
+        {
+            @Override
+            public boolean recordReplays()
+            {
+                return true;
+            }
+        }, new ReplayWriter(new GsonBuilder().create(), executor), dir);
+        recorder.shutdown().get(5, TimeUnit.SECONDS);
+        // A null client would throw if the recorder tried to open a file or read the frame.
+        recorder.onClientTick(null, true);
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        assertFalse(dir.toFile().exists());
+    }
 }

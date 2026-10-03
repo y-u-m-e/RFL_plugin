@@ -401,7 +401,7 @@ public class RflPlugin extends Plugin
         {
             try
             {
-                replayRecorder.stop().whenComplete((ignored, error) -> done.complete(null));
+                replayRecorder.shutdown().whenComplete((ignored, error) -> done.complete(null));
             }
             catch (RuntimeException e)
             {
