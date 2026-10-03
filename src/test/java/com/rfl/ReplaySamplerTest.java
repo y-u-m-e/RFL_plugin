@@ -12,6 +12,7 @@ import org.junit.Test;
 
 import com.rfl.ReplaySampler.Appearance;
 import com.rfl.ReplaySampler.Ball;
+import com.rfl.ReplaySampler.PitchFloor;
 import com.rfl.ReplaySampler.PitchObjects;
 import com.rfl.ReplaySampler.PlayerState;
 import com.rfl.ReplaySampler.TrueTile;
@@ -392,5 +393,163 @@ public class ReplaySamplerTest
         assertEquals(2, rows.size());
         assertArrayEquals(new int[] { 100, 0, 512, 6400, 6400 }, rows.get(0));
         assertArrayEquals(new int[] { 200, 1, 1, 6528, 6400 }, rows.get(1));
+        // The legacy add fills objs2 with config 0 and a 1x1 footprint at the same point.
+        assertArrayEquals(new int[] { 100, 0, 0, 6400, 6400, 1, 1 }, objs.rows2().get(0));
+    }
+
+    @Test
+    public void pitchObjectConfigDecodesShapeAndRotation()
+    {
+        // Shape 10 (game object), rotation 3, plus unrelated high bits.
+        int config = 10 | (3 << 6) | (1 << 8);
+        assertEquals(10, PitchObjects.shape(config));
+        assertEquals(3, PitchObjects.rotation(config));
+        // Roof shape 21, rotation 1.
+        assertEquals(21, PitchObjects.shape(21 | (1 << 6)));
+        assertEquals(1, PitchObjects.rotation(21 | (1 << 6)));
+        // Bit 5 is neither shape nor rotation.
+        assertEquals(0, PitchObjects.shape(32));
+        assertEquals(0, PitchObjects.rotation(32));
+    }
+
+    @Test
+    public void pitchObjects2PlaceGameObjectAtSouthWestTileCentre()
+    {
+        PitchObjects objs = new PitchObjects();
+        // A 2x2 GameObject spanning scene tiles (50,60)..(51,61): getLocalLocation is its centre
+        // (51*128, 61*128), the south-west tile centre is (50*128+64, 60*128+64).
+        int minX = 50;
+        int minY = 60;
+        int maxX = 51;
+        int maxY = 61;
+        int config = 10 | (2 << 6);
+        assertTrue(objs.add(PitchObjects.GAME, 9L, 4321, 1024, 6528, 7808, config,
+            PitchObjects.tileCentre(minX), PitchObjects.tileCentre(minY),
+            PitchObjects.span(minX, maxX), PitchObjects.span(minY, maxY)));
+        // Offered again from another of its four tiles: still listed once in both arrays.
+        assertFalse(objs.add(PitchObjects.GAME, 9L, 4321, 1024, 6528, 7808, config,
+            PitchObjects.tileCentre(minX), PitchObjects.tileCentre(minY), 2, 2));
+
+        assertEquals(1, objs.rows().size());
+        assertEquals(1, objs.rows2().size());
+        assertArrayEquals(new int[] { 4321, 0, 1024, 6528, 7808 }, objs.rows().get(0));
+        assertArrayEquals(new int[] { 4321, 0, config, 6464, 7744, 2, 2 }, objs.rows2().get(0));
+    }
+
+    @Test
+    public void pitchFloorCropsToRadiusAndZeroesOutside()
+    {
+        short[][] under = new short[104][104];
+        byte[][] shapes = new byte[104][104];
+        for (short[] col : under)
+        {
+            java.util.Arrays.fill(col, (short) 7);
+        }
+        for (byte[] col : shapes)
+        {
+            java.util.Arrays.fill(col, (byte) 200);
+        }
+
+        int[][] u = PitchFloor.crop(under, 52, 52, 20);
+        int[][] s = PitchFloor.crop(shapes, 52, 52, 20);
+
+        assertEquals(104, u.length);
+        assertEquals(104, u[0].length);
+        assertEquals(7, u[32][32]);
+        assertEquals(7, u[72][72]);
+        assertEquals(0, u[31][52]);
+        assertEquals(0, u[52][73]);
+        assertEquals(0, u[0][0]);
+        // Bytes are unsigned.
+        assertEquals(200, s[52][52]);
+        assertEquals(0, s[73][52]);
+        // Off-scene centre (recorder tile unknown): everything is 0.
+        assertEquals(0, PitchFloor.crop(under, -21, -21, 20)[0][0]);
+        // Null plane: all zero, still 104x104.
+        assertEquals(104, PitchFloor.crop((short[][]) null, 52, 52, 20).length);
+    }
+
+    @Test
+    public void pitchFloorReadsExtendedSceneAtOffset()
+    {
+        short[][] over = new short[184][184];
+        // Scene tile (10, 12) sits at extended index (50, 52).
+        over[50][52] = 33;
+        over[10][12] = 99;
+
+        int[][] o = PitchFloor.crop(over, 10, 12, 20);
+
+        assertEquals(40, PitchFloor.offset(184));
+        assertEquals(0, PitchFloor.offset(105));
+        assertEquals(33, o[10][12]);
+    }
+
+    @Test
+    public void pitchLineSampleSize() throws Exception
+    {
+        // A worst-case-ish pitch: full 41x41 floor crops, 400 objects, all four planes of chunks.
+        Map<String, Object> line = new java.util.LinkedHashMap<>();
+        java.util.Random rnd = new java.util.Random(1);
+        int[][] heights = new int[104][104];
+        for (int[] col : heights)
+        {
+            for (int y = 0; y < col.length; y++)
+            {
+                col[y] = -rnd.nextInt(2000);
+            }
+        }
+        int[][][] chunks = new int[4][13][13];
+        for (int[][] p : chunks)
+        {
+            for (int[] col : p)
+            {
+                for (int y = 0; y < col.length; y++)
+                {
+                    col[y] = rnd.nextInt();
+                }
+            }
+        }
+        short[][] under = new short[104][104];
+        short[][] over = new short[104][104];
+        byte[][] shapes = new byte[104][104];
+        for (int x = 0; x < 104; x++)
+        {
+            for (int y = 0; y < 104; y++)
+            {
+                under[x][y] = (short) (1 + rnd.nextInt(100));
+                over[x][y] = (short) rnd.nextInt(150);
+                shapes[x][y] = (byte) rnd.nextInt(12);
+            }
+        }
+        PitchObjects objs = new PitchObjects();
+        for (int i = 0; i < 400; i++)
+        {
+            int x = 6400 + rnd.nextInt(5000);
+            int y = 6400 + rnd.nextInt(5000);
+            objs.add(i % 4, i, rnd.nextInt(60000), rnd.nextInt(2048), x, y, rnd.nextInt(1 << 8), x, y, 1, 1);
+        }
+        line.put("t", "pitch");
+        line.put("cyc", 123456);
+        line.put("plane", 0);
+        line.put("baseX", 1856);
+        line.put("baseY", 5056);
+        line.put("chunks", chunks[0]);
+        line.put("heights", heights);
+        line.put("objs", objs.rows());
+        line.put("objs2", objs.rows2());
+        line.put("under", PitchFloor.crop(under, 52, 52, 20));
+        line.put("over", PitchFloor.crop(over, 52, 52, 20));
+        line.put("shapes", PitchFloor.crop(shapes, 52, 52, 20));
+        line.put("rots", PitchFloor.crop(shapes, 52, 52, 20));
+        line.put("chunksAll", chunks);
+
+        byte[] json = new com.google.gson.Gson().toJson(line).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.GZIPOutputStream gz = new java.util.zip.GZIPOutputStream(bytes))
+        {
+            gz.write(json);
+        }
+        System.out.println("pitch sample: " + json.length + " bytes raw, " + bytes.size() + " bytes gzipped");
+        assertTrue(json.length < 400_000);
     }
 }

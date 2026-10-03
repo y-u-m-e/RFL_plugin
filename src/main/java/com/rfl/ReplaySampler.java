@@ -119,10 +119,14 @@ final class ReplaySampler
     }
 
     /**
-     * Collects the {@code pitch} line's {@code objs} rows {@code [id, type, orient, x, y]}, listing
-     * each object once. A GameObject spanning several tiles is offered once per tile with the same
+     * Collects the {@code pitch} line's {@code objs} rows {@code [id, type, orient, x, y]} and the
+     * matching {@code objs2} rows {@code [id, kind, config, x, y, sizeX, sizeY]}, listing each
+     * object once. A GameObject spanning several tiles is offered once per tile with the same
      * hash; {@link #add} keeps the first. {@link #lo} / {@link #hi} bound the square of scene tiles
      * within a Chebyshev radius, which is the recorder's distance filter.
+     *
+     * <p>{@code config} is the object's raw scene config: {@link #shape} is {@code config & 31}
+     * (roof shapes 12..21 included), {@link #rotation} is {@code (config >>> 6) & 3}.
      */
     static final class PitchObjects
     {
@@ -134,6 +138,7 @@ final class ReplaySampler
         private final List<Set<Long>> seen = List.of(new HashSet<>(), new HashSet<>(), new HashSet<>(),
             new HashSet<>());
         private final List<int[]> rows = new ArrayList<>();
+        private final List<int[]> rows2 = new ArrayList<>();
 
         /** Lowest scene index within {@code radius} of {@code centre}, clipped to 0. */
         static int lo(int centre, int radius)
@@ -147,20 +152,140 @@ final class ReplaySampler
             return Math.min(size - 1, centre + radius);
         }
 
-        /** Adds one object; false (and nothing added) when this type and hash were already added. */
+        /** Object shape from a scene config: 0..3 walls, 4..8 wall decorations, 10/11 game, 12..21 roofs, 22 ground. */
+        static int shape(int config)
+        {
+            return config & 31;
+        }
+
+        /** Object rotation (0..3, quarter turns) from a scene config. */
+        static int rotation(int config)
+        {
+            return (config >>> 6) & 3;
+        }
+
+        /** Local coordinate of the centre of scene tile {@code index} (128 local units per tile). */
+        static int tileCentre(int index)
+        {
+            return index * 128 + 64;
+        }
+
+        /** Tiles spanned from {@code min} to {@code max} inclusive. */
+        static int span(int min, int max)
+        {
+            return max - min + 1;
+        }
+
+        /**
+         * Adds one object with only the {@code objs} fields: config 0, footprint 1x1 at the same
+         * local point. False (and nothing added) when this type and hash were already added.
+         */
         boolean add(int type, long hash, int id, int orient, int x, int y)
+        {
+            return add(type, hash, id, orient, x, y, 0, x, y, 1, 1);
+        }
+
+        /**
+         * Adds one object to both {@code objs} ({@code x}/{@code y}: its local location) and
+         * {@code objs2} ({@code x2}/{@code y2}: for a GameObject the south-west tile centre, else
+         * the local location). False (and nothing added) when this type and hash were already added.
+         */
+        boolean add(int type, long hash, int id, int orient, int x, int y, int config, int x2, int y2,
+            int sizeX, int sizeY)
         {
             if (!seen.get(type).add(hash))
             {
                 return false;
             }
             rows.add(new int[] { id, type, orient, x, y });
+            rows2.add(new int[] { id, type, config, x2, y2, sizeX, sizeY });
             return true;
         }
 
         List<int[]> rows()
         {
             return rows;
+        }
+
+        List<int[]> rows2()
+        {
+            return rows2;
+        }
+    }
+
+    /**
+     * Crops one plane of the scene floor arrays ({@code under}, {@code over}, {@code shapes}) to
+     * a 104x104 {@code [x][y]} int grid holding values only within a Chebyshev radius of the
+     * recorder's scene tile, 0 elsewhere. Source planes may be scene-sized (104, or 105 with an
+     * edge row) or extended-scene-sized (184+), in which case scene tile 0 sits at index 40.
+     */
+    static final class PitchFloor
+    {
+        static final int SCENE = 104;
+        static final int EXTENDED_SCENE = 184;
+
+        private PitchFloor()
+        {
+        }
+
+        /** Index of scene tile 0 in a source plane of {@code length} rows. */
+        static int offset(int length)
+        {
+            return length >= EXTENDED_SCENE ? (EXTENDED_SCENE - SCENE) / 2 : 0;
+        }
+
+        /** Unsigned crop of a {@code short} plane (underlay / overlay ids, stored as id + 1). */
+        static int[][] crop(short[][] plane, int cx, int cy, int radius)
+        {
+            final int[][] out = new int[SCENE][SCENE];
+            if (plane == null)
+            {
+                return out;
+            }
+            final int off = offset(plane.length);
+            for (int x = PitchObjects.lo(cx, radius); x <= PitchObjects.hi(cx, radius, SCENE); x++)
+            {
+                final short[] col = x + off < plane.length ? plane[x + off] : null;
+                if (col == null)
+                {
+                    continue;
+                }
+                for (int y = PitchObjects.lo(cy, radius); y <= PitchObjects.hi(cy, radius, SCENE); y++)
+                {
+                    if (y + off < col.length)
+                    {
+                        out[x][y] = col[y + off] & 0xFFFF;
+                    }
+                }
+            }
+            return out;
+        }
+
+        /** Unsigned crop of a {@code byte} plane (tile shapes). */
+        static int[][] crop(byte[][] plane, int cx, int cy, int radius)
+        {
+            final int[][] out = new int[SCENE][SCENE];
+            if (plane == null)
+            {
+                return out;
+            }
+            final int off = offset(plane.length);
+            for (int x = PitchObjects.lo(cx, radius); x <= PitchObjects.hi(cx, radius, SCENE); x++)
+            {
+                final byte[] col = x + off < plane.length ? plane[x + off] : null;
+                if (col == null)
+                {
+                    continue;
+                }
+                for (int y = PitchObjects.lo(cy, radius); y <= PitchObjects.hi(cy, radius, SCENE); y++)
+                {
+                    if (y + off < col.length)
+                    {
+                        out[x][y] = col[y + off] & 0xFF;
+                    }
+                }
+            }
+            return out;
         }
     }
 

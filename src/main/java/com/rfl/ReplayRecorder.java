@@ -28,7 +28,10 @@ import net.runelite.api.GroundObject;
 import net.runelite.api.IterableHashTable;
 import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
+import net.runelite.api.Point;
 import net.runelite.api.Projectile;
+import net.runelite.api.Scene;
+import net.runelite.api.SceneTileModel;
 import net.runelite.api.Tile;
 import net.runelite.api.WallObject;
 import net.runelite.api.WorldView;
@@ -61,7 +64,11 @@ final class ReplayRecorder
 {
     private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss");
     private static final int SCENE = 104;
-    /** Chebyshev radius, in tiles around the recorder, of the objects listed in {@code pitch.objs}. */
+    /**
+     * Chebyshev radius, in tiles around the recorder, of the objects in {@code pitch.objs} /
+     * {@code objs2} and of the non-zero cells of {@code under}, {@code over}, {@code shapes} and
+     * {@code rots}.
+     */
     private static final int OBJECT_RADIUS = 20;
 
     private final RflConfig config;
@@ -355,12 +362,29 @@ final class ReplayRecorder
         }
     }
 
+    /**
+     * Client thread, read only: builds the {@code pitch} line (spec §2.1) and hands it to the
+     * writer. Arrays are allocated here, once per pitch, never per frame. {@code under},
+     * {@code over}, {@code shapes} and {@code rots} are 104x104 {@code [x][y]} grids for the
+     * current plane, cropped to {@link #OBJECT_RADIUS} around the recorder (0 outside, and all 0
+     * when the recorder's tile is unknown).
+     */
     private void writePitch(Client client)
     {
         final WorldView wv = client.getTopLevelWorldView();
         final int plane = wv.getPlane();
         final int[][][] chunks = wv.getInstanceTemplateChunks();
         final int[][][] heights = wv.getTileHeights();
+        final Scene scene = wv.getScene();
+        final Player local = client.getLocalPlayer();
+        final LocalPoint at = local == null ? null : local.getLocalLocation();
+        // Unknown recorder tile: an off-scene centre makes every crop come out empty.
+        final int cx = at == null ? -OBJECT_RADIUS - 1 : at.getSceneX();
+        final int cy = at == null ? -OBJECT_RADIUS - 1 : at.getSceneY();
+        final short[][][] under = scene == null ? null : scene.getUnderlayIds();
+        final short[][][] over = scene == null ? null : scene.getOverlayIds();
+        final byte[][][] shapes = scene == null ? null : scene.getTileShapes();
+        final ReplaySampler.PitchObjects objs = objects(scene, plane, at);
         final Map<String, Object> line = new LinkedHashMap<>();
         line.put("t", "pitch");
         line.put("cyc", lastCycle);
@@ -369,24 +393,75 @@ final class ReplayRecorder
         line.put("baseY", wv.getBaseY());
         line.put("chunks", chunks == null ? null : chunks[plane]);
         line.put("heights", heights == null ? null : scene(heights[plane]));
-        line.put("objs", objects(wv, plane, client.getLocalPlayer()));
+        line.put("objs", objs.rows());
+        line.put("objs2", objs.rows2());
+        line.put("under", ReplaySampler.PitchFloor.crop(planeOf(under, plane), cx, cy, OBJECT_RADIUS));
+        line.put("over", ReplaySampler.PitchFloor.crop(planeOf(over, plane), cx, cy, OBJECT_RADIUS));
+        line.put("shapes", ReplaySampler.PitchFloor.crop(planeOf(shapes, plane), cx, cy, OBJECT_RADIUS));
+        line.put("rots", rotations(scene, plane, cx, cy));
+        line.put("chunksAll", chunks);
         writer.write(line);
+    }
+
+    private static short[][] planeOf(short[][][] planes, int plane)
+    {
+        return planes == null || plane < 0 || plane >= planes.length ? null : planes[plane];
+    }
+
+    private static byte[][] planeOf(byte[][][] planes, int plane)
+    {
+        return planes == null || plane < 0 || plane >= planes.length ? null : planes[plane];
+    }
+
+    /**
+     * Overlay rotation (0..3) per scene tile within {@link #OBJECT_RADIUS}. Scene has no rotation
+     * array, so this reads {@link SceneTileModel#getRotation()} from each tile that has a shaped
+     * tile model. Flat whole tiles (no model) and tiles outside the radius are 0.
+     */
+    private static int[][] rotations(Scene scene, int plane, int cx, int cy)
+    {
+        final int[][] out = new int[SCENE][SCENE];
+        final Tile[][][] tiles = scene == null ? null : scene.getTiles();
+        if (tiles == null || plane < 0 || plane >= tiles.length || tiles[plane] == null)
+        {
+            return out;
+        }
+        final Tile[][] level = tiles[plane];
+        for (int x = ReplaySampler.PitchObjects.lo(cx, OBJECT_RADIUS);
+             x <= ReplaySampler.PitchObjects.hi(cx, OBJECT_RADIUS, Math.min(SCENE, level.length)); x++)
+        {
+            final Tile[] column = level[x];
+            if (column == null)
+            {
+                continue;
+            }
+            for (int y = ReplaySampler.PitchObjects.lo(cy, OBJECT_RADIUS);
+                 y <= ReplaySampler.PitchObjects.hi(cy, OBJECT_RADIUS, Math.min(SCENE, column.length)); y++)
+            {
+                final SceneTileModel model = column[y] == null ? null : column[y].getSceneTileModel();
+                if (model != null)
+                {
+                    out[x][y] = model.getRotation();
+                }
+            }
+        }
+        return out;
     }
 
     /**
      * Every game, wall, ground and decorative object on {@code plane} on scene tiles within
-     * {@link #OBJECT_RADIUS} (Chebyshev) of the recorder, as {@code [id, type, orient, x, y]} with
-     * local x/y. A GameObject spanning several tiles is listed once. Empty when the recorder's
-     * tile or the scene is unknown.
+     * {@link #OBJECT_RADIUS} (Chebyshev) of the recorder, as {@code objs} rows
+     * {@code [id, type, orient, x, y]} and {@code objs2} rows
+     * {@code [id, kind, config, x, y, sizeX, sizeY]}. A GameObject spanning several tiles is listed
+     * once. Empty when the recorder's tile or the scene is unknown.
      */
-    private static List<int[]> objects(WorldView wv, int plane, Player local)
+    private static ReplaySampler.PitchObjects objects(Scene scene, int plane, LocalPoint at)
     {
         final ReplaySampler.PitchObjects objs = new ReplaySampler.PitchObjects();
-        final LocalPoint at = local == null ? null : local.getLocalLocation();
-        final Tile[][][] tiles = wv.getScene() == null ? null : wv.getScene().getTiles();
+        final Tile[][][] tiles = scene == null ? null : scene.getTiles();
         if (at == null || tiles == null || plane < 0 || plane >= tiles.length || tiles[plane] == null)
         {
-            return objs.rows();
+            return objs;
         }
         final Tile[][] level = tiles[plane];
         final int cx = at.getSceneX();
@@ -409,7 +484,7 @@ final class ReplayRecorder
                 }
             }
         }
-        return objs.rows();
+        return objs;
     }
 
     private static void addObjects(ReplaySampler.PitchObjects objs, Tile tile)
@@ -420,11 +495,19 @@ final class ReplayRecorder
             for (final GameObject o : games)
             {
                 final LocalPoint lp = o == null ? null : o.getLocalLocation();
-                if (lp != null)
+                if (lp == null)
                 {
-                    objs.add(ReplaySampler.PitchObjects.GAME, o.getHash(), o.getId(), o.getOrientation(),
-                        lp.getX(), lp.getY());
+                    continue;
                 }
+                final Point min = o.getSceneMinLocation();
+                final Point max = o.getSceneMaxLocation();
+                final boolean footprint = min != null && max != null;
+                objs.add(ReplaySampler.PitchObjects.GAME, o.getHash(), o.getId(), o.getOrientation(),
+                    lp.getX(), lp.getY(), o.getConfig(),
+                    footprint ? ReplaySampler.PitchObjects.tileCentre(min.getX()) : lp.getX(),
+                    footprint ? ReplaySampler.PitchObjects.tileCentre(min.getY()) : lp.getY(),
+                    footprint ? ReplaySampler.PitchObjects.span(min.getX(), max.getX()) : 1,
+                    footprint ? ReplaySampler.PitchObjects.span(min.getY(), max.getY()) : 1);
             }
         }
         final WallObject wall = tile.getWallObject();
@@ -432,21 +515,21 @@ final class ReplayRecorder
         if (wallAt != null)
         {
             objs.add(ReplaySampler.PitchObjects.WALL, wall.getHash(), wall.getId(), wall.getOrientationA(),
-                wallAt.getX(), wallAt.getY());
+                wallAt.getX(), wallAt.getY(), wall.getConfig(), wallAt.getX(), wallAt.getY(), 1, 1);
         }
         final GroundObject ground = tile.getGroundObject();
         final LocalPoint groundAt = ground == null ? null : ground.getLocalLocation();
         if (groundAt != null)
         {
             objs.add(ReplaySampler.PitchObjects.GROUND, ground.getHash(), ground.getId(), 0,
-                groundAt.getX(), groundAt.getY());
+                groundAt.getX(), groundAt.getY(), ground.getConfig(), groundAt.getX(), groundAt.getY(), 1, 1);
         }
         final DecorativeObject deco = tile.getDecorativeObject();
         final LocalPoint decoAt = deco == null ? null : deco.getLocalLocation();
         if (decoAt != null)
         {
             objs.add(ReplaySampler.PitchObjects.DECORATIVE, deco.getHash(), deco.getId(), 0,
-                decoAt.getX(), decoAt.getY());
+                decoAt.getX(), decoAt.getY(), deco.getConfig(), decoAt.getX(), decoAt.getY(), 1, 1);
         }
     }
 
