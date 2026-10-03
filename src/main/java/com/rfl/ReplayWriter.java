@@ -133,6 +133,16 @@ final class ReplayWriter
      */
     void writeDeferred(Object line)
     {
+        writeDeferred(line, true);
+    }
+
+    /**
+     * {@link #writeDeferred(Object)}; {@code model} false keeps the line out of the
+     * {@link #deferredLines} / {@link #deferredBytes} debug counts (a big non-model line such as
+     * {@code pitch}).
+     */
+    void writeDeferred(Object line, boolean model)
+    {
         if (!open)
         {
             return;
@@ -143,8 +153,11 @@ final class ReplayWriter
             try
             {
                 String json = gson.toJson(line);
-                deferredLines.incrementAndGet();
-                deferredBytes.addAndGet(json.length() + 1);
+                if (model)
+                {
+                    deferredLines.incrementAndGet();
+                    deferredBytes.addAndGet(json.length() + 1);
+                }
                 doWrite(json);
             }
             finally

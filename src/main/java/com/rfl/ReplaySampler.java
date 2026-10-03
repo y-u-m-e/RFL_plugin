@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -357,38 +358,230 @@ final class ReplaySampler
         }
     }
 
+    /** Why a {@code pitch.locs} candidate got no row (debug close log). */
+    enum LocSkip
+    {
+        /** The object had no renderable. */
+        NO_RENDERABLE("noRenderable"),
+        /** The renderable resolved to no model. */
+        NO_MODEL("noModel"),
+        /** The model had no vertex, face or colour arrays. */
+        NO_ARRAYS("noArrays"),
+        /** Reading the model threw. */
+        THREW("threw"),
+        /** An earlier object with the same key failed this pitch, so it was not read again. */
+        SAME_KEY_FAILED("sameKeyFailed"),
+        /** The recording stopped before the spread-out capture reached it. */
+        UNFINISHED("unfinished");
+
+        final String label;
+
+        LocSkip(String label)
+        {
+            this.label = label;
+        }
+    }
+
+    /** What reading one loc's model yielded: geometry, or the reason there is none. */
+    static final class LocModel
+    {
+        final ModelCapture.Geometry geometry;
+        final LocSkip skip;
+
+        private LocModel(ModelCapture.Geometry geometry, LocSkip skip)
+        {
+            this.geometry = geometry;
+            this.skip = skip;
+        }
+
+        static LocModel of(ModelCapture.Geometry geometry)
+        {
+            return geometry == null ? skipped(LocSkip.NO_MODEL) : new LocModel(geometry, null);
+        }
+
+        static LocModel skipped(LocSkip skip)
+        {
+            return new LocModel(null, skip);
+        }
+    }
+
     /**
      * One house object renderable at pitch time, for {@code pitch.locs}. {@code part} is 0 for an
      * object's (first) renderable and 1 for a wall's or decoration's second one, which is a
-     * different model under the same loc id, shape and rotation.
+     * different model under the same loc id, shape and rotation. {@code orient} is a GameObject's
+     * model orientation, baked into the captured vertices (0 for everything else); a non-zero one
+     * is part of the key.
      */
     static final class Loc
     {
         final int id;
         final int config;
         final int part;
+        final int orient;
         final int x;
         final int y;
         final int height;
-        /** Captures the renderable's model, or null; called only for a new key. May be null. */
-        final Supplier<ModelCapture.Geometry> model;
+        /** Reads the renderable's model; called only for a new key. Null when there is no renderable. */
+        final Supplier<LocModel> capture;
 
+        /** A loc whose capture yields bare geometry (null: no model). A null supplier: no renderable. */
         Loc(int id, int config, int part, int x, int y, int height, Supplier<ModelCapture.Geometry> model)
+        {
+            this(id, config, part, 0, x, y, height, model == null ? null : () -> LocModel.of(model.get()));
+        }
+
+        private Loc(int id, int config, int part, int orient, int x, int y, int height, Supplier<LocModel> capture)
         {
             this.id = id;
             this.config = config;
             this.part = part;
+            this.orient = orient;
             this.x = x;
             this.y = y;
             this.height = height;
-            this.model = model;
+            this.capture = capture;
         }
 
-        private String key()
+        /** A loc whose capture reports why it has no model. A null supplier: no renderable. */
+        static Loc withReasons(int id, int config, int part, int orient, int x, int y, int height,
+            Supplier<LocModel> capture)
         {
-            final String key = "l:" + id + ":" + PitchObjects.shape(config) + ":" + PitchObjects.rotation(config);
-            return part == 0 ? key : key + ":" + part;
+            return new Loc(id, config, part, orient, x, y, height, capture);
         }
+
+        String key()
+        {
+            String key = "l:" + id + ":" + PitchObjects.shape(config) + ":" + PitchObjects.rotation(config);
+            if (part != 0)
+            {
+                key += ":" + part;
+            }
+            return orient == 0 ? key : key + ":o" + orient;
+        }
+    }
+
+    /**
+     * Pitch-time house object capture spread over several ClientTicks: each {@link #step} reads
+     * locs until its time budget is spent (at least one per step), registering new keys' models
+     * as it goes; {@link #newModelLines} hands their lines over. Once {@link #done}, {@link #rows}
+     * is the {@code pitch.locs} list. Client thread only.
+     */
+    final class LocPass
+    {
+        private final List<Loc> locs;
+        private int next;
+        private final List<int[]> rows = new ArrayList<>();
+        private final int[] skips = new int[LocSkip.values().length];
+        private final Set<String> failedKeys = new HashSet<>();
+
+        private LocPass(List<Loc> locs)
+        {
+            this.locs = locs;
+        }
+
+        /**
+         * Reads locs until all are done or {@code budgetNanos} has passed on {@code clock} (checked
+         * after each loc, so one slow model can overrun it). Returns {@link #done}.
+         */
+        boolean step(long budgetNanos, LongSupplier clock)
+        {
+            final long start = clock.getAsLong();
+            while (next < locs.size())
+            {
+                read(locs.get(next++));
+                if (clock.getAsLong() - start >= budgetNanos)
+                {
+                    break;
+                }
+            }
+            return done();
+        }
+
+        private void read(Loc loc)
+        {
+            if (loc.capture == null)
+            {
+                skips[LocSkip.NO_RENDERABLE.ordinal()]++;
+                return;
+            }
+            final String key = loc.key();
+            if (failedKeys.contains(key))
+            {
+                skips[LocSkip.SAME_KEY_FAILED.ordinal()]++;
+                return;
+            }
+            final LocModel[] got = new LocModel[1];
+            final int id = modelId(key, LOC, () ->
+            {
+                got[0] = loc.capture.get();
+                return got[0] == null ? null : got[0].geometry;
+            }, 0);
+            if (id < 0)
+            {
+                failedKeys.add(key);
+                final LocSkip why = got[0] == null || got[0].skip == null ? LocSkip.NO_MODEL : got[0].skip;
+                skips[why.ordinal()]++;
+                return;
+            }
+            rows.add(new int[] { id, loc.x, loc.y, loc.height });
+        }
+
+        /** Gives up on the locs not read yet, counting them {@link LocSkip#UNFINISHED}. */
+        void abandon()
+        {
+            skips[LocSkip.UNFINISHED.ordinal()] += locs.size() - next;
+            next = locs.size();
+        }
+
+        boolean done()
+        {
+            return next >= locs.size();
+        }
+
+        /** Locs read so far, of {@link #total}. */
+        int read()
+        {
+            return next;
+        }
+
+        int total()
+        {
+            return locs.size();
+        }
+
+        /** {@code pitch.locs} rows {@code [modelId, localX, localY, groundHeight]} so far. */
+        List<int[]> rows()
+        {
+            return rows;
+        }
+
+        /** Skips so far, indexed by {@link LocSkip#ordinal()}. */
+        int[] skips()
+        {
+            return skips.clone();
+        }
+
+        int skipped()
+        {
+            int n = 0;
+            for (final int s : skips)
+            {
+                n += s;
+            }
+            return n;
+        }
+    }
+
+    /** A {@link LocPass} over {@code locs}, read later by its {@link LocPass#step}s. */
+    LocPass locPass(List<Loc> locs)
+    {
+        return new LocPass(locs);
+    }
+
+    /** {@code model} lines for every id captured since the last call (by any path), in id order. */
+    List<Map<String, Object>> newModelLines()
+    {
+        return modelLines();
     }
 
     /** {@link #pitchLocs} result: model lines to write before the pitch, its locs rows, and skips. */
@@ -918,25 +1111,16 @@ final class ReplaySampler
     }
 
     /**
-     * Pitch-time house objects: one model per (loc id, shape, rotation[, part]) key, first model
-     * kept, and a {@code locs} row per object that has one. Objects with no renderable or model
-     * are skipped and counted.
+     * Pitch-time house objects in one go: one model per (loc id, shape, rotation[, part]) key,
+     * first model kept, and a {@code locs} row per object that has one. Objects with no renderable
+     * or model are skipped and counted. The recorder spreads this over ClientTicks with
+     * {@link #locPass} instead.
      */
     PitchLocs pitchLocs(List<Loc> locs)
     {
-        final List<int[]> rows = new ArrayList<>();
-        int skipped = 0;
-        for (final Loc loc : locs)
-        {
-            final int id = loc.model == null ? -1 : modelId(loc.key(), LOC, loc.model, 0);
-            if (id < 0)
-            {
-                skipped++;
-                continue;
-            }
-            rows.add(new int[] { id, loc.x, loc.y, loc.height });
-        }
-        return new PitchLocs(modelLines(), rows, skipped);
+        final LocPass pass = locPass(locs);
+        pass.step(Long.MAX_VALUE, System::nanoTime);
+        return new PitchLocs(modelLines(), pass.rows(), pass.skipped());
     }
 
     /**

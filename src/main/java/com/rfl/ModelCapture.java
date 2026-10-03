@@ -130,6 +130,27 @@ final class ModelCapture
 		return new Geometry(vertices, faces, colors);
 	}
 
+	/**
+	 * {@code geometry} turned about the vertical axis the way the GPU plugin places a static
+	 * GameObject with a non-zero model orientation ({@code sin}/{@code cos} from
+	 * {@code Perspective.SINE}/{@code COSINE}, 16.16 fixed point): {@code x' = (z*sin + x*cos) >> 16},
+	 * {@code z' = (z*cos - x*sin) >> 16}, y unchanged. Faces and colours are shared, not copied.
+	 */
+	static Geometry rotateY(Geometry geometry, int sin, int cos)
+	{
+		final int[] v = geometry.vertices;
+		final int[] out = new int[v.length];
+		for (int k = 0; k + 2 < v.length; k += 3)
+		{
+			final int x = v[k];
+			final int z = v[k + 2];
+			out[k] = (z * sin + x * cos) >> 16;
+			out[k + 1] = v[k + 1];
+			out[k + 2] = (z * cos - x * sin) >> 16;
+		}
+		return new Geometry(out, geometry.faces, geometry.colors);
+	}
+
 	private static boolean hidden(int f, int[] colors3, byte[] transparencies)
 	{
 		int alpha = transparencies != null ? transparencies[f] & 0xff : 0;

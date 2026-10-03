@@ -9,12 +9,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import org.junit.Test;
 
 import com.rfl.ReplaySampler.Appearance;
 import com.rfl.ReplaySampler.Loc;
+import com.rfl.ReplaySampler.LocModel;
+import com.rfl.ReplaySampler.LocSkip;
 import com.rfl.ReplaySampler.Ball;
 import com.rfl.ReplaySampler.PitchFloor;
 import com.rfl.ReplaySampler.PitchObjects;
@@ -887,5 +890,135 @@ public class ReplaySamplerTest
         System.out.printf("model pass, 12 players, no new keys: avg %.2f us, worst %.1f us%n", avgMicros,
             worst / 1000.0);
         assertTrue("avg " + avgMicros + " us", avgMicros < 50.0);
+    }
+
+    // ---- P6: spread-out house capture and skip reasons ----
+
+    /** A loc capture that advances {@code clock} by {@code nanos}, as if reading the model took that long. */
+    private static Supplier<LocModel> slow(AtomicLong clock, long nanos, ModelCapture.Geometry g)
+    {
+        return () ->
+        {
+            clock.addAndGet(nanos);
+            return LocModel.of(g);
+        };
+    }
+
+    @Test
+    public void locPassSpreadsCaptureOverStepsWithinTheBudget()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicLong clock = new AtomicLong();
+        List<Loc> locs = new ArrayList<>();
+        for (int k = 0; k < 5; k++)
+        {
+            // Distinct ids, so each loc is a new key and costs a capture of 400 us.
+            locs.add(Loc.withReasons(5000 + k, 10, 0, 0, 6464 + k * 128, 6464, -k, slow(clock, 400_000L, geometry(3, k))));
+        }
+        ReplaySampler.LocPass pass = sampler.locPass(locs);
+
+        // 1 ms budget: 400, 800, then 1200 us >= 1 ms stops the step after the third loc.
+        assertFalse(pass.step(1_000_000L, clock::get));
+        assertEquals(3, pass.read());
+        assertEquals(3, pass.rows().size());
+        List<Map<String, Object>> first = sampler.newModelLines();
+        assertEquals(List.of("model", "model", "model"), types(first));
+        assertEquals("loc", first.get(0).get("kind"));
+
+        assertTrue(pass.step(1_000_000L, clock::get));
+        assertTrue(pass.done());
+        assertEquals(5, pass.rows().size());
+        assertEquals(2, sampler.newModelLines().size());
+        assertArrayEquals(new int[] { 4, 6464 + 4 * 128, 6464, -4 }, pass.rows().get(4));
+        assertEquals(0, pass.skipped());
+    }
+
+    @Test
+    public void locPassReadsAtLeastOneLocPerStepEvenOverBudget()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicLong clock = new AtomicLong();
+        ReplaySampler.LocPass pass = sampler.locPass(List.of(
+            Loc.withReasons(1, 10, 0, 0, 0, 0, 0, slow(clock, 5_000_000L, geometry(3, 0))),
+            Loc.withReasons(2, 10, 0, 0, 0, 0, 0, slow(clock, 5_000_000L, geometry(3, 1)))));
+
+        assertFalse(pass.step(1_000_000L, clock::get));
+        assertEquals(1, pass.read());
+        assertTrue(pass.step(1_000_000L, clock::get));
+    }
+
+    @Test
+    public void knownKeysCostNoCaptureAndDoNotEndTheStep()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicLong clock = new AtomicLong();
+        AtomicInteger calls = new AtomicInteger();
+        Supplier<LocModel> capture = () ->
+        {
+            calls.incrementAndGet();
+            clock.addAndGet(100_000L);
+            return LocModel.of(geometry(3, 0));
+        };
+        List<Loc> locs = new ArrayList<>();
+        for (int k = 0; k < 50; k++)
+        {
+            locs.add(Loc.withReasons(7000, 0, 0, 0, k * 128, 0, 0, capture));
+        }
+        ReplaySampler.LocPass pass = sampler.locPass(locs);
+
+        assertTrue("one capture, 49 lookups, all inside one budget", pass.step(1_000_000L, clock::get));
+        assertEquals(1, calls.get());
+        assertEquals(50, pass.rows().size());
+    }
+
+    @Test
+    public void locPassCountsEachSkipReason()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicInteger failedCalls = new AtomicInteger();
+        Supplier<LocModel> noModel = () ->
+        {
+            failedCalls.incrementAndGet();
+            return LocModel.skipped(LocSkip.NO_MODEL);
+        };
+        ReplaySampler.LocPass pass = sampler.locPass(List.of(
+            Loc.withReasons(1, 0, 0, 0, 0, 0, 0, null),
+            Loc.withReasons(2, 0, 0, 0, 0, 0, 0, noModel),
+            // Same key as the one above: not read again.
+            Loc.withReasons(2, 0, 0, 0, 128, 0, 0, noModel),
+            Loc.withReasons(3, 0, 0, 0, 0, 0, 0, () -> LocModel.skipped(LocSkip.NO_ARRAYS)),
+            Loc.withReasons(4, 0, 0, 0, 0, 0, 0, () -> LocModel.skipped(LocSkip.THREW)),
+            Loc.withReasons(5, 0, 0, 0, 0, 0, 0, () -> null),
+            Loc.withReasons(6, 0, 0, 0, 0, 0, 0, () -> LocModel.of(geometry(3, 0))),
+            Loc.withReasons(7, 0, 0, 0, 0, 0, 0, () -> LocModel.of(geometry(3, 1))),
+            Loc.withReasons(8, 0, 0, 0, 0, 0, 0, () -> LocModel.of(geometry(3, 2)))));
+
+        // Stop after the 7th loc, then give up on the rest.
+        AtomicLong clock = new AtomicLong();
+        AtomicInteger reads = new AtomicInteger();
+        pass.step(Long.MAX_VALUE, () -> reads.incrementAndGet() > 7 ? Long.MAX_VALUE : 0L);
+        assertEquals(7, pass.read());
+        pass.abandon();
+        assertTrue(pass.done());
+
+        int[] skips = pass.skips();
+        assertEquals(1, skips[LocSkip.NO_RENDERABLE.ordinal()]);
+        assertEquals("a null result counts as no model", 2, skips[LocSkip.NO_MODEL.ordinal()]);
+        assertEquals(1, skips[LocSkip.SAME_KEY_FAILED.ordinal()]);
+        assertEquals(1, skips[LocSkip.NO_ARRAYS.ordinal()]);
+        assertEquals(1, skips[LocSkip.THREW.ordinal()]);
+        assertEquals(2, skips[LocSkip.UNFINISHED.ordinal()]);
+        assertEquals(8, pass.skipped());
+        assertEquals(1, pass.rows().size());
+        assertEquals(1, failedCalls.get());
+    }
+
+    @Test
+    public void locKeyAddsPartAndNonZeroOrientation()
+    {
+        int config = 10 | (2 << 6);
+        assertEquals("l:9:10:2", Loc.withReasons(9, config, 0, 0, 0, 0, 0, null).key());
+        assertEquals("l:9:10:2:1", Loc.withReasons(9, config, 1, 0, 0, 0, 0, null).key());
+        assertEquals("l:9:10:2:o256", Loc.withReasons(9, config, 0, 256, 0, 0, 0, null).key());
     }
 }

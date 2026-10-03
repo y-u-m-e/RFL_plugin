@@ -155,4 +155,19 @@ public class ModelCaptureTest
 		assertTrue(reg.takeNew().isEmpty());
 		assertEquals(0, reg.idFor("l:1", ModelCaptureTest::sample));
 	}
+
+	@Test
+	public void rotateYTurnsLikeTheGpuPlugin()
+	{
+		ModelCapture.Geometry g = new ModelCapture.Geometry(new int[] { 100, -5, 0, 0, 7, 200 },
+			new int[] { 0, 1, 1 }, new int[] { 1, 2, 3 });
+		// Orientation 512 (a quarter turn): SINE = 65536, COSINE = 0, so x' = z and z' = -x.
+		ModelCapture.Geometry turned = ModelCapture.rotateY(g, 65536, 0);
+		assertArrayEquals(new int[] { 0, -5, -100, 200, 7, 0 }, turned.vertices);
+		assertSame(g.faces, turned.faces);
+		assertSame(g.colors, turned.colors);
+		// The tables the recorder passes are a quarter turn at 512 (16.16, so just under 65536).
+		assertEquals(65535, net.runelite.api.Perspective.SINE[512]);
+		assertEquals(0, net.runelite.api.Perspective.COSINE[512]);
+	}
 }

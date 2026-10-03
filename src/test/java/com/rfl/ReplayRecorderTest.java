@@ -264,4 +264,19 @@ public class ReplayRecorderTest
         assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
         assertFalse(dir.toFile().exists());
     }
+
+    @Test
+    public void locsLineHasThePitchLocsRowShape()
+    {
+        Gson gson = new GsonBuilder().create();
+        String json = gson.toJson(ReplayRecorder.locsLine(List.of(new int[] { 3, 6464, 6592, -10 },
+            new int[] { 4, 6720, 6464, 0 })));
+        assertEquals("{\"t\":\"locs\",\"locs\":[[3,6464,6592,-10],[4,6720,6464,0]]}", json);
+    }
+
+    @Test
+    public void locBudgetIsAboutOneMillisecond()
+    {
+        assertEquals(1_000_000L, ReplayRecorder.LOC_BUDGET_NANOS);
+    }
 }

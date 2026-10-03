@@ -23,11 +23,14 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ActorSpotAnim;
 import net.runelite.api.Client;
 import net.runelite.api.DecorativeObject;
+import net.runelite.api.DynamicObject;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.GroundObject;
 import net.runelite.api.IterableHashTable;
 import net.runelite.api.Model;
+import net.runelite.api.ModelData;
+import net.runelite.api.Perspective;
 import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
 import net.runelite.api.Point;
@@ -74,6 +77,18 @@ final class ReplayRecorder
      * {@code rots}.
      */
     private static final int OBJECT_RADIUS = 20;
+    /**
+     * Per-ClientTick time budget for pitch-time house model capture: the capture is spread over
+     * as many ClientTicks as it needs, so a house of a few hundred locs never stalls one frame.
+     */
+    static final long LOC_BUDGET_NANOS = 1_000_000L;
+    /** How a loc's model was found, for the debug close log ({@link #VIA_LABELS} order). */
+    private static final int VIA_MODEL = 0;
+    private static final int VIA_ZBUF = 1;
+    private static final int VIA_DYNAMIC = 2;
+    private static final int VIA_MODEL_DATA = 3;
+    private static final int VIA_GET_MODEL = 4;
+    private static final String[] VIA_LABELS = { "model", "zbuf", "dynamic", "modelData", "getModel" };
 
     private final RflConfig config;
     private final ReplayWriter writer;
@@ -97,9 +112,39 @@ final class ReplayRecorder
     /** Debug: the model-key part of those frames (a key build and lookup per player). */
     private long steadyModelNanos;
     private long steadyModelWorstNanos;
-    /** Debug: model reads that threw, and house objects with no renderable or model. */
+    /** Debug: model reads that threw. */
     private int captureFailures;
-    private int locsSkipped;
+    /** Debug: house objects with a {@code locs} row, and those without one by {@link ReplaySampler.LocSkip}. */
+    private int locsCaptured;
+    private final int[] locSkips = new int[ReplaySampler.LocSkip.values().length];
+    /** Debug: loc model reads per {@link #VIA_LABELS} path, [path][0] with a model, [path][1] without. */
+    private final int[][] locVia = new int[VIA_LABELS.length][2];
+    /** Debug: most ClientTicks one pitch's loc capture took, and pitches dropped by a reload. */
+    private int pitchTicksMax;
+    private int pitchesAbandoned;
+    /**
+     * The pitch line not yet written (null when none or already out) and the house model pass it
+     * waits on (null when none). See {@link #stepPitch}.
+     */
+    private Map<String, Object> pitchLine;
+    private ReplaySampler.LocPass pitchPass;
+    private int pitchTicks;
+    /** Whether the waiting pitch streams its rows (the file's first pitch), and how many are written. */
+    private boolean pitchStreams;
+    private int pitchRowsWritten;
+    /** Whether the open file has a pitch line yet. */
+    private boolean pitchWritten;
+    /** Debug: this ClientTick's open, pitch scan/write, and loc capture time. */
+    private long tickOpenNanos;
+    private long tickPitchNanos;
+    private long tickCaptureNanos;
+    /** Debug: the recording's worst ClientTick and what it spent its time on. */
+    private long worstTickNanos;
+    private long worstOpenNanos;
+    private long worstPitchNanos;
+    private long worstCaptureNanos;
+    private long worstSampleNanos;
+    private int worstTickCycle;
     /** The local user's own plugin list for the {@code plugins} line; may be null or return null. */
     private Supplier<List<PluginEntry>> pluginSource;
     /** For the panel: when the open file opened, and the last file's name and model count. */
@@ -210,6 +255,9 @@ final class ReplayRecorder
             return;
         }
         lastCycle = client.getGameCycle();
+        tickOpenNanos = 0;
+        tickPitchNanos = 0;
+        tickCaptureNanos = 0;
         if (sampler == null)
         {
             open(client);
@@ -217,9 +265,11 @@ final class ReplayRecorder
         else if (pitchPending)
         {
             pitchPending = false;
-            writePitch(client);
+            beginPitch(client);
         }
+        stepPitch();
 
+        final long sampleStart = System.nanoTime();
         final List<ReplaySampler.PlayerState> players = new ArrayList<>();
         for (final Player player : client.getTopLevelWorldView().players())
         {
@@ -244,10 +294,21 @@ final class ReplayRecorder
             }
         }
         writeAll(sampler.frame(lastCycle, players, balls));
-        final long spent = System.nanoTime() - start;
+        final long end = System.nanoTime();
+        final long spent = end - start;
         frameNanos += spent;
         frames++;
-        if (!sampler.lastFrameNewModels())
+        if (spent > worstTickNanos)
+        {
+            worstTickNanos = spent;
+            worstOpenNanos = tickOpenNanos;
+            worstPitchNanos = tickPitchNanos;
+            worstCaptureNanos = tickCaptureNanos;
+            worstSampleNanos = end - sampleStart;
+            worstTickCycle = lastCycle;
+        }
+        // Steady: no new model, and no file open, pitch scan or house capture this tick.
+        if (!sampler.lastFrameNewModels() && tickOpenNanos == 0 && tickPitchNanos == 0 && tickCaptureNanos == 0)
         {
             steadyFrames++;
             steadyNanos += spent;
@@ -387,6 +448,12 @@ final class ReplayRecorder
         {
             return CompletableFuture.completedFuture(null);
         }
+        if (pitchPass != null)
+        {
+            // Stopped mid-capture: write the pitch with the locs read so far, so the file has one.
+            pitchPass.abandon();
+            finishPitch();
+        }
         lastModels = sampler.modelsCaptured();
         final CompletableFuture<Void> closed;
         if (config.debugLogging())
@@ -402,16 +469,17 @@ final class ReplayRecorder
                 steadyModelWorstNanos / 1000.0);
             final int models = sampler.modelsCaptured();
             final int failures = captureFailures;
-            final int skipped = locsSkipped;
+            final String locs = locDebug();
+            final String worst = worstTickDebug();
             closed = writer.close();
             // Queued behind the close, so the byte counts are final when this runs.
             writer.enqueue(() -> log.info("[RFL debug] replay closed {} cycles={} bytes={} avgClientTickMicros={}"
                     + " {} models={} modelLines={} modelBytes={} avgModelLineBytes={} captureFailures={}"
-                    + " locsSkipped={}",
+                    + " {} {}",
                 path, cycles, writer.bytesWritten(), avgMicros, steady, models, writer.deferredLines(),
                 writer.deferredBytes(),
                 writer.deferredLines() == 0 ? 0 : writer.deferredBytes() / writer.deferredLines(), failures,
-                skipped));
+                locs, worst));
         }
         else
         {
@@ -420,6 +488,9 @@ final class ReplayRecorder
         sampler = null;
         file = null;
         pitchPending = false;
+        pitchLine = null;
+        pitchPass = null;
+        pitchWritten = false;
         return closed;
     }
 
@@ -441,8 +512,25 @@ final class ReplayRecorder
         steadyModelNanos = 0;
         steadyModelWorstNanos = 0;
         captureFailures = 0;
-        locsSkipped = 0;
+        locsCaptured = 0;
+        Arrays.fill(locSkips, 0);
+        for (final int[] via : locVia)
+        {
+            Arrays.fill(via, 0);
+        }
+        pitchTicksMax = 0;
+        pitchesAbandoned = 0;
+        pitchLine = null;
+        pitchPass = null;
+        pitchWritten = false;
+        worstTickNanos = 0;
+        worstOpenNanos = 0;
+        worstPitchNanos = 0;
+        worstCaptureNanos = 0;
+        worstSampleNanos = 0;
+        worstTickCycle = 0;
         pitchPending = false;
+        final long openStart = System.nanoTime();
         writer.open(file);
 
         final Player local = client.getLocalPlayer();
@@ -457,27 +545,45 @@ final class ReplayRecorder
         // Self-contained: model lines carry the geometry, so the viewer needs no bundle (spec 2.3).
         hdr.put("models", 2);
         writer.write(hdr);
-        writePitch(client);
         final Supplier<List<PluginEntry>> source = pluginSource;
         final List<PluginEntry> plugins = source == null ? null : source.get();
         if (plugins != null)
         {
             writer.write(pluginsLine(lastCycle, plugins));
         }
+        tickOpenNanos += System.nanoTime() - openStart;
+        beginPitch(client);
     }
 
     /**
-     * Client thread, read only: builds the {@code pitch} line (spec §2.1) and hands it to the
-     * writer. Arrays are allocated here, once per pitch, never per frame. {@code under},
+     * Client thread, read only: builds the {@code pitch} line (spec §2.1) and starts reading its
+     * house models, spread over ClientTicks by {@link #stepPitch}, which writes the line. Every
+     * loc model line precedes the line that refers to it. A pitch still waiting on its models when
+     * a reload starts another is given up on (the scene it describes is gone). Arrays are allocated here, once per pitch, never per frame. {@code under},
      * {@code over}, {@code shapes} and {@code rots} are 104x104 {@code [x][y]} grids for the
      * current plane, cropped to {@link #OBJECT_RADIUS} around the recorder (0 outside, and all 0
      * when the recorder's tile is unknown).
      */
-    private void writePitch(Client client)
+    private void beginPitch(Client client)
     {
+        final long start = System.nanoTime();
+        if (pitchPass != null)
+        {
+            // A reload mid-capture: the old scene is gone. A streaming pitch is already written,
+            // so count what it got; any other is dropped unwritten.
+            pitchesAbandoned++;
+            if (pitchStreams)
+            {
+                pitchPass.abandon();
+                finishPitch();
+            }
+            pitchPass = null;
+            pitchLine = null;
+        }
         final WorldView wv = client.getTopLevelWorldView();
         final int plane = wv.getPlane();
-        final int[][][] chunks = wv.getInstanceTemplateChunks();
+        // Copied: the line is serialised later, on the writer's thread.
+        final int[][][] chunks = copy(wv.getInstanceTemplateChunks());
         final int[][][] heights = wv.getTileHeights();
         final Scene scene = wv.getScene();
         final Player local = client.getLocalPlayer();
@@ -490,10 +596,6 @@ final class ReplayRecorder
         final byte[][][] shapes = scene == null ? null : scene.getTileShapes();
         final List<ReplaySampler.Loc> locList = new ArrayList<>();
         final ReplaySampler.PitchObjects objs = objects(scene, plane, at, locList);
-        // House models go out before the pitch line that refers to their ids.
-        final ReplaySampler.PitchLocs locs = sampler.pitchLocs(locList);
-        locsSkipped += locs.skipped();
-        writeAll(locs.lines());
         final Map<String, Object> line = new LinkedHashMap<>();
         line.put("t", "pitch");
         line.put("cyc", lastCycle);
@@ -509,10 +611,161 @@ final class ReplayRecorder
         line.put("shapes", ReplaySampler.PitchFloor.crop(planeOf(shapes, plane), cx, cy, OBJECT_RADIUS));
         line.put("rots", rotations(scene, plane, cx, cy));
         line.put("chunksAll", chunks);
-        line.put("locs", locs.rows());
+        // Filled in when the line is written; put now so the key keeps its place.
+        line.put("locs", null);
         line.put("paint", ReplaySampler.PitchFloor.paint(paint(scene, plane, cx, cy), cx, cy, OBJECT_RADIUS));
-        writer.write(line);
+        pitchLine = line;
+        pitchPass = sampler.locPass(locList);
+        pitchTicks = 0;
+        pitchRowsWritten = 0;
+        // Only the file's first pitch streams: the viewer merges every locs line into it.
+        pitchStreams = !pitchWritten;
+        tickPitchNanos += System.nanoTime() - start;
     }
+
+    /**
+     * Client thread, every ClientTick while a pitch waits on house models: reads locs for up to
+     * {@link #LOC_BUDGET_NANOS} and writes the new model lines. A streaming pitch (the file's
+     * first) is written on its first step with the rows read so far, and each later step's new
+     * rows follow as a {@code locs} line after their model lines. Any other pitch is written once
+     * every loc is read.
+     */
+    private void stepPitch()
+    {
+        if (pitchPass == null)
+        {
+            return;
+        }
+        final long start = System.nanoTime();
+        pitchTicks++;
+        final boolean done = pitchPass.step(LOC_BUDGET_NANOS, System::nanoTime);
+        writeAll(sampler.newModelLines());
+        tickCaptureNanos += System.nanoTime() - start;
+        if (pitchStreams)
+        {
+            writeLocRows();
+        }
+        if (done)
+        {
+            finishPitch();
+        }
+    }
+
+    /**
+     * Streaming pitch: writes the pitch line (first call) or a {@code locs} line with the rows read
+     * since the last call. Rows are copied, since the line is serialised on the writer's thread.
+     */
+    private void writeLocRows()
+    {
+        final long start = System.nanoTime();
+        final List<int[]> rows = pitchPass.rows();
+        final List<int[]> fresh = new ArrayList<>(rows.subList(pitchRowsWritten, rows.size()));
+        pitchRowsWritten = rows.size();
+        if (pitchLine != null)
+        {
+            pitchLine.put("locs", fresh);
+            // About 200 KB of JSON: serialised on the writer's thread, never on the client thread.
+            writer.writeDeferred(pitchLine, false);
+            pitchLine = null;
+            pitchWritten = true;
+        }
+        else if (!fresh.isEmpty())
+        {
+            writer.write(locsLine(fresh));
+        }
+        tickPitchNanos += System.nanoTime() - start;
+    }
+
+    /** {@code {"t":"locs","locs":[[modelId, localX, localY, groundHeight], ...]}}: more rows for the first pitch. */
+    static Map<String, Object> locsLine(List<int[]> rows)
+    {
+        final Map<String, Object> line = new LinkedHashMap<>();
+        line.put("t", "locs");
+        line.put("locs", rows);
+        return line;
+    }
+
+    /**
+     * The waiting pitch is fully read (or given up on): writes it if it isn't out yet, with every
+     * row read, and adds its loc counts to the debug totals.
+     */
+    private void finishPitch()
+    {
+        final long start = System.nanoTime();
+        writeAll(sampler.newModelLines());
+        if (pitchStreams)
+        {
+            writeLocRows();
+        }
+        else
+        {
+            pitchLine.put("locs", new ArrayList<>(pitchPass.rows()));
+            writer.writeDeferred(pitchLine, false);
+            pitchWritten = true;
+        }
+        locsCaptured += pitchPass.rows().size();
+        final int[] skips = pitchPass.skips();
+        for (int k = 0; k < skips.length; k++)
+        {
+            locSkips[k] += skips[k];
+        }
+        pitchTicksMax = Math.max(pitchTicksMax, pitchTicks);
+        pitchLine = null;
+        pitchPass = null;
+        tickPitchNanos += System.nanoTime() - start;
+    }
+
+    /** Debug: {@code locsCaptured=.. locsSkipped=.. locSkips=.. locVia=.. pitchTicksMax=.. pitchesAbandoned=..}. */
+    private String locDebug()
+    {
+        int skipped = 0;
+        final StringBuilder reasons = new StringBuilder();
+        for (final ReplaySampler.LocSkip why : ReplaySampler.LocSkip.values())
+        {
+            skipped += locSkips[why.ordinal()];
+            reasons.append(reasons.length() == 0 ? "" : ",").append(why.label).append(':')
+                .append(locSkips[why.ordinal()]);
+        }
+        final StringBuilder via = new StringBuilder();
+        for (int k = 0; k < VIA_LABELS.length; k++)
+        {
+            via.append(k == 0 ? "" : ",").append(VIA_LABELS[k]).append(':').append(locVia[k][0]).append('/')
+                .append(locVia[k][1]);
+        }
+        return "locsCaptured=" + locsCaptured + " locsSkipped=" + skipped + " locSkips=" + reasons
+            + " locVia(ok/none)=" + via + " pitchTicksMax=" + pitchTicksMax + " pitchesAbandoned=" + pitchesAbandoned;
+    }
+
+    /** Debug: the worst ClientTick of the recording, split into open, pitch, house capture and sampling. */
+    private String worstTickDebug()
+    {
+        return String.format("worstTickUs=%.1f worstTickCyc=%d worstTickOpenUs=%.1f worstTickPitchUs=%.1f"
+                + " worstTickCaptureUs=%.1f worstTickSampleUs=%.1f",
+            worstTickNanos / 1000.0, worstTickCycle, worstOpenNanos / 1000.0, worstPitchNanos / 1000.0,
+            worstCaptureNanos / 1000.0, worstSampleNanos / 1000.0);
+    }
+
+    private static int[][][] copy(int[][][] a)
+    {
+        if (a == null)
+        {
+            return null;
+        }
+        final int[][][] out = new int[a.length][][];
+        for (int i = 0; i < a.length; i++)
+        {
+            if (a[i] != null)
+            {
+                out[i] = new int[a[i].length][];
+                for (int j = 0; j < a[i].length; j++)
+                {
+                    out[i][j] = a[i][j] == null ? null : a[i][j].clone();
+                }
+            }
+        }
+        return out;
+    }
+
 
     private static short[][] planeOf(short[][][] planes, int plane)
     {
@@ -621,7 +874,8 @@ final class ReplayRecorder
                     footprint ? ReplaySampler.PitchObjects.span(min.getY(), max.getY()) : 1);
                 if (added)
                 {
-                    addLoc(locs, o.getId(), o.getConfig(), 0, lp.getX(), lp.getY(), o.getZ(), o.getRenderable());
+                    addLoc(locs, o.getId(), o.getConfig(), 0, o.getModelOrientation(), lp.getX(), lp.getY(), o.getZ(),
+                        o.getRenderable());
                 }
             }
         }
@@ -632,11 +886,11 @@ final class ReplayRecorder
             if (objs.add(ReplaySampler.PitchObjects.WALL, wall.getHash(), wall.getId(), wall.getOrientationA(),
                 wallAt.getX(), wallAt.getY(), wall.getConfig(), wallAt.getX(), wallAt.getY(), 1, 1))
             {
-                addLoc(locs, wall.getId(), wall.getConfig(), 0, wallAt.getX(), wallAt.getY(), wall.getZ(),
+                addLoc(locs, wall.getId(), wall.getConfig(), 0, 0, wallAt.getX(), wallAt.getY(), wall.getZ(),
                     wall.getRenderable1());
                 if (wall.getRenderable2() != null)
                 {
-                    addLoc(locs, wall.getId(), wall.getConfig(), 1, wallAt.getX(), wallAt.getY(), wall.getZ(),
+                    addLoc(locs, wall.getId(), wall.getConfig(), 1, 0, wallAt.getX(), wallAt.getY(), wall.getZ(),
                         wall.getRenderable2());
                 }
             }
@@ -648,7 +902,7 @@ final class ReplayRecorder
             if (objs.add(ReplaySampler.PitchObjects.GROUND, ground.getHash(), ground.getId(), 0,
                 groundAt.getX(), groundAt.getY(), ground.getConfig(), groundAt.getX(), groundAt.getY(), 1, 1))
             {
-                addLoc(locs, ground.getId(), ground.getConfig(), 0, groundAt.getX(), groundAt.getY(), ground.getZ(),
+                addLoc(locs, ground.getId(), ground.getConfig(), 0, 0, groundAt.getX(), groundAt.getY(), ground.getZ(),
                     ground.getRenderable());
             }
         }
@@ -660,11 +914,11 @@ final class ReplayRecorder
                 decoAt.getX(), decoAt.getY(), deco.getConfig(), decoAt.getX(), decoAt.getY(), 1, 1))
             {
                 // Wall decorations sit off the tile's local point by their own offsets.
-                addLoc(locs, deco.getId(), deco.getConfig(), 0, decoAt.getX() + deco.getXOffset(),
+                addLoc(locs, deco.getId(), deco.getConfig(), 0, 0, decoAt.getX() + deco.getXOffset(),
                     decoAt.getY() + deco.getYOffset(), deco.getZ(), deco.getRenderable());
                 if (deco.getRenderable2() != null)
                 {
-                    addLoc(locs, deco.getId(), deco.getConfig(), 1, decoAt.getX() + deco.getXOffset2(),
+                    addLoc(locs, deco.getId(), deco.getConfig(), 1, 0, decoAt.getX() + deco.getXOffset2(),
                         decoAt.getY() + deco.getYOffset2(), deco.getZ(), deco.getRenderable2());
                 }
             }
@@ -675,11 +929,96 @@ final class ReplayRecorder
      * One {@code pitch.locs} candidate. A null renderable gets a null capture, which the sampler
      * skips and counts; the model itself is read only when the loc key is new.
      */
-    private void addLoc(List<ReplaySampler.Loc> locs, int id, int config, int part, int x, int y, int height,
-        Renderable renderable)
+    private void addLoc(List<ReplaySampler.Loc> locs, int id, int config, int part, int orient, int x, int y,
+        int height, Renderable renderable)
     {
-        locs.add(new ReplaySampler.Loc(id, config, part, x, y, height,
-            renderable == null ? null : () -> capture(renderable)));
+        locs.add(ReplaySampler.Loc.withReasons(id, config, part, orient, x, y, height,
+            renderable == null ? null : () -> captureLoc(renderable, orient)));
+    }
+
+    /**
+     * Client thread: a house object's model as the client draws it, copied into replay geometry,
+     * or why there is none. The GPU plugin uploads a static {@link Model} renderable as is and a
+     * {@link DynamicObject}'s {@link DynamicObject#getModelZbuf()} (its static model; the client
+     * builds an animating one's current frame with {@link Renderable#getModel()} each frame), so
+     * this reads the same: a Model itself, a still DynamicObject's zbuf model (its built model as
+     * the fallback), an animating one's built model (zbuf as the fallback), anything else's
+     * {@link Renderable#getModel()}, and an unlit {@link ModelData} lit. A GameObject's model
+     * orientation is applied the way the GPU plugin places it.
+     */
+    private ReplaySampler.LocModel captureLoc(Renderable renderable, int orient)
+    {
+        int via = VIA_GET_MODEL;
+        try
+        {
+            Model m;
+            if (renderable instanceof Model)
+            {
+                via = VIA_MODEL;
+                m = (Model) renderable;
+            }
+            else if (renderable instanceof DynamicObject)
+            {
+                final DynamicObject dyn = (DynamicObject) renderable;
+                if (dyn.getAnimation() == null)
+                {
+                    via = VIA_ZBUF;
+                    m = dyn.getModelZbuf();
+                    if (m == null)
+                    {
+                        via = VIA_DYNAMIC;
+                        m = dyn.getModel();
+                    }
+                }
+                else
+                {
+                    via = VIA_DYNAMIC;
+                    m = dyn.getModel();
+                    if (m == null)
+                    {
+                        via = VIA_ZBUF;
+                        m = dyn.getModelZbuf();
+                    }
+                }
+            }
+            else
+            {
+                m = renderable.getModel();
+                if (m == null && renderable instanceof ModelData)
+                {
+                    via = VIA_MODEL_DATA;
+                    m = ((ModelData) renderable).light();
+                }
+            }
+            if (m == null)
+            {
+                locVia[via][1]++;
+                return ReplaySampler.LocModel.skipped(ReplaySampler.LocSkip.NO_MODEL);
+            }
+            final int[] colors1 = m.getFaceColors1();
+            final int[] colors3 = m.getFaceColors3();
+            if (m.getVerticesX() == null || m.getFaceIndices1() == null || colors1 == null || colors3 == null)
+            {
+                locVia[via][1]++;
+                return ReplaySampler.LocModel.skipped(ReplaySampler.LocSkip.NO_ARRAYS);
+            }
+            ModelCapture.Geometry g = ModelCapture.capture(m.getVerticesX(), m.getVerticesY(), m.getVerticesZ(),
+                m.getVerticesCount(), m.getFaceIndices1(), m.getFaceIndices2(), m.getFaceIndices3(),
+                m.getFaceCount(), colors1, colors3, m.getFaceTransparencies(), m.getFaceTextures());
+            final int o = orient & 2047;
+            if (o != 0)
+            {
+                g = ModelCapture.rotateY(g, Perspective.SINE[o], Perspective.COSINE[o]);
+            }
+            locVia[via][0]++;
+            return ReplaySampler.LocModel.of(g);
+        }
+        catch (RuntimeException e)
+        {
+            captureFailures++;
+            locVia[via][1]++;
+            return ReplaySampler.LocModel.skipped(ReplaySampler.LocSkip.THREW);
+        }
     }
 
     /**

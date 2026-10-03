@@ -514,4 +514,25 @@ public class ReplayWriterTest
         writer.close();
         assertEquals(Files.size(file), writer.fileBytes());
     }
+
+    @Test
+    public void deferredNonModelLinesStayOutOfTheModelCounts() throws Exception
+    {
+        com.google.gson.Gson gson = new GsonBuilder().create();
+        ReplayWriter writer = new ReplayWriter(gson, sameThreadExecutor());
+        Path file = temp.getRoot().toPath().resolve("p.gz");
+        Map<String, Object> pitch = map("t", "pitch");
+        pitch.put("heights", new int[] { 1, 2 });
+
+        writer.open(file);
+        writer.write(map("t", "hdr"));
+        writer.writeDeferred(pitch, false);
+        writer.write(map("t", "f"));
+        writer.close();
+
+        assertEquals(List.of("{\"t\":\"hdr\"}", "{\"t\":\"pitch\",\"heights\":[1,2]}", "{\"t\":\"f\"}"),
+            gunzipLines(file));
+        assertEquals(0, writer.deferredLines());
+        assertEquals(0, writer.deferredBytes());
+    }
 }
