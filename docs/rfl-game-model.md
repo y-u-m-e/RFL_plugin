@@ -48,7 +48,13 @@ Each fact is tagged:
 - **[rulebook]** Gnomeballs are also legal, but **only for RB/QB rushing plays**, not passes (their catch animation has a rendering bug).
 - **[code] gap:** the plugin only recognises handeggs, so a gnomeball rushing play is invisible to it.
 - **[rulebook]** Only one ball may be visible during a play.
-- **[gap]** Throw range and flight time per distance. Both are measurable from the projectile (§6).
+- **[decided]** A throw is **aimed at a player**: in OSRS you *Use* the handegg from your inventory on another player. A receiver with a free right hand catches it, and it lands in their weapon slot (OSRS Wiki, Holy handegg).
+- **[measured]** Throw timeline, from all 24 throws recorded on 2026-10-02 (`~/.runelite/rfl/replays/*_w354.rflr.gz`). T is the server tick the throw happens on.
+  - **Tick T:** the thrower plays anim **7996** and the receiver plays **782** at the same moment. The thrower stood still for the whole animation in every throw. Five throws had the thrower walking until about a tick before T, which fits "walk into range, then throw".
+  - **Tick T+1 or T+2:** the receiver has the egg in their weapon slot on the server. It was T+1 in 13 throws and T+2 in 11, and **distance made no difference**. PID order is the likely cause, but that isn't verified.
+  - **The visual ball** appears about 41 client cycles after T. It flies **5·d + 6 cycles**, where d is the Chebyshev distance in tiles (d=2: 16, d=3: 21, d=4: 26, d=5: 31, d=8: 46, d=9: 51, d=10: 56). It lands between T+1 and T+3.
+  - **Consequence:** the flight is cosmetic. Who gets the ball is fixed at tick T by who was targeted, and the server hands it over before a long throw visibly lands. A defender can't step into the path and take a pass. In OSRS terms, an interception means the thrower targeted a defender.
+- **[osrs-verify]** **Max range is 10 tiles** (Chebyshev). No recorded throw went past d = 10, and the one third-party source agrees, but no throw has been tried from 11 or more tiles away.
 
 ### Teams
 
@@ -94,7 +100,7 @@ Each fact is tagged:
 - **[rulebook]** Two **10-minute halves** (1000 ticks each), with a 5-minute half time and a two-minute warning in each half. Three one-minute timeouts per half.
 - **[rulebook]** The clock stops on a change of possession, an incomplete pass, out of bounds, a touchdown, a challenge and the two-minute warning. Extra points are not timed.
 - **[rulebook]** **4 downs to score.** There are no first downs: a drive scores within four plays or turns over on downs.
-- **[rulebook]** A drive starts with the ball at the **second window from the offense's own goal line**.
+- **[rulebook]** A drive starts with the ball at the **second window from the offense's own goal line**. That's row **6** when driving from the row-1 end, or row **35** from the row-40 end (see Spots below).
 - **[rulebook]** Overtime: one possession each, repeating in the order 1, 2, 2, 1, 1, 2 and so on until one team leads after equal possessions. From the third set of possessions, every touchdown must go for two.
 
 ### A play
@@ -134,15 +140,24 @@ Each fact is tagged:
 - **[rulebook]** The usual penalty is **5 yards**, with the down replayed. Unsportsmanlike conduct is 15 yards.
 - **[rulebook]** Equipment: nothing in the weapon or shield slot (books are allowed), no capes (the shoulder parrot is allowed), and nothing that hides or extends the feet.
 
+### Spots, in tiles
+
+- **[decided]** **One yard is one tile**, counted from the endzone. The 1-yard line is row **2** (or **39**), and 5 yards is 5 tiles.
+- **[decided]** **Windows** are on the 3rd and 6th tile of each 8-tile room wall, so the window rows are **3, 6, 11, 14, 19, 22, 27, 30, 35, 38**. Counted from the row-1 end, the 2nd window is row 6 and the 4th is row 14. From the row-40 end they are 35 and 27.
+  - Drive start and 1-point try: row **6** / **35**.
+  - 2-point try: row **14** / **27**.
+- **[decided]** **Next down:** on the row where the carrier was tackled, **re-centred** across the width.
+- **[decided]** **Line of scrimmage:** the row the ball is snapped on. **Offsides** is either team crossing that row before the snap.
+- **[decided]** If the carrier enters the endzone on the **same tick** they are touched, it's a **down at the 1-yard line** (row 2 / 39), not a touchdown.
+- **[decided]** **Stamina potions do nothing** under the rules. The sim treats players as always able to run.
+
 ### Still not defined
 
-- **[gap]** **Yards and windows to tiles.** Where are the 1-yard line and the 2nd and 4th windows in tile rows, and how many tiles is 5 yards? Every spot, penalty and conversion depends on this.
-- **[gap]** **Where the next down starts.** At the tackle spot (the carrier's tile, or the contact tile)? On the same row and column, or re-centred? Where does the ball go after out of bounds, an incomplete, a sack or a turnover?
-- **[gap]** **Where the line of scrimmage is, and what offsides means**, in tiles.
-- **[gap]** **Throws:** aimed at a player (the OSRS handegg "toss") or at a tile? Does a ball whose target moves away still get caught, and is that incomplete?
-- **[gap]** **Run energy:** speed boosts are banned, but does that include stamina potions? Do players run out of energy during a 10-minute half?
-- **[gap]** **Same-tick ordering:** if the carrier enters the endzone on the tick they are touched, which counts? The rulebook's "untouched" and "crosses the plane before the tackle" read as touchdown only if the touchdown happens strictly first.
-- **[gap]** **The interception conflict above:** which definition should the plugin follow?
+- **[gap]** **The centre column.** In-play columns are 2–15, which is 14 wide, so there's no single middle tile. Does re-centring put the ball on column 8 or 9?
+- **[gap]** **Which tile is the tackle row:** the carrier's true (server) tile or the contact tile? They can be up to 2 rows apart while running (§2).
+- **[gap]** **Spots after out of bounds, an incomplete, a sack and a turnover.** Presumably these are the row of the exit, the previous line of scrimmage, the sack row, and the reverse spot, but none of that is written down.
+- **[gap]** **Interception conflict:** a throw is aimed at a player, so the plugin's "caught while touching someone" check finds contested catches, which the rulebook calls incompletes, not interceptions. Should the plugin flag those as **incompletes** instead, and detect interceptions as a defender becoming the target?
+- **[osrs-verify]** Does a catch interrupt the receiver's movement? The wiki says catching interrupts the receiver's current action. In the recordings, 4 of the 24 receivers were moving within half a second of the landing, but every receiver was standing still at the throw, so the recordings can't confirm or rule it out.
 
 ---
 
