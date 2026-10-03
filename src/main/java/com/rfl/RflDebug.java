@@ -143,7 +143,9 @@ final class RflDebug
 
         sb.append("\nPERFORMANCE (10 s average)\n")
             .append("bare body: ").append(String.format("%.3f", bareBody.msPerFrame())).append(" ms/frame\n")
-            .append("mesh: ").append(String.format("%.3f", contactDetector.meshMsPerFrame())).append(" ms/frame\n");
+            .append("mesh: ").append(String.format("%.3f", contactDetector.meshMsPerFrame())).append(" ms/frame\n")
+            .append("mesh worst frame (last 10 s): ").append(String.format("%.3f", contactDetector.meshWorstMs()))
+            .append(" ms\n");
         return sb.toString();
     }
 

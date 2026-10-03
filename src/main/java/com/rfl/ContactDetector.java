@@ -57,6 +57,9 @@ final class ContactDetector
     private int meshFrames;
     private long meshLogAt;
     private volatile double meshMsPerFrame;
+    // Costliest single frame in the current window, published with the average (display only).
+    private long meshWorstNanos;
+    private volatile double meshWorstMs;
 
     @Inject
     ContactDetector(Client client, ContactHighlights highlights, RflConfig config, BareBody bareBody,
@@ -72,6 +75,7 @@ final class ContactDetector
     /** Builds this frame's meshes, runs the tracker over them and saves finished collisions. */
     void onFrame(Client client)
     {
+        long frameStartNanos = meshNanos;
         WorldView worldView = client.getTopLevelWorldView();
         Map<String, PosedMesh> meshes = new HashMap<>();
         Map<String, Player> players = new HashMap<>();
@@ -123,7 +127,7 @@ final class ContactDetector
         boolean detail = display || config.debugLogging();
         List<PosedMesh.Hits> started = tracker.update(meshes, holders, display, now, client.getTickCount(), detail);
         saveFinished();
-        endMeshFrame(now);
+        endMeshFrame(now, frameStartNanos);
         for (PosedMesh.Hits hits : started)
         {
             double[] c = hits.centroid();
@@ -204,21 +208,31 @@ final class ContactDetector
         return meshMsPerFrame;
     }
 
-    private void endMeshFrame(long now)
+    /** Costliest single frame of mesh work in the last ~10 s window, in ms. */
+    double meshWorstMs()
+    {
+        return meshWorstMs;
+    }
+
+    private void endMeshFrame(long now, long frameStartNanos)
     {
         meshNanos += tracker.takeMeshNanos();
+        meshWorstNanos = Math.max(meshWorstNanos, meshNanos - frameStartNanos);
         meshFrames++;
         if (now - meshLogAt < LOG_INTERVAL_MS)
         {
             return;
         }
         meshMsPerFrame = meshNanos / 1e6 / meshFrames;
+        meshWorstMs = meshWorstNanos / 1e6;
         if (config.debugLogging() && meshLogAt != 0)
         {
-            log.info("[RFL debug] mesh contacts: {} ms/frame avg over {} frames ({} meshes)",
-                String.format("%.3f", meshMsPerFrame), meshFrames, latestMeshes.size());
+            log.info("[RFL debug] mesh contacts: {} ms/frame avg, worst {} ms, over {} frames ({} meshes)",
+                String.format("%.3f", meshMsPerFrame), String.format("%.3f", meshWorstMs), meshFrames,
+                latestMeshes.size());
         }
         meshNanos = 0;
+        meshWorstNanos = 0;
         meshFrames = 0;
         meshLogAt = now;
     }
