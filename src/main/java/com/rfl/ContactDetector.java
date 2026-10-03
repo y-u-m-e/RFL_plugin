@@ -28,9 +28,10 @@ import net.runelite.client.util.Text;
  * the overlays and the debug panel, adds the contact tile highlight when a collision starts, hands
  * each finished collision to {@link CollisionLog}, and measures mesh cost.
  *
- * <p>Every pair in view is tracked alike, the local player's included; a collision needs a
- * handegg held by either body. Pairs without a holder are checked only while Show hitboxes or
- * Show touching triangles is on.
+ * <p>A pair is triangle-checked only when a handegg is held by either body, the local player's own
+ * pairs included; a pair with no holder is never triangle-checked, on display or off. Show
+ * hitboxes and Show touching triangles only ask for the full touching count on pairs already
+ * checked, so the overlay fill stays complete without widening which pairs get checked.
  *
  * <p>Client thread only: written from {@code ClientTick}, read by overlays (which render on the
  * client thread) and game-tick handlers. The latest-frame maps are replaced, never mutated.
@@ -121,11 +122,12 @@ final class ContactDetector
         latestMeshes = meshes;
         latestPlayers = players;
         latestMissing = missing;
-        // Drawing touching triangles needs every pair (other players too) fully counted each frame.
+        // Show hitboxes/Show touching triangles need the full touching count every frame, on
+        // handegg pairs only; they never widen which pairs get triangle-checked.
         boolean display = config.showHitboxes() || config.showTouchingTriangles();
         // The panel shows per-tick samples; only drawn overlays and debug logging need every frame fully counted.
         boolean detail = display || config.debugLogging();
-        List<PosedMesh.Hits> started = tracker.update(meshes, holders, display, now, client.getTickCount(), detail);
+        List<PosedMesh.Hits> started = tracker.update(meshes, holders, now, client.getTickCount(), detail);
         saveFinished();
         endMeshFrame(now, frameStartNanos);
         for (PosedMesh.Hits hits : started)

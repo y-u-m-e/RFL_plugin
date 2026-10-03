@@ -14,9 +14,11 @@ import java.util.function.IntSupplier;
  * until their bounds separate, so walking through someone (surfaces cross going in and out, nothing
  * crosses in between) is one collision. Dropping the handegg mid-collision does not end it.
  *
- * <p>Every pair in view is treated alike, the local player's included. Each finished collision is
- * queued as an {@link Collision} (with names) for {@link #takeFinished}. Open ones also
- * finish when the meshes go away or {@link #flush} is called.
+ * <p>Only a pair with a handegg held by either player is triangle-checked, the local player's own
+ * pairs included; a pair with no holder is never checked, display or not. Once a collision opens
+ * it stays checked until the bounds separate, even if the handegg is dropped. Each finished
+ * collision is queued as an {@link Collision} (with names) for {@link #takeFinished}. Open ones
+ * also finish when the meshes go away or {@link #flush} is called.
  *
  * <p>Max triangles is the number of touching triangle pairs, capped at {@link PosedMesh#MAX_HITS}.
  * A full count is expensive on heavily overlapping models, so it is only taken when something uses
@@ -25,9 +27,10 @@ import java.util.function.IntSupplier;
  * count). Other updates stop at the first touching pair. A finished collision carries the largest
  * of the start count and the per-tick samples, so the saved value never depends on display settings.
  *
- * <p>A pair is checked only while one of them holds a handegg, while its collision is open, or
- * while {@code others} is set (Show hitboxes or Show touching triangles). Each pair's whole-mesh
- * bounds are checked before any triangles.
+ * <p>{@code detail} only changes how fully an already-checked pair is counted; it never widens
+ * which pairs get checked. Show hitboxes and Show touching triangles need the full count on
+ * handegg pairs to fill the overlay completely, but a pair with no handegg holder stays
+ * untouched, even while they're on. Each pair's whole-mesh bounds are checked before any triangles.
  *
  * <p>Names are expected to already be {@code Text.sanitize}d by the caller. Client thread only.
  */
@@ -114,18 +117,17 @@ final class ContactTracker
     /**
      * @param meshes  this frame's meshes by sanitized name
      * @param holders sanitized names of the players holding a handegg this frame
-     * @param others  true to check every pair (a display is on), not just handegg ones
      * @param now     epoch ms stamped on collisions
      * @param tick    game tick count, stamped on collisions and used to sample once per tick
-     * @param detail  true when a display needs the full touching count every update
+     * @param detail  true when a display needs the full touching count on every checked pair
      * @return the touching triangles of each collision that started this update
      */
-    List<PosedMesh.Hits> update(Map<String, PosedMesh> meshes, Set<String> holders, boolean others,
-        long now, int tick, boolean detail)
+    List<PosedMesh.Hits> update(Map<String, PosedMesh> meshes, Set<String> holders, long now, int tick,
+        boolean detail)
     {
         boolean sample = tick != sampledTick;
         sampledTick = tick;
-        latest = currentPairs(meshes, holders, others, sample || detail);
+        latest = currentPairs(meshes, holders, sample || detail);
         List<PosedMesh.Hits> started = new ArrayList<>();
 
         for (Map.Entry<String, PosedMesh.Hits> entry : latest.entrySet())
@@ -276,7 +278,7 @@ final class ContactTracker
      * since its start records a count and a centroid tile; the rest per {@code fullCount}.
      */
     private Map<String, PosedMesh.Hits> currentPairs(Map<String, PosedMesh> meshes, Set<String> holders,
-        boolean others, boolean fullCount)
+        boolean fullCount)
     {
         Map<String, PosedMesh.Hits> pairs = new HashMap<>();
         List<String> names = new ArrayList<>(meshes.keySet());
@@ -294,7 +296,7 @@ final class ContactTracker
                 String key = pairKey(a, b);
                 // An open collision stays checked after the handegg is dropped, so it ends on separation.
                 boolean isOpen = open.containsKey(key);
-                if (!handegg && !others && !isOpen)
+                if (!handegg && !isOpen)
                 {
                     continue;
                 }

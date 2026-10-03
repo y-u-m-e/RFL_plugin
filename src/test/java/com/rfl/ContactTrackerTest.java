@@ -6,7 +6,6 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -76,9 +75,9 @@ public class ContactTrackerTest
         Map<String, PosedMesh> touching = Map.of("A", mesh(WALL), "B", mesh(THROUGH),
             "Me", mesh(1000, WALL), "Amy", mesh(1000, THROUGH));
 
-        assertEquals(2, t.update(touching, Set.of("B", "Me", "Amy"), false, 1000, 5, false).size());
+        assertEquals(2, t.update(touching, Set.of("B", "Me", "Amy"), 1000, 5, false).size());
         assertTrue(t.takeFinished().isEmpty());
-        assertTrue(t.update(NO_MESHES, NONE, false, 1600, 6, false).isEmpty());
+        assertTrue(t.update(NO_MESHES, NONE, 1600, 6, false).isEmpty());
 
         List<Collision> done = t.takeFinished();
         assertEquals(2, done.size());
@@ -110,18 +109,18 @@ public class ContactTrackerTest
     {
         ContactTracker t = tracker();
         PosedMesh zed = mesh(WALL);
-        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, false, 1000, 1, false);
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, 1000, 1, false);
 
         // Same tick, no display: stops at the first touching pair and takes no sample.
-        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), ALL, false, 1010, 1, false);
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), ALL, 1010, 1, false);
         assertEquals(1, t.overlaps().get(0).triangles);
 
         // First update of a new tick: full count, sampled into the max.
-        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), ALL, false, 1020, 2, false);
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), ALL, 1020, 2, false);
         assertEquals(2, t.overlaps().get(0).triangles);
-        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, false, 1030, 3, false);
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, 1030, 3, false);
 
-        t.update(Map.of("Zed", zed, "Amy", mesh(FAR)), ALL, false, 1040, 4, false);
+        t.update(Map.of("Zed", zed, "Amy", mesh(FAR)), ALL, 1040, 4, false);
         Collision c = t.takeFinished().get(0);
         assertEquals(2, c.maxTriangles);
         // The saved tile is the last touching update's.
@@ -133,12 +132,12 @@ public class ContactTrackerTest
     {
         ContactTracker t = tracker();
         PosedMesh zed = mesh(WALL);
-        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, false, 0, 1, true);
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, 0, 1, true);
 
-        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), ALL, false, 10, 1, true);
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), ALL, 10, 1, true);
         assertEquals(2, t.overlaps().get(0).triangles);
 
-        t.update(Map.of("Zed", zed, "Amy", mesh(FAR)), ALL, false, 20, 1, true);
+        t.update(Map.of("Zed", zed, "Amy", mesh(FAR)), ALL, 20, 1, true);
         assertEquals(1, t.takeFinished().get(0).maxTriangles);
     }
 
@@ -150,18 +149,18 @@ public class ContactTrackerTest
         assertFalse(PosedMesh.trianglesIntersect(WALL[0], WALL[1], WALL[2], NEAR[0], NEAR[1], NEAR[2]));
         ContactTracker t = tracker();
         PosedMesh amy = mesh(WALL);
-        assertEquals(1, t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), ALL, false, 0, 0, false).size());
+        assertEquals(1, t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), ALL, 0, 0, false).size());
 
-        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(NEAR)), ALL, false, 20, 1, false).isEmpty());
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(NEAR)), ALL, 20, 1, false).isEmpty());
         assertNull(t.collidingNow().get("Amy"));
         // Still listed for the debug panel: bounds overlap, nothing touching.
         ContactTracker.Overlap near = t.overlaps().get(0);
         assertEquals(0, near.triangles);
         assertNull(near.hits);
 
-        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), ALL, false, 40, 2, false).isEmpty());
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), ALL, 40, 2, false).isEmpty());
         assertTrue(t.takeFinished().isEmpty());
-        t.update(Map.of("Amy", amy, "Zed", mesh(FAR)), ALL, false, 60, 3, false);
+        t.update(Map.of("Amy", amy, "Zed", mesh(FAR)), ALL, 60, 3, false);
         List<Collision> done = t.takeFinished();
         assertEquals(1, done.size());
         assertEquals(0, done.get(0).startMs);
@@ -172,8 +171,8 @@ public class ContactTrackerTest
     public void playerLeavingViewEndsTheCollision()
     {
         ContactTracker t = tracker();
-        t.update(Map.of("A", mesh(WALL), "B", mesh(THROUGH)), ALL, false, 0, 0, false);
-        t.update(Map.of("A", mesh(WALL)), ALL, false, 20, 0, false);
+        t.update(Map.of("A", mesh(WALL), "B", mesh(THROUGH)), ALL, 0, 0, false);
+        t.update(Map.of("A", mesh(WALL)), ALL, 20, 0, false);
         assertEquals(1, t.takeFinished().size());
     }
 
@@ -182,16 +181,16 @@ public class ContactTrackerTest
     {
         ContactTracker t = tracker();
         Map<String, PosedMesh> touching = Map.of("A", mesh(WALL), "B", mesh(THROUGH));
-        assertTrue(t.update(touching, Set.of("Someone else"), false, 0, 0, false).isEmpty());
-        t.update(NO_MESHES, NONE, false, 20, 1, false);
+        assertTrue(t.update(touching, Set.of("Someone else"), 0, 0, false).isEmpty());
+        t.update(NO_MESHES, NONE, 20, 1, false);
         assertTrue(t.takeFinished().isEmpty());
 
-        t.update(touching, NONE, false, 40, 2, false);
+        t.update(touching, NONE, 40, 2, false);
         assertEquals("picking the handegg up mid-overlap starts it", 1,
-            t.update(touching, Set.of("A"), false, 60, 3, false).size());
-        t.update(touching, NONE, false, 80, 4, false);
+            t.update(touching, Set.of("A"), 60, 3, false).size());
+        t.update(touching, NONE, 80, 4, false);
         assertTrue(t.takeFinished().isEmpty());
-        t.update(Map.of("A", mesh(WALL), "B", mesh(FAR)), NONE, false, 100, 5, false);
+        t.update(Map.of("A", mesh(WALL), "B", mesh(FAR)), NONE, 100, 5, false);
         List<Collision> done = t.takeFinished();
         assertEquals(1, done.size());
         assertEquals(60, done.get(0).startMs);
@@ -199,20 +198,39 @@ public class ContactTrackerTest
     }
 
     @Test
-    public void pairsWithoutAHolderAreCheckedOnlyForDisplay()
+    public void pairsWithoutAHolderAreNeverCheckedEvenWithDetailOn()
     {
-        // A touches both B and C; B and C don't touch each other.
+        // A touches both B and C; B and C don't touch each other. Neither holds a handegg.
         Map<String, PosedMesh> meshes = Map.of("A", mesh(WALL), "B", mesh(THROUGH), "C", mesh(THROUGH_2),
             "Bo", mesh(FAR));
 
-        ContactTracker display = tracker();
-        assertTrue("no handegg, no collision", display.update(meshes, NONE, true, 0, 0, false).isEmpty());
-        // With Show hitboxes on, the pairs are still checked for local display.
-        assertEquals(List.of("B", "C"), sorted(display.collidingNow().get("A")));
+        // detail=true simulates Show hitboxes / Show touching triangles being on: it must not
+        // widen which pairs get triangle-checked.
+        ContactTracker detail = tracker();
+        assertTrue("no handegg, no collision", detail.update(meshes, NONE, 0, 0, true).isEmpty());
+        assertNull("not checked, so not even listed", detail.collidingNow().get("A"));
+        assertTrue("not checked, so not even in the overlap list", detail.overlaps().isEmpty());
 
-        ContactTracker noDisplay = tracker();
-        noDisplay.update(meshes, NONE, false, 0, 0, false);
-        assertTrue(noDisplay.overlaps().isEmpty());
+        ContactTracker noDetail = tracker();
+        noDetail.update(meshes, NONE, 0, 0, false);
+        assertTrue(noDetail.overlaps().isEmpty());
+    }
+
+    @Test
+    public void displayStillGetsAFullHitCountOnAHandeggPairButNotOnANonHolderPair()
+    {
+        // A touches both B (holder) and C (no holder); both touch, per WALL/THROUGH/THROUGH_2.
+        Map<String, PosedMesh> meshes = Map.of("A", mesh(WALL), "B", mesh(THROUGH), "C", mesh(THROUGH_2));
+
+        // detail=true simulates Show hitboxes / Show touching triangles being on.
+        ContactTracker t = tracker();
+        List<PosedMesh.Hits> started = t.update(meshes, Set.of("B"), 0, 0, true);
+
+        assertEquals("the handegg pair starts a collision", 1, started.size());
+        assertNotNull("handegg pair is triangle-checked and gets hits", t.hits("A", "B"));
+        assertNull("non-holder pair is never triangle-checked, display or not", t.hits("A", "C"));
+        assertEquals(List.of("B"), t.collidingNow().get("A"));
+        assertEquals("only the handegg pair is in the overlap list", 1, t.overlaps().size());
     }
 
     @Test
@@ -225,13 +243,13 @@ public class ContactTrackerTest
         insertBFirst.put("Zed", b);
         insertBFirst.put("Amy", a);
         ContactTracker fromBFirst = tracker();
-        fromBFirst.update(insertBFirst, ALL, false, 0, 0, false);
+        fromBFirst.update(insertBFirst, ALL, 0, 0, false);
 
         Map<String, PosedMesh> insertAFirst = new LinkedHashMap<>();
         insertAFirst.put("Amy", a);
         insertAFirst.put("Zed", b);
         ContactTracker fromAFirst = tracker();
-        fromAFirst.update(insertAFirst, ALL, false, 0, 0, false);
+        fromAFirst.update(insertAFirst, ALL, 0, 0, false);
 
         assertEquals("Amy", fromBFirst.overlaps().get(0).a);
         assertEquals("Zed", fromBFirst.overlaps().get(0).b);
@@ -247,15 +265,15 @@ public class ContactTrackerTest
         assertFalse(PosedMesh.trianglesIntersect(THROUGH[0], THROUGH[1], THROUGH[2],
             THROUGH_2[0], THROUGH_2[1], THROUGH_2[2]));
 
-        assertEquals(2, t.update(Map.of("A", wall, "B", through, "C", mesh(THROUGH_2)), ALL, false, 0, 0, false)
+        assertEquals(2, t.update(Map.of("A", wall, "B", through, "C", mesh(THROUGH_2)), ALL, 0, 0, false)
             .size());
-        t.update(NO_MESHES, NONE, false, 20, 1, false);
+        t.update(NO_MESHES, NONE, 20, 1, false);
         assertEquals(2, t.takeFinished().size());
 
-        assertEquals(1, t.update(Map.of("A", wall, "B", through), ALL, false, 40, 2, false).size());
+        assertEquals(1, t.update(Map.of("A", wall, "B", through), ALL, 40, 2, false).size());
         t.reset();
         assertEquals("reset() lets the same still-touching pair start fresh", 1,
-            t.update(Map.of("A", wall, "B", through), ALL, false, 60, 3, false).size());
+            t.update(Map.of("A", wall, "B", through), ALL, 60, 3, false).size());
     }
 
     @Test
@@ -263,14 +281,14 @@ public class ContactTrackerTest
     {
         ContactTracker t = tracker();
         Map<String, PosedMesh> touching = Map.of("A", mesh(WALL), "B", mesh(THROUGH));
-        t.update(touching, Set.of("A"), false, 0, 0, false);
+        t.update(touching, Set.of("A"), 0, 0, false);
         t.flush(99, 7);
         List<Collision> done = t.takeFinished();
         assertEquals(1, done.size());
         assertEquals(99, done.get(0).endMs);
         assertEquals(7, done.get(0).endTick);
 
-        t.update(touching, Set.of("A"), false, 100, 8, false);
+        t.update(touching, Set.of("A"), 100, 8, false);
         t.reset();
         t.flush(200, 9);
         assertTrue(t.takeFinished().isEmpty());
@@ -280,9 +298,9 @@ public class ContactTrackerTest
     public void listsCollisionsInProgressUntilTheyFinish()
     {
         ContactTracker t = tracker();
-        t.update(Map.of("B", mesh(WALL), "A", mesh(THROUGH)), Set.of("A"), false, 1000, 5, false);
+        t.update(Map.of("B", mesh(WALL), "A", mesh(THROUGH)), Set.of("A"), 1000, 5, false);
         assertEquals(List.of("A ↔ B"), t.inProgress());
-        t.update(NO_MESHES, NONE, false, 1600, 6, false);
+        t.update(NO_MESHES, NONE, 1600, 6, false);
         assertTrue(t.inProgress().isEmpty());
     }
 
@@ -290,7 +308,7 @@ public class ContactTrackerTest
     public void exposesCollidingNowAndTheTouchingTrianglesOfEachPair()
     {
         ContactTracker t = tracker();
-        t.update(Map.of("Amy", mesh(WALL), "Zed", mesh(THROUGH), "Bo", mesh(FAR)), ALL, false, 0, 0, false);
+        t.update(Map.of("Amy", mesh(WALL), "Zed", mesh(THROUGH), "Bo", mesh(FAR)), ALL, 0, 0, false);
 
         assertEquals(List.of("Zed"), t.collidingNow().get("Amy"));
         assertEquals(List.of("Amy"), t.collidingNow().get("Zed"));
@@ -315,17 +333,10 @@ public class ContactTrackerTest
             throughs[i] = THROUGH;
         }
         ContactTracker t = tracker();
-        List<PosedMesh.Hits> started = t.update(Map.of("Amy", mesh(walls), "Zed", mesh(throughs)), ALL, false,
+        List<PosedMesh.Hits> started = t.update(Map.of("Amy", mesh(walls), "Zed", mesh(throughs)), ALL,
             0, 0, false);
         assertEquals(PosedMesh.MAX_HITS, started.get(0).count);
         t.flush(10, 1);
         assertEquals(PosedMesh.MAX_HITS, t.takeFinished().get(0).maxTriangles);
-    }
-
-    private static List<String> sorted(List<String> names)
-    {
-        List<String> copy = new ArrayList<>(names);
-        Collections.sort(copy);
-        return copy;
     }
 }

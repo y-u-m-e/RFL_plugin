@@ -36,8 +36,9 @@ import org.junit.Test;
  * One player holds the handegg; with pile-ups, it is a pile-up member (the expensive case).
  *
  * <p>Per frame it times (a) building N meshes, (b) {@link ContactTracker#update} in display mode
- * (Show touching triangles on: every pair, full counts) and handegg-only mode (display and debug
- * off), and (c) {@link ReplaySampler#frame}. A game tick passes every 30 frames, which forces a
+ * (Show touching triangles on: same handegg-gated pairs as handegg-only, but a full count on every
+ * one of them each frame) and handegg-only mode (display and debug off, sampled once per tick),
+ * and (c) {@link ReplaySampler#frame}. A game tick passes every 30 frames, which forces a
  * full-count sample in handegg-only mode, as in game.
  */
 public class StressBenchmarkTest
@@ -343,7 +344,7 @@ public class StressBenchmarkTest
                     pitch.orientation(i), (int) pitch.x[i], (int) pitch.y[i]));
             }
             long t1 = System.nanoTime();
-            tracker.update(meshes, holders, display, frame * 20L, tick, display);
+            tracker.update(meshes, holders, frame * 20L, tick, display);
             tracker.takeFinished();
             long t2 = System.nanoTime();
             List<ReplaySampler.PlayerState> states = new ArrayList<>(n);

@@ -116,7 +116,7 @@ final class RflDebug
             sb.append(name).append(": mesh NO, ").append(source).append('\n');
         }
 
-        sb.append("\nOVERLAPPING PAIRS\n");
+        sb.append("\nOVERLAPPING PAIRS (handegg involved)\n");
         List<ContactTracker.Overlap> overlaps = contactDetector.overlaps();
         if (overlaps.isEmpty())
         {
@@ -166,7 +166,7 @@ final class RflDebug
         }
     }
 
-    /** Logs every pair whose mesh bounds overlap, with its touching triangle count. */
+    /** Logs every checked pair (handegg involved) whose mesh bounds overlap, with its touching triangle count. */
     void logOverlaps(int tick)
     {
         for (ContactTracker.Overlap o : contactDetector.overlaps())

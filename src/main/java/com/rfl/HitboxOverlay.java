@@ -19,7 +19,9 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  * Fills the triangles where two players' meshes touch in the contact colour (Show touching
  * triangles), and with Show hitboxes also draws a wireframe of every player's posed mesh: the
  * exact triangles contacts are detected from. Display only. Reads the detector's latest frame;
- * while either is on, the tracker counts every touching pair each frame so the fill is complete.
+ * while either is on, the tracker takes the full touching count on every handegg pair each frame
+ * so the fill is complete. Pairs with no handegg holder are never triangle-checked, so they never
+ * fill here either.
  */
 final class HitboxOverlay extends Overlay
 {

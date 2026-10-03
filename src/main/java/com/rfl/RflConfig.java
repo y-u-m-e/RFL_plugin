@@ -194,7 +194,8 @@ public interface RflConfig extends Config
         keyName = "showTouchingTriangles",
         name = "Show touching triangles",
         description = "While two players' models touch, fills the exact triangles that touch in the contact "
-            + "colour, for every player in view. Shown without the full wireframe from Show hitboxes.",
+            + "colour, for collisions where at least one player holds a handegg. Shown without the full "
+            + "wireframe from Show hitboxes.",
         section = DISPLAY_SECTION,
         position = 14
     )
@@ -211,7 +212,7 @@ public interface RflConfig extends Config
         name = "Show hitboxes",
         description = "Draws a wireframe of the model triangles contacts are detected from, for every player "
             + "in view while detection runs. Triangles touching another player's are filled in the contact "
-            + "colour.",
+            + "colour, for collisions where at least one player holds a handegg.",
         section = DISPLAY_SECTION,
         position = 15
     )
