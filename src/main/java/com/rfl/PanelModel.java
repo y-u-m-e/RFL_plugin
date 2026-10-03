@@ -90,8 +90,6 @@ final class PanelModel
     boolean recording;
     /** Whether a plugin list has been read yet; until then the counts are meaningless. */
     boolean pluginsKnown;
-    /** Banned plugins enabled right now, in list order. */
-    List<String> bannedOn;
     int enabledCount;
     int disabledCount;
     int collisionCount;
@@ -142,8 +140,7 @@ final class PanelModel
         {
             toggleRows.add(new ToggleRow(time(t.timeMs, zone), t.name, t.enabled));
         }
-        return new PanelModel(inPoh, recording, !plugins.isEmpty(),
-            Collections.unmodifiableList(PluginSnapshotter.enabledBanned(plugins)), enabled, plugins.size() - enabled,
+        return new PanelModel(inPoh, recording, !plugins.isEmpty(), enabled, plugins.size() - enabled,
             collisionCount, interceptionCount, latestEvent(latest, zone),
             Collections.unmodifiableList(collisionRows), Collections.unmodifiableList(interceptionRows),
             Collections.unmodifiableList(toggleRows), debugText);
@@ -170,21 +167,6 @@ final class PanelModel
     String status()
     {
         return inPoh ? "In a house" : "Not in a house";
-    }
-
-    /** The red banner's text, or null when no banned plugin is on. */
-    String bannedAlert()
-    {
-        return bannedAlert(bannedOn);
-    }
-
-    static String bannedAlert(List<String> banned)
-    {
-        if (banned.isEmpty())
-        {
-            return null;
-        }
-        return (banned.size() == 1 ? "Banned plugin enabled: " : "Banned plugins enabled: ") + String.join(", ", banned);
     }
 
     static String time(long epochMs, ZoneId zone)

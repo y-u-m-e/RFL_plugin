@@ -128,19 +128,6 @@ public class PanelModelTest
     }
 
     @Test
-    public void bannedAlertText()
-    {
-        assertNull(PanelModel.bannedAlert(List.of()));
-        assertEquals("Banned plugin enabled: Block Tracker", PanelModel.bannedAlert(List.of("Block Tracker")));
-        assertEquals("Banned plugins enabled: Block Tracker, True Tile Player Indicators",
-            PanelModel.bannedAlert(List.of("Block Tracker", "True Tile Player Indicators")));
-
-        PanelModel m = model(List.of(new PluginEntry("True Tile Player Indicators", true, PluginEntry.HUB),
-            new PluginEntry("Block Tracker", false, PluginEntry.HUB)), List.of(), List.of(), null, List.of(), null);
-        assertEquals("Banned plugin enabled: True Tile Player Indicators", m.bannedAlert());
-    }
-
-    @Test
     public void toggleRows()
     {
         PanelModel m = model(List.of(), List.of(), List.of(), null,

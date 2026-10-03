@@ -35,10 +35,10 @@ import net.runelite.client.ui.components.materialtabs.MaterialTabGroup;
 import net.runelite.client.util.ImageUtil;
 
 /**
- * The "RFL" sidebar panel. Top to bottom: a status strip (house, recording) with a red banner when
- * a banned plugin is enabled; the session's collision and interception counts with the latest
- * event as a highlighted card; Collisions / Interceptions / Plugins / Debug tabs; and an Open
- * folder footer. It renders a {@link PanelModel} and formats nothing itself.
+ * The "RFL" sidebar panel. Top to bottom: a status strip (house, recording); the session's
+ * collision and interception counts with the latest event as a highlighted card;
+ * Collisions / Interceptions / Plugins / Debug tabs; and an Open folder footer. It renders a
+ * {@link PanelModel} and formats nothing itself.
  *
  * <p>Threads: Swing EDT only. Models arrive through {@link #update}.
  */
@@ -54,12 +54,10 @@ final class RflPanel extends PluginPanel
     private static final int WRAP = 165;
     private static final int COPY_MESSAGE_MS = 3000;
 
-    // Status strip and banner.
+    // Status strip.
     private final JLabel status = new JLabel();
     private final JLabel recording = new JLabel("Recording");
     private final JButton recordButton = new JButton();
-    private final JPanel banner = new JPanel(new BorderLayout());
-    private final JLabel bannerText = new JLabel();
 
     // Hero.
     private final JLabel collisionCount = bigNumber(COLLISION);
@@ -72,9 +70,10 @@ final class RflPanel extends PluginPanel
     // Tabs.
     private final JPanel collisionsList = vertical();
     private final JPanel interceptionsList = vertical();
-    private final JPanel bannedList = vertical();
     private final JLabel enabledCount = bigNumberSmall();
     private final JLabel disabledCount = bigNumberSmall();
+    private JComponent pluginCounts;
+    private final JLabel pluginsNotice = empty("Plugin list not read yet.");
     private final JPanel togglesList = vertical();
     private final JLabel copyResult = new JLabel(" ");
     private final Timer copyResultTimer = new Timer(COPY_MESSAGE_MS, e -> setCopyText(" "));
@@ -102,7 +101,6 @@ final class RflPanel extends PluginPanel
         top.setOpaque(false);
         top.add(statusStrip());
         top.add(Box.createVerticalStrut(6));
-        top.add(banner());
         top.add(heroCounts());
         top.add(Box.createVerticalStrut(6));
         top.add(latestCard());
@@ -169,23 +167,6 @@ final class RflPanel extends PluginPanel
         return capHeight(strip);
     }
 
-    private JComponent banner()
-    {
-        banner.setBackground(ALERT);
-        banner.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
-        banner.setAlignmentX(LEFT_ALIGNMENT);
-        bannerText.setForeground(Color.WHITE);
-        bannerText.setFont(FontManager.getRunescapeBoldFont());
-        banner.add(bannerText, BorderLayout.CENTER);
-        banner.setVisible(false);
-        JPanel wrap = new JPanel(new BorderLayout());
-        wrap.setOpaque(false);
-        wrap.setAlignmentX(LEFT_ALIGNMENT);
-        wrap.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
-        wrap.add(banner, BorderLayout.CENTER);
-        return capHeight(wrap);
-    }
-
     private JComponent heroCounts()
     {
         JPanel row = new JPanel(new GridLayout(1, 2, 6, 0));
@@ -247,15 +228,15 @@ final class RflPanel extends PluginPanel
     private JComponent pluginsTab(Runnable copyHistory)
     {
         JPanel tab = vertical();
-        tab.add(bannedList);
-        tab.add(Box.createVerticalStrut(6));
+        tab.add(pluginsNotice);
 
         JPanel counts = new JPanel(new GridLayout(1, 2, 6, 0));
         counts.setOpaque(false);
         counts.setAlignmentX(LEFT_ALIGNMENT);
         counts.add(tile(enabledCount, "ENABLED", ON));
         counts.add(tile(disabledCount, "DISABLED", ColorScheme.MEDIUM_GRAY_COLOR));
-        tab.add(capHeight(counts));
+        pluginCounts = capHeight(counts);
+        tab.add(pluginCounts);
         tab.add(Box.createVerticalStrut(8));
 
         JButton copy = new JButton("Copy plugin history");
@@ -315,13 +296,6 @@ final class RflPanel extends PluginPanel
         status.setIcon(m.isInPoh() ? new Dot(OK) : new Dot(ColorScheme.MEDIUM_GRAY_COLOR));
         recording.setVisible(m.isRecording());
 
-        String alert = m.bannedAlert();
-        banner.setVisible(alert != null);
-        if (alert != null)
-        {
-            bannerText.setText(wrap(PanelModel.html(alert)));
-        }
-
         collisionCount.setText(String.valueOf(m.getCollisionCount()));
         interceptionCount.setText(String.valueOf(m.getInterceptionCount()));
         showLatest(m.getLatest());
@@ -334,10 +308,8 @@ final class RflPanel extends PluginPanel
         {
             showInterceptions(m.getInterceptions());
         }
-        if (was == null || !m.getBannedOn().equals(was.getBannedOn()) || m.isPluginsKnown() != was.isPluginsKnown())
-        {
-            showBanned(m);
-        }
+        pluginsNotice.setVisible(!m.isPluginsKnown());
+        pluginCounts.setVisible(m.isPluginsKnown());
         enabledCount.setText(m.isPluginsKnown() ? String.valueOf(m.getEnabledCount()) : "-");
         disabledCount.setText(m.isPluginsKnown() ? String.valueOf(m.getDisabledCount()) : "-");
         if (was == null || !m.getToggles().equals(was.getToggles()))
@@ -445,36 +417,6 @@ final class RflPanel extends PluginPanel
         }
     }
 
-    private void showBanned(PanelModel m)
-    {
-        bannedList.removeAll();
-        if (!m.isPluginsKnown())
-        {
-            bannedList.add(empty("Plugin list not read yet."));
-            return;
-        }
-        if (m.getBannedOn().isEmpty())
-        {
-            JLabel ok = new JLabel("No banned plugins enabled");
-            ok.setFont(FontManager.getRunescapeBoldFont());
-            ok.setForeground(OK);
-            ok.setIcon(new Dot(OK));
-            ok.setAlignmentX(LEFT_ALIGNMENT);
-            bannedList.add(ok);
-            return;
-        }
-        bannedList.add(header("BANNED, ENABLED NOW"));
-        for (String name : m.getBannedOn())
-        {
-            JLabel bad = new JLabel(name);
-            bad.setFont(FontManager.getRunescapeBoldFont());
-            bad.setForeground(OFF);
-            bad.setIcon(new Dot(ALERT.brighter()));
-            bad.setAlignmentX(LEFT_ALIGNMENT);
-            bannedList.add(bad);
-        }
-    }
-
     private void showToggles(List<PanelModel.ToggleRow> rows)
     {
         togglesList.removeAll();
@@ -489,7 +431,7 @@ final class RflPanel extends PluginPanel
             row.add(small(r.getTime()), BorderLayout.WEST);
             JLabel name = new JLabel(r.getPlugin());
             name.setFont(FontManager.getRunescapeSmallFont());
-            name.setForeground(PluginSnapshotter.isBanned(r.getPlugin()) ? OFF : Color.WHITE);
+            name.setForeground(Color.WHITE);
             name.setToolTipText(r.getPlugin());
             row.add(name, BorderLayout.CENTER);
             JLabel state = new JLabel(r.isOn() ? "ON" : "OFF");

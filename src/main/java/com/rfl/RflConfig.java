@@ -70,9 +70,9 @@ public interface RflConfig extends Config
     @ConfigItem(
         keyName = "showPanel",
         name = "Show RFL panel",
-        description = "Adds the RFL panel to the sidebar: your plugin list (banned plugins first), what "
-            + "detection sees right now, collisions in progress, the latest saved collisions with an Open "
-            + "folder button, and recent interception decisions.",
+        description = "Adds the RFL panel to the sidebar: your plugin list, what detection sees right now, "
+            + "collisions in progress, the latest saved collisions with an Open folder button, and recent "
+            + "interception decisions.",
         position = 0
     )
     default boolean showPanel()

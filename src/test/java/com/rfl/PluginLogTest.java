@@ -106,7 +106,6 @@ public class PluginLogTest
         assertTrue(t.get("enabled").getAsBoolean());
         assertFalse(parse(lines.get(2)).get("enabled").getAsBoolean());
 
-        assertEquals(List.of("Block Tracker"), PluginSnapshotter.enabledBanned(log.latest()));
         assertFalse(log.latest().get(0).enabled);
     }
 

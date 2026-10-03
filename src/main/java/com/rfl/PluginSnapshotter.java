@@ -5,7 +5,6 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.function.Predicate;
 
 import javax.inject.Inject;
@@ -26,9 +25,6 @@ import net.runelite.client.plugins.PluginManager;
 final class PluginSnapshotter
 {
     static final int MAX_NAME = 64;
-
-    /** Plugins the league bans, as lower-case display names. */
-    static final Set<String> BANNED = Set.of("block tracker", "true tile player indicators");
 
     private final PluginManager pluginManager;
 
@@ -53,26 +49,6 @@ final class PluginSnapshotter
         }
         entries.sort(Comparator.comparing((PluginEntry e) -> e.name.toLowerCase(Locale.ENGLISH)));
         return entries;
-    }
-
-    /** Whether a display name is on the banned list, ignoring case and surrounding spaces. */
-    static boolean isBanned(final String name)
-    {
-        return name != null && BANNED.contains(name.trim().toLowerCase(Locale.ENGLISH));
-    }
-
-    /** Names of the enabled banned plugins in a list, in list order. */
-    static List<String> enabledBanned(final List<PluginEntry> entries)
-    {
-        final List<String> out = new ArrayList<>();
-        for (final PluginEntry e : entries)
-        {
-            if (e.enabled && isBanned(e.name))
-            {
-                out.add(e.name);
-            }
-        }
-        return out;
     }
 
     /** {@link Plugin#getName()} (the descriptor name), else the class name; at most 64 characters. */
