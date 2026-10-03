@@ -11,6 +11,7 @@ Each fact is tagged:
 | **[code]** | Enforced by our plugin or server today. Authoritative. |
 | **[decided]** | A rule the league owner stated. |
 | **[rulebook]** | From the RFL Rulebook, Season 31 Edition. |
+| **[measured]** | Measured from our own replay recordings (§7). |
 | **[osrs-high]** | Well-established OSRS mechanic. |
 | **[osrs-verify]** | My best understanding of OSRS. Measure it before you rely on it (see §6). |
 | **[gap]** | Not defined anywhere yet. Needs the league owner. |
