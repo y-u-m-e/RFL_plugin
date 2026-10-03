@@ -10,13 +10,13 @@ import net.runelite.client.config.Range;
 import net.runelite.client.config.Units;
 
 /**
- * User configuration for the RFL audit plugin. Key names are stored settings: rename only with a
+ * User configuration for the RFL plugin. Key names are stored settings: rename only with a
  * migration.
  */
 @ConfigGroup(RflConfig.GROUP)
 public interface RflConfig extends Config
 {
-    /** Config group name, also used for RS-profile keys such as the per-account install ID. */
+    /** Config group name. */
     String GROUP = "rfl";
 
     @ConfigSection(
@@ -81,60 +81,6 @@ public interface RflConfig extends Config
     default int highlightDurationMs()
     {
         return 1200;
-    }
-
-    /**
-     * Controls whether match reports are sent to the RFL audit server.
-     *
-     * @return true when reporting is enabled
-     */
-    @ConfigItem(
-        keyName = "enableReporting",
-        name = "Enable reporting",
-        position = 0,
-        description = "While logged in, every 10 seconds, sends your own RSN, world, enabled plugin list and - "
-            + "inside a player-owned house - your own handegg contacts with other players (time, tile, depth) "
-            + "and nameless sightings of other players colliding (time and tile only), to dev-api.ironforged.gg. "
-            + "No other player's name is sent. Published publicly on rfl.gg. Off until you enable it.",
-        warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by "
-            + "RuneLite developers"
-    )
-    default boolean enableReporting()
-    {
-        return false;
-    }
-
-    /**
-     * Local-only collision tracking between any two players. Overrides reporting while on.
-     *
-     * @return true when Observer mode is on
-     */
-    @ConfigItem(
-        keyName = "observerMode",
-        name = "Observer mode",
-        position = 1,
-        description = "Track every handegg collision in view between any two players and save it on this "
-            + "computer only. Nothing is sent to any server while this is on."
-    )
-    default boolean observerMode()
-    {
-        return false;
-    }
-
-    /**
-     * @return true to send the enabled plugin list and plugin toggle events
-     */
-    @ConfigItem(
-        keyName = "reportPlugins",
-        name = "Report plugin list",
-        description = "Sends your enabled plugin list and plugin on/off changes. Turning this off is "
-            + "reported and shown publicly on rfl.gg as a flag.",
-        section = FEATURES_SECTION,
-        position = 5
-    )
-    default boolean reportPlugins()
-    {
-        return true;
     }
 
     /**

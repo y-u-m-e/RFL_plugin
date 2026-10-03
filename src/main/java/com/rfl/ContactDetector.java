@@ -25,15 +25,12 @@ import net.runelite.client.util.Text;
  * Turns the live players in view into {@link PosedMesh} triangles for {@link ContactTracker} every
  * client frame, from each player's posed model: the drawn model, or the bare body
  * ({@link BareBody}) per the Hitbox source setting. Keeps the latest frame's meshes and pairs for
- * the overlays and the debug panel, adds the contact tile highlight, and measures mesh cost.
+ * the overlays and the debug panel, adds the contact tile highlight when a collision starts, hands
+ * each finished collision to {@link ObserverLog}, and measures mesh cost.
  *
- * <p>Contact events are self only (pairs including the local player) and need a handegg held by
- * either body. Pairs of two other players are checked only while one of them holds a handegg (for
- * the name-free collision_seen witness) or while Show hitboxes or Show touching triangles is on.
- *
- * <p>Observer mode: no contact events (open self contacts end); every pair with a handegg holder
- * is tracked locally instead and each finished collision goes to {@link ObserverLog}, never to
- * the event queue.
+ * <p>Every pair in view is tracked alike, the local player's included; a collision needs a
+ * handegg held by either body. Pairs without a holder are checked only while Show hitboxes or
+ * Show touching triangles is on.
  *
  * <p>Client thread only: written from {@code ClientTick}, read by overlays (which render on the
  * client thread) and game-tick handlers. The latest-frame maps are replaced, never mutated.
@@ -72,12 +69,8 @@ final class ContactDetector
         this.bareBody = bareBody;
     }
 
-    /**
-     * Builds this frame's meshes and runs the tracker over them.
-     *
-     * @return contact events this frame
-     */
-    List<RflEvent> onFrame(Client client)
+    /** Builds this frame's meshes, runs the tracker over them and saves finished collisions. */
+    void onFrame(Client client)
     {
         WorldView worldView = client.getTopLevelWorldView();
         Map<String, PosedMesh> meshes = new HashMap<>();
@@ -127,22 +120,14 @@ final class ContactDetector
         // Drawing touching triangles needs every pair (other players too) fully counted each frame.
         boolean display = config.showHitboxes() || config.showTouchingTriangles();
         boolean detail = display || config.showDebugPanel() || config.debugLogging();
-        Player local = client.getLocalPlayer();
-        String self = local == null ? null : sanitizedName(local);
-        List<RflEvent> events = tracker.update(meshes, self, holders, display, now,
-            client.getTickCount(), detail, config.observerMode());
-        saveObserved();
+        List<PosedMesh.Hits> started = tracker.update(meshes, holders, display, now, client.getTickCount(), detail);
+        saveFinished();
         endMeshFrame(now);
-        for (RflEvent event : events)
+        for (PosedMesh.Hits hits : started)
         {
-            PosedMesh.Hits hits = "contact_start".equals(event.type) ? tracker.hits(event.contactId) : null;
-            if (hits != null)
-            {
-                double[] c = hits.centroid();
-                highlights.add((int) Math.round(c[0]), (int) Math.round(c[1]), now);
-            }
+            double[] c = hits.centroid();
+            highlights.add((int) Math.round(c[0]), (int) Math.round(c[1]), now);
         }
-        return events;
     }
 
     /**
@@ -159,33 +144,14 @@ final class ContactDetector
     }
 
     /**
-     * Closes every currently open pair (an empty mesh map ends every active pair rather than
-     * dropping it silently), for leaving the POH, a hop, or a logout while reporting is still
-     * enabled. Callers that don't need the resulting {@code contact_end} events (reporting
-     * disabled, plugin shutdown) should call {@link #reset()} instead.
-     *
-     * @param client client used only for its tick count; no player state is read
-     * @return the contact_end events for every pair that was open
-     */
-    List<RflEvent> endAll(Client client)
-    {
-        latestMeshes = Collections.emptyMap();
-        latestPlayers = Collections.emptyMap();
-        latestMissing = Collections.emptyList();
-        List<RflEvent> events = tracker.update(Collections.emptyMap(), null, Collections.emptySet(), false,
-            System.currentTimeMillis(), client.getTickCount(), false);
-        saveObserved();
-        return events;
-    }
-
-    /**
-     * Drops every open pair without events, plus highlights and the bare-body model cache. Open
-     * observer collisions are saved as ended first. Client thread.
+     * Saves every open collision as ended now and drops all tracking state, highlights and the
+     * bare-body model cache. For leaving the POH, a hop, a logout, Detect contacts going off, or
+     * shutdown. Client thread.
      */
     void reset()
     {
-        tracker.flushObserved(System.currentTimeMillis(), client.getTickCount());
-        saveObserved();
+        tracker.flush(System.currentTimeMillis(), client.getTickCount());
+        saveFinished();
         tracker.reset();
         highlights.clear();
         bareBody.reset();
@@ -194,9 +160,9 @@ final class ContactDetector
         latestMissing = Collections.emptyList();
     }
 
-    private void saveObserved()
+    private void saveFinished()
     {
-        for (ObservedCollision c : tracker.takeObserved())
+        for (ObservedCollision c : tracker.takeFinished())
         {
             observerLog.record(c);
         }
@@ -219,13 +185,13 @@ final class ContactDetector
         return latestMeshes;
     }
 
-    /** Pairs from the latest frame whose mesh bounds overlap, touching or not. */
-    /** Observer collisions in progress, as "A ↔ B". Client thread. */
-    List<String> observing()
+    /** Collisions in progress, as "A ↔ B". Client thread. */
+    List<String> inProgress()
     {
-        return tracker.observing();
+        return tracker.inProgress();
     }
 
+    /** Pairs from the latest frame whose mesh bounds overlap, touching or not. */
     List<ContactTracker.Overlap> overlaps()
     {
         return tracker.overlaps();

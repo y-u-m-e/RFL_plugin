@@ -2,7 +2,6 @@ package com.rfl;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -16,8 +15,7 @@ import java.util.Set;
 
 import org.junit.Test;
 
-import com.google.gson.GsonBuilder;
-
+/** {@link ContactTracker}: handegg-gated collisions between any two players, held until bounds separate. */
 public class ContactTrackerTest
 {
     /** Triangle in the plane x = 40. */
@@ -32,17 +30,19 @@ public class ContactTrackerTest
     private static final double[][] FAR = {{300, 0, 50}, {320, 0, 50}, {310, 0, 70}};
 
     /** Everyone holds a handegg, so the gate never gets in the way of the tests that aren't about it. */
-    private static final Set<String> ALL = Set.of("Amy", "Zed", "Bo", "A", "B", "C", "Me", "Other Guy");
+    private static final Set<String> ALL = Set.of("Amy", "Zed", "Bo", "A", "B", "C", "Me");
     private static final Set<String> NONE = Collections.emptySet();
+    private static final Map<String, PosedMesh> NO_MESHES = Collections.emptyMap();
 
-    /** Scene x/y to a recognisable fake world tile. */
+    /** Scene x/y to a recognisable fake world tile, on world 330. */
     private static ContactTracker tracker()
     {
-        return new ContactTracker((x, y) -> new int[]{1000 + (int) Math.floor(x), 2000 + (int) Math.floor(y), 0});
+        return new ContactTracker((x, y) -> new int[]{1000 + (int) Math.floor(x), 2000 + (int) Math.floor(y), 0},
+            () -> 330);
     }
 
-    /** A mesh of the given triangles. */
-    private static PosedMesh mesh(double[][]... triangles)
+    /** A mesh of the given triangles, shifted dx along x. */
+    private static PosedMesh mesh(double dx, double[][]... triangles)
     {
         int n = triangles.length * 3;
         float[] x = new float[n];
@@ -54,7 +54,7 @@ public class ContactTrackerTest
             for (int k = 0; k < 3; k++)
             {
                 int v = t * 3 + k;
-                x[v] = (float) triangles[t][k][0];
+                x[v] = (float) (triangles[t][k][0] + dx);
                 y[v] = (float) triangles[t][k][1];
                 z[v] = (float) triangles[t][k][2];
                 faces[v] = v;
@@ -63,209 +63,156 @@ public class ContactTrackerTest
         return new PosedMesh(x, y, z, faces);
     }
 
+    private static PosedMesh mesh(double[][]... triangles)
+    {
+        return mesh(0, triangles);
+    }
+
     @Test
-    public void depthIsTheTouchingTriangleCountAndTheEndCarriesTheMaxPerTickSample()
+    public void savesBothNamesBallHoldersTimesTileAndWorld()
+    {
+        ContactTracker t = tracker();
+        // A/B touch near x 40; Me/Amy (the local player's own pair) touch 1000 units away.
+        Map<String, PosedMesh> touching = Map.of("A", mesh(WALL), "B", mesh(THROUGH),
+            "Me", mesh(1000, WALL), "Amy", mesh(1000, THROUGH));
+
+        assertEquals(2, t.update(touching, Set.of("B", "Me", "Amy"), false, 1000, 5, false).size());
+        assertTrue(t.takeFinished().isEmpty());
+        assertTrue(t.update(NO_MESHES, NONE, false, 1600, 6, false).isEmpty());
+
+        List<ObservedCollision> done = t.takeFinished();
+        assertEquals(2, done.size());
+        ObservedCollision ab = done.get(0).a.equals("A") ? done.get(0) : done.get(1);
+        ObservedCollision self = ab == done.get(0) ? done.get(1) : done.get(0);
+
+        assertEquals("A", ab.a);
+        assertEquals("B", ab.b);
+        assertEquals(List.of("B"), ab.ball);
+        assertEquals(1000, ab.startMs);
+        assertEquals(1600, ab.endMs);
+        assertEquals(5, ab.startTick);
+        assertEquals(6, ab.endTick);
+        assertEquals(330, ab.world);
+        // Centroid of WALL + THROUGH is scene (40, 0).
+        assertEquals(1040, ab.x);
+        assertEquals(2000, ab.y);
+        assertEquals(0, ab.plane);
+        assertEquals(1, ab.maxTriangles);
+
+        assertEquals("self pairs are tracked like any other", "Amy", self.a);
+        assertEquals("Me", self.b);
+        assertEquals("both holders are named", List.of("Amy", "Me"), self.ball);
+        assertEquals(2040, self.x);
+    }
+
+    @Test
+    public void maxTrianglesIsTheLargestPerTickSample()
     {
         ContactTracker t = tracker();
         PosedMesh zed = mesh(WALL);
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, false, 1000, 1, false);
 
-        List<RflEvent> e1 = t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), "Amy", ALL, false, 1000, 1, false);
-        assertEquals("contact_start", e1.get(0).type);
-        assertEquals(1, (int) e1.get(0).depth);
-        // Centroid of WALL + THROUGH is scene (40, 0).
-        assertEquals(1040, (int) e1.get(0).x);
-        assertEquals(2000, (int) e1.get(0).y);
-        assertEquals(0, (int) e1.get(0).plane);
-
-        // Same tick, no display: stops at the first touching pair and takes no depth sample.
-        assertTrue(t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), "Amy", ALL, false, 1010, 1, false).isEmpty());
+        // Same tick, no display: stops at the first touching pair and takes no sample.
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), ALL, false, 1010, 1, false);
         assertEquals(1, t.overlaps().get(0).triangles);
 
         // First update of a new tick: full count, sampled into the max.
-        assertTrue(t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), "Amy", ALL, false, 1020, 2, false).isEmpty());
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), ALL, false, 1020, 2, false);
         assertEquals(2, t.overlaps().get(0).triangles);
-        assertTrue(t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), "Amy", ALL, false, 1030, 3, false).isEmpty());
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, false, 1030, 3, false);
 
-        List<RflEvent> e3 = t.update(Map.of("Zed", zed, "Amy", mesh(FAR)), "Amy", ALL, false, 1040, 4, false);
-        assertEquals("contact_end", e3.get(0).type);
-        assertEquals(2, (int) e3.get(0).depth);
-        // The end reports the tile of the last touching update.
-        assertEquals(1040, (int) e3.get(0).x);
+        t.update(Map.of("Zed", zed, "Amy", mesh(FAR)), ALL, false, 1040, 4, false);
+        ObservedCollision c = t.takeFinished().get(0);
+        assertEquals(2, c.maxTriangles);
+        // The saved tile is the last touching update's.
+        assertEquals(1040, c.x);
     }
 
     @Test
-    public void detailCountsFullyButDoesNotChangeTheReportedDepth()
+    public void detailCountsFullyButDoesNotChangeTheSavedCount()
     {
         ContactTracker t = tracker();
         PosedMesh zed = mesh(WALL);
-        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), "Zed", ALL, false, 0, 1, true);
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, false, 0, 1, true);
 
-        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), "Zed", ALL, false, 10, 1, true);
+        t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH, THROUGH_2)), ALL, false, 10, 1, true);
         assertEquals(2, t.overlaps().get(0).triangles);
 
-        List<RflEvent> end = t.update(Map.of("Zed", zed, "Amy", mesh(FAR)), "Zed", ALL, false, 20, 1, true);
-        assertEquals(1, (int) end.get(0).depth);
+        t.update(Map.of("Zed", zed, "Amy", mesh(FAR)), ALL, false, 20, 1, true);
+        assertEquals(1, t.takeFinished().get(0).maxTriangles);
     }
 
     @Test
-    public void holdsWhileBoundsOverlapSoWalkingThroughSomeoneIsOneContact()
+    public void walkingThroughSomeoneIsOneCollision()
     {
-        // Walking through a player: surfaces cross going in, the bodies sit inside each other with
-        // nothing crossing, then cross again going out. That must be one contact, not two.
-        assertTrue(!PosedMesh.trianglesIntersect(WALL[0], WALL[1], WALL[2], NEAR[0], NEAR[1], NEAR[2]));
+        // Surfaces cross going in, the bodies sit inside each other with nothing crossing, then
+        // cross again going out. That must be one collision, not two.
+        assertFalse(PosedMesh.trianglesIntersect(WALL[0], WALL[1], WALL[2], NEAR[0], NEAR[1], NEAR[2]));
         ContactTracker t = tracker();
         PosedMesh amy = mesh(WALL);
-        assertEquals("contact_start",
-            t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), "Amy", ALL, false, 0, 0, false).get(0).type);
+        assertEquals(1, t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), ALL, false, 0, 0, false).size());
 
-        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(NEAR)), "Amy", ALL, false, 20, 1, false).isEmpty());
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(NEAR)), ALL, false, 20, 1, false).isEmpty());
         assertNull(t.collidingNow().get("Amy"));
         // Still listed for the debug panel: bounds overlap, nothing touching.
         ContactTracker.Overlap near = t.overlaps().get(0);
         assertEquals(0, near.triangles);
         assertNull(near.hits);
 
-        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), "Amy", ALL, false, 40, 2, false).isEmpty());
-        assertEquals("contact_end",
-            t.update(Map.of("Amy", amy, "Zed", mesh(FAR)), "Amy", ALL, false, 60, 3, false).get(0).type);
+        assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), ALL, false, 40, 2, false).isEmpty());
+        assertTrue(t.takeFinished().isEmpty());
+        t.update(Map.of("Amy", amy, "Zed", mesh(FAR)), ALL, false, 60, 3, false);
+        List<ObservedCollision> done = t.takeFinished();
+        assertEquals(1, done.size());
+        assertEquals(0, done.get(0).startMs);
+        assertEquals(60, done.get(0).endMs);
     }
 
     @Test
-    public void aWitnessedPairPassingThroughEachOtherIsSeenOnce()
+    public void playerLeavingViewEndsTheCollision()
     {
         ContactTracker t = tracker();
-        PosedMesh a = mesh(WALL);
-        assertEquals("collision_seen",
-            t.update(Map.of("A", a, "B", mesh(THROUGH)), "Me", ALL, false, 0, 0, false).get(0).type);
-        assertTrue(t.update(Map.of("A", a, "B", mesh(NEAR)), "Me", ALL, false, 20, 1, false).isEmpty());
-        assertTrue(t.update(Map.of("A", a, "B", mesh(THROUGH)), "Me", ALL, false, 40, 2, false).isEmpty());
+        t.update(Map.of("A", mesh(WALL), "B", mesh(THROUGH)), ALL, false, 0, 0, false);
+        t.update(Map.of("A", mesh(WALL)), ALL, false, 20, 0, false);
+        assertEquals(1, t.takeFinished().size());
     }
 
     @Test
-    public void playerLeavingViewEndsContact()
+    public void startsOnlyWithAHandeggHolderInThePairAndDroppingItDoesNotEndIt()
     {
         ContactTracker t = tracker();
-        t.update(Map.of("A", mesh(WALL), "B", mesh(THROUGH)), "A", ALL, false, 0, 0, false);
-        assertEquals("contact_end", t.update(Map.of("A", mesh(WALL)), "A", ALL, false, 20, 0, false).get(0).type);
+        Map<String, PosedMesh> touching = Map.of("A", mesh(WALL), "B", mesh(THROUGH));
+        assertTrue(t.update(touching, Set.of("Someone else"), false, 0, 0, false).isEmpty());
+        t.update(NO_MESHES, NONE, false, 20, 1, false);
+        assertTrue(t.takeFinished().isEmpty());
+
+        t.update(touching, NONE, false, 40, 2, false);
+        assertEquals("picking the handegg up mid-overlap starts it", 1,
+            t.update(touching, Set.of("A"), false, 60, 3, false).size());
+        t.update(touching, NONE, false, 80, 4, false);
+        assertTrue(t.takeFinished().isEmpty());
+        t.update(Map.of("A", mesh(WALL), "B", mesh(FAR)), NONE, false, 100, 5, false);
+        List<ObservedCollision> done = t.takeFinished();
+        assertEquals(1, done.size());
+        assertEquals(60, done.get(0).startMs);
+        assertEquals(List.of("A"), done.get(0).ball);
     }
 
     @Test
-    public void startAndEndShareAContactIdAndANewContactGetsANewOne()
-    {
-        ContactTracker t = tracker();
-        RflEvent start = t.update(Map.of("Amy", mesh(WALL), "Zed", mesh(THROUGH)), "Amy", ALL, false, 0, 0, false).get(0);
-        RflEvent end = t.update(Map.of("Amy", mesh(WALL), "Zed", mesh(FAR)), "Amy", ALL, false, 20, 1, false).get(0);
-        RflEvent again = t.update(Map.of("Amy", mesh(WALL), "Zed", mesh(THROUGH)), "Amy", ALL, false, 40, 2, false).get(0);
-
-        assertEquals("contact_start", start.type);
-        assertEquals("contact_end", end.type);
-        assertEquals(start.contactId, end.contactId);
-        assertEquals("contact_start", again.type);
-        assertNotEquals(start.contactId, again.contactId);
-    }
-
-    @Test
-    public void onlyPairsIncludingTheLocalPlayerEmitContactEvents()
+    public void pairsWithoutAHolderAreCheckedOnlyForDisplay()
     {
         // A touches both B and C; B and C don't touch each other.
         Map<String, PosedMesh> meshes = Map.of("A", mesh(WALL), "B", mesh(THROUGH), "C", mesh(THROUGH_2),
             "Bo", mesh(FAR));
 
-        List<RflEvent> asB = tracker().update(meshes, "B", NONE, true, 0, 0, false);
-        assertTrue("no handegg, no events", asB.isEmpty());
+        ContactTracker display = tracker();
+        assertTrue("no handegg, no collision", display.update(meshes, NONE, true, 0, 0, false).isEmpty());
+        // With Show hitboxes on, the pairs are still checked for local display.
+        assertEquals(List.of("B", "C"), sorted(display.collidingNow().get("A")));
 
-        List<RflEvent> asBWithEgg = tracker().update(meshes, "B", Set.of("B"), false, 0, 0, false);
-        assertEquals(1, asBWithEgg.size());
-        assertEquals("contact_start", asBWithEgg.get(0).type);
-
-        // Bo touches nobody: A~B and A~C are other-other pairs, never contact events.
-        ContactTracker bo = tracker();
-        List<RflEvent> asBo = bo.update(meshes, "Bo", NONE, true, 0, 0, false);
-        assertTrue(asBo.isEmpty());
-        // With Show hitboxes on, the other pairs are still checked for local display.
-        assertEquals(List.of("B", "C"), sorted(bo.collidingNow().get("A")));
-
-        // With Show hitboxes off and no handegg, other pairs are not checked at all.
-        ContactTracker boNoDisplay = tracker();
-        boNoDisplay.update(meshes, "Bo", NONE, false, 0, 0, false);
-        assertTrue(boNoDisplay.overlaps().isEmpty());
-    }
-
-    @Test
-    public void selfContactStartsOnlyWhileEitherBodyHoldsAHandeggAndEndsRegardless()
-    {
-        ContactTracker t = tracker();
-        Map<String, PosedMesh> touching = Map.of("Me", mesh(WALL), "Zed", mesh(THROUGH));
-
-        assertTrue(t.update(touching, "Me", NONE, false, 0, 0, false).isEmpty());
-
-        // Zed picks up the handegg while still touching: the contact starts now, ball = other.
-        List<RflEvent> start = t.update(touching, "Me", Set.of("Zed"), false, 10, 1, false);
-        assertEquals("contact_start", start.get(0).type);
-        assertEquals("other", start.get(0).ball);
-
-        // The handegg is dropped: still touching, the contact stays open.
-        assertTrue(t.update(touching, "Me", NONE, false, 20, 2, false).isEmpty());
-
-        List<RflEvent> end = t.update(Map.of("Me", mesh(WALL), "Zed", mesh(FAR)), "Me", NONE, false, 30, 3, false);
-        assertEquals("contact_end", end.get(0).type);
-        assertEquals(start.get(0).contactId, end.get(0).contactId);
-        assertEquals("other", end.get(0).ball);
-    }
-
-    @Test
-    public void ballIsSelfWhenTheLocalPlayerHoldsTheHandeggIncludingWhenBothDo()
-    {
-        Map<String, PosedMesh> touching = Map.of("Me", mesh(WALL), "Zed", mesh(THROUGH));
-        assertEquals("self", tracker().update(touching, "Me", Set.of("Me"), false, 0, 0, false).get(0).ball);
-        assertEquals("self", tracker().update(touching, "Me", Set.of("Me", "Zed"), false, 0, 0, false).get(0).ball);
-    }
-
-    @Test
-    public void collisionSeenOncePerOtherPairContactWithAHandeggAndCarriesNoNames()
-    {
-        ContactTracker t = tracker();
-        Map<String, PosedMesh> others = Map.of("Amy", mesh(WALL), "Zed", mesh(THROUGH), "Me", mesh(FAR));
-
-        assertTrue("no handegg, no witness", t.update(others, "Me", NONE, false, 0, 0, false).isEmpty());
-
-        List<RflEvent> seen = t.update(others, "Me", Set.of("Amy"), false, 10, 1, false);
-        assertEquals(1, seen.size());
-        RflEvent e = seen.get(0);
-        assertEquals("collision_seen", e.type);
-        assertEquals(1040, (int) e.x);
-        assertEquals(2000, (int) e.y);
-        assertEquals(0, (int) e.plane);
-        assertNull(e.contactId);
-        assertNull(e.depth);
-        assertNull(e.ball);
-        String json = new GsonBuilder().create().toJson(e);
-        assertFalse(json.contains("Amy"));
-        assertFalse(json.contains("Zed"));
-
-        // Still touching: no repeat. Separating and touching again: a new witness.
-        assertTrue(t.update(others, "Me", Set.of("Amy"), false, 20, 2, false).isEmpty());
-        assertTrue(t.update(Map.of("Amy", mesh(WALL), "Zed", mesh(FAR)), "Me", Set.of("Amy"), false, 30, 3, false).isEmpty());
-        assertEquals("collision_seen", t.update(others, "Me", Set.of("Amy"), false, 40, 4, false).get(0).type);
-    }
-
-    @Test
-    public void serializedReportNeverContainsAnotherPlayersName()
-    {
-        ContactTracker t = tracker();
-        List<RflEvent> events = new ArrayList<>();
-        events.addAll(t.update(Map.of("Me", mesh(WALL), "Other Guy", mesh(THROUGH), "Amy", mesh(THROUGH_2)),
-            "Me", ALL, true, 0, 0, true));
-        events.addAll(t.update(Map.of("Me", mesh(WALL)), "Me", ALL, true, 20, 1, true));
-        assertEquals(4, events.size());
-
-        RflReport report = new RflReport("Me", "install-1", 330, 30L, true, "", List.of(), events,
-            new RflReport.Features(true, true));
-        String json = new GsonBuilder().create().toJson(report);
-
-        assertTrue(json.contains("\"rsn\":\"Me\""));
-        assertFalse(json.contains("Other Guy"));
-        assertFalse(json.contains("Amy"));
+        ContactTracker noDisplay = tracker();
+        noDisplay.update(meshes, NONE, false, 0, 0, false);
+        assertTrue(noDisplay.overlaps().isEmpty());
     }
 
     @Test
@@ -278,13 +225,13 @@ public class ContactTrackerTest
         insertBFirst.put("Zed", b);
         insertBFirst.put("Amy", a);
         ContactTracker fromBFirst = tracker();
-        fromBFirst.update(insertBFirst, "Amy", ALL, false, 0, 0, false);
+        fromBFirst.update(insertBFirst, ALL, false, 0, 0, false);
 
         Map<String, PosedMesh> insertAFirst = new LinkedHashMap<>();
         insertAFirst.put("Amy", a);
         insertAFirst.put("Zed", b);
         ContactTracker fromAFirst = tracker();
-        fromAFirst.update(insertAFirst, "Amy", ALL, false, 0, 0, false);
+        fromAFirst.update(insertAFirst, ALL, false, 0, 0, false);
 
         assertEquals("Amy", fromBFirst.overlaps().get(0).a);
         assertEquals("Zed", fromBFirst.overlaps().get(0).b);
@@ -292,43 +239,58 @@ public class ContactTrackerTest
     }
 
     @Test
-    public void emptyMapClosesEveryOpenPairAndResetAllowsFreshStart()
+    public void emptyMapFinishesEveryOpenCollisionAndResetAllowsAFreshStart()
     {
         ContactTracker t = tracker();
-
-        // A touches both B and C; B and C don't touch each other, so two pairs are open.
         PosedMesh wall = mesh(WALL);
         PosedMesh through = mesh(THROUGH);
-        PosedMesh through2 = mesh(THROUGH_2);
-        assertTrue(!PosedMesh.trianglesIntersect(THROUGH[0], THROUGH[1], THROUGH[2],
+        assertFalse(PosedMesh.trianglesIntersect(THROUGH[0], THROUGH[1], THROUGH[2],
             THROUGH_2[0], THROUGH_2[1], THROUGH_2[2]));
 
-        List<RflEvent> started = t.update(Map.of("A", wall, "B", through, "C", through2), "A", ALL, false, 0, 0, false);
-        assertEquals(2, started.size());
-        assertTrue(started.stream().allMatch(e -> "contact_start".equals(e.type)));
-        assertNotEquals("two simultaneous touches get two ids", started.get(0).contactId, started.get(1).contactId);
+        assertEquals(2, t.update(Map.of("A", wall, "B", through, "C", mesh(THROUGH_2)), ALL, false, 0, 0, false)
+            .size());
+        t.update(NO_MESHES, NONE, false, 20, 1, false);
+        assertEquals(2, t.takeFinished().size());
 
-        List<RflEvent> ended = t.update(Collections.emptyMap(), null, NONE, false, 20, 1, false);
-        assertEquals("update(emptyMap) should close every open pair, one contact_end each", 2, ended.size());
-        assertTrue(ended.stream().allMatch(e -> "contact_end".equals(e.type)));
-
-        List<RflEvent> restartedBeforeReset = t.update(Map.of("A", wall, "B", through), "A", ALL, false, 40, 2, false);
-        assertEquals(1, restartedBeforeReset.size());
-        assertEquals("contact_start", restartedBeforeReset.get(0).type);
-
+        assertEquals(1, t.update(Map.of("A", wall, "B", through), ALL, false, 40, 2, false).size());
         t.reset();
+        assertEquals("reset() lets the same still-touching pair start fresh", 1,
+            t.update(Map.of("A", wall, "B", through), ALL, false, 60, 3, false).size());
+    }
 
-        List<RflEvent> restartedAfterReset = t.update(Map.of("A", wall, "B", through), "A", ALL, false, 60, 3, false);
-        assertEquals("reset() should let the same still-touching pair start fresh", 1, restartedAfterReset.size());
-        assertEquals("contact_start", restartedAfterReset.get(0).type);
-        assertEquals("ids are never reused after reset", 3, (int) restartedAfterReset.get(0).contactId);
+    @Test
+    public void flushFinishesOpenCollisionsAndResetDropsThem()
+    {
+        ContactTracker t = tracker();
+        Map<String, PosedMesh> touching = Map.of("A", mesh(WALL), "B", mesh(THROUGH));
+        t.update(touching, Set.of("A"), false, 0, 0, false);
+        t.flush(99, 7);
+        List<ObservedCollision> done = t.takeFinished();
+        assertEquals(1, done.size());
+        assertEquals(99, done.get(0).endMs);
+        assertEquals(7, done.get(0).endTick);
+
+        t.update(touching, Set.of("A"), false, 100, 8, false);
+        t.reset();
+        t.flush(200, 9);
+        assertTrue(t.takeFinished().isEmpty());
+    }
+
+    @Test
+    public void listsCollisionsInProgressUntilTheyFinish()
+    {
+        ContactTracker t = tracker();
+        t.update(Map.of("B", mesh(WALL), "A", mesh(THROUGH)), Set.of("A"), false, 1000, 5, false);
+        assertEquals(List.of("A ↔ B"), t.inProgress());
+        t.update(NO_MESHES, NONE, false, 1600, 6, false);
+        assertTrue(t.inProgress().isEmpty());
     }
 
     @Test
     public void exposesCollidingNowAndTheTouchingTrianglesOfEachPair()
     {
         ContactTracker t = tracker();
-        t.update(Map.of("Amy", mesh(WALL), "Zed", mesh(THROUGH), "Bo", mesh(FAR)), "Amy", ALL, false, 0, 0, false);
+        t.update(Map.of("Amy", mesh(WALL), "Zed", mesh(THROUGH), "Bo", mesh(FAR)), ALL, false, 0, 0, false);
 
         assertEquals(List.of("Zed"), t.collidingNow().get("Amy"));
         assertEquals(List.of("Amy"), t.collidingNow().get("Zed"));
@@ -342,7 +304,7 @@ public class ContactTrackerTest
     }
 
     @Test
-    public void depthIsCappedAtMaxHits()
+    public void maxTrianglesIsCappedAtMaxHits()
     {
         // 30 copies of each crossing triangle: 900 touching pairs, collected up to the cap.
         double[][][] walls = new double[30][][];
@@ -352,9 +314,12 @@ public class ContactTrackerTest
             walls[i] = WALL;
             throughs[i] = THROUGH;
         }
-        List<RflEvent> start = tracker().update(Map.of("Amy", mesh(walls), "Zed", mesh(throughs)), "Amy", ALL, false,
+        ContactTracker t = tracker();
+        List<PosedMesh.Hits> started = t.update(Map.of("Amy", mesh(walls), "Zed", mesh(throughs)), ALL, false,
             0, 0, false);
-        assertEquals(PosedMesh.MAX_HITS, (int) start.get(0).depth);
+        assertEquals(PosedMesh.MAX_HITS, started.get(0).count);
+        t.flush(10, 1);
+        assertEquals(PosedMesh.MAX_HITS, t.takeFinished().get(0).maxTriangles);
     }
 
     private static List<String> sorted(List<String> names)

@@ -3,9 +3,8 @@ package com.rfl;
 import java.util.List;
 
 /**
- * One finished Observer mode collision between two players in view, saved on this computer only
- * ({@link ObserverLog}). Carries player names, so it must never become an {@link RflEvent} or
- * reach an {@link RflReport}. Field names are the JSON keys of each saved line.
+ * One finished handegg collision between two players in view, saved on this computer only
+ * ({@link ObserverLog}). Field names are the JSON keys of each saved line.
  */
 final class ObservedCollision
 {

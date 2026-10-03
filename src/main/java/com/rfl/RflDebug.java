@@ -19,7 +19,7 @@ import net.runelite.client.ui.NavigationButton;
 /**
  * Everything behind "Show debug panel" and "Debug logging": the RFL Debug sidebar panel's
  * lifecycle and text, its recent-events list, and the debug log lines (each logged only when it
- * changes, so the log stays readable). Display and logging only; nothing here is reported.
+ * changes, so the log stays readable). Display and logging only.
  *
  * <p>Threads: the panel and its button are touched on the Swing EDT only ({@link #syncPanel},
  * {@link #removePanel}); every other method runs on the client thread.
@@ -112,13 +112,6 @@ final class RflDebug
         }
     }
 
-    void recordEvent(RflEvent event)
-    {
-        record(event.type + (event.contactId == null ? "" : " #" + event.contactId) + " at " + event.x + ","
-            + event.y + "," + event.plane + (event.depth == null ? "" : " depth " + event.depth)
-            + (event.ball == null ? "" : " ball " + event.ball));
-    }
-
     /** Records the players without a mesh whenever that list changes. */
     void recordMissing(List<String> missing)
     {
@@ -152,11 +145,11 @@ final class RflDebug
         });
     }
 
-    /** Observer mode: collisions in progress, then the latest saved ones (local only, never sent). */
+    /** Collisions in progress, then the latest saved ones. */
     private void appendObserver(StringBuilder sb)
     {
         sb.append("\nOBSERVER (saved locally, not sent)\n");
-        List<String> open = contactDetector.observing();
+        List<String> open = contactDetector.inProgress();
         sb.append("in progress: ").append(open.isEmpty() ? "none" : String.join(", ", open)).append('\n');
         List<ObservedCollision> recent = observerLog.recent();
         if (recent.isEmpty())
@@ -175,8 +168,6 @@ final class RflDebug
         StringBuilder sb = new StringBuilder();
         sb.append("GATE\n")
             .append("logged in: ").append(yesNo(client.getGameState() == GameState.LOGGED_IN)).append('\n')
-            .append("reporting: ").append(yesNo(config.enableReporting())).append('\n')
-            .append("observer: ").append(yesNo(config.observerMode())).append('\n')
             .append("in POH: ").append(yesNo(inPoh)).append('\n')
             .append("detect contacts: ").append(yesNo(config.reportContacts())).append('\n')
             .append("hitbox source: ").append(source).append("\n\n");
@@ -211,10 +202,7 @@ final class RflDebug
                 .append("  contact: ").append(yesNo(o.triangles > 0)).append('\n');
         }
 
-        if (config.observerMode())
-        {
-            appendObserver(sb);
-        }
+        appendObserver(sb);
 
         sb.append("\nRECENT EVENTS (newest first)\n");
         if (events.isEmpty())
@@ -240,8 +228,7 @@ final class RflDebug
     /** Logs the detection gate (the settings and state that decide whether detection runs) when it changes. */
     void logGate(int tick, boolean inPoh)
     {
-        String gate = "reporting=" + config.enableReporting() + " observer=" + config.observerMode()
-            + " contacts=" + config.reportContacts()
+        String gate = "contacts=" + config.reportContacts()
             + " inPoh=" + inPoh + " detectInterceptions=" + config.detectInterceptions();
         if (!gate.equals(lastGateLog))
         {
