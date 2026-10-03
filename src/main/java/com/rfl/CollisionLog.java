@@ -14,6 +14,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -31,7 +32,8 @@ import net.runelite.client.RuneLite;
  * memory for the debug panel either way. Nothing here is ever sent anywhere.
  *
  * <p>Threads: {@link #record} from any thread (the client thread in practice); the encoding and
- * the file write run on the injected executor, never the caller's thread.
+ * the file write run on the injected executor, never the caller's thread. The {@link #setListener
+ * listener} is called on the caller's thread, whether or not Save collisions is on.
  */
 @Slf4j
 @Singleton
@@ -75,6 +77,8 @@ final class CollisionLog
     private final BooleanSupplier save;
     /** Newest first; guarded by this. */
     private final Deque<Collision> recent = new ArrayDeque<>();
+    /** Told about each recorded collision and interception (the replay recorder); may be null. */
+    private volatile Consumer<Object> listener;
 
     @Inject
     CollisionLog(Gson gson, ScheduledExecutorService executor, RflConfig config)
@@ -98,6 +102,15 @@ final class CollisionLog
         return dir;
     }
 
+    /**
+     * Called with each {@link Collision} or {@link Interception} passed to {@code record}, on the
+     * caller's thread, whether or not Save collisions is on. Null clears it.
+     */
+    void setListener(Consumer<Object> listener)
+    {
+        this.listener = listener;
+    }
+
     void record(Collision c)
     {
         synchronized (this)
@@ -118,6 +131,11 @@ final class CollisionLog
 
     private void write(Object line, long epochMs)
     {
+        Consumer<Object> l = listener;
+        if (l != null)
+        {
+            l.accept(line);
+        }
         if (save.getAsBoolean())
         {
             executor.execute(() -> append(gson.toJson(line), epochMs));

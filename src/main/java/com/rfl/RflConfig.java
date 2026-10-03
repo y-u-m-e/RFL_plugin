@@ -41,6 +41,13 @@ public interface RflConfig extends Config
     String INTERCEPTIONS_SECTION = "interceptions";
 
     @ConfigSection(
+        name = "Replays",
+        description = "Local replay files of player-owned house visits, for the RFL replay viewer.",
+        position = 25
+    )
+    String REPLAYS_SECTION = "replays";
+
+    @ConfigSection(
         name = "Debug",
         description = "Troubleshooting tools.",
         position = 30,
@@ -266,6 +273,24 @@ public interface RflConfig extends Config
     default Color interceptionColor()
     {
         return new Color(0, 200, 255, 180);
+    }
+
+    // ---- Replays ----
+
+    /**
+     * @return true to record each player-owned house visit to a local replay file
+     */
+    @ConfigItem(
+        keyName = "recordReplays",
+        name = "Record replays",
+        description = "Records every player-owned house visit to a local replay file (rfl/replays in the "
+            + "RuneLite folder) for the RFL replay viewer. Nothing is sent anywhere.",
+        section = REPLAYS_SECTION,
+        position = 26
+    )
+    default boolean recordReplays()
+    {
+        return false;
     }
 
     // ---- Debug ----

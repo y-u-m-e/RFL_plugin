@@ -35,7 +35,8 @@ import net.runelite.client.util.ColorUtil;
  * draws them, and saves them on this computer ({@link CollisionLog}). Nothing is sent anywhere.
  *
  * <p>Owns the wiring between RuneLite events and the pieces that do the work: contact detection
- * each client frame, interception checks each game tick. Debug panel and debug logging live in
+ * each client frame, interception checks each game tick, and the replay recorder
+ * ({@link ReplayRecorder}). Debug panel and debug logging live in
  * {@link RflDebug}.
  *
  * <p>Threads: detection and the debug state are client-thread only. The debug panel is created
@@ -83,6 +84,9 @@ public class RflPlugin extends Plugin
     @Inject
     private CollisionLog collisionLog;
 
+    @Inject
+    private ReplayRecorder replayRecorder;
+
     private final InterceptionDetector interceptionDetector = new InterceptionDetector();
 
     /** Recomputed each {@link GameTick}; the POH check only needs to run once per tick. */
@@ -104,6 +108,7 @@ public class RflPlugin extends Plugin
         overlayManager.add(hitboxOverlay);
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
+        collisionLog.setListener(replayRecorder::onEvent);
         SwingUtilities.invokeLater(debug::syncPanel);
     }
 
@@ -119,6 +124,8 @@ public class RflPlugin extends Plugin
             interceptionDetector.reset();
             contactDetector.reset();
             wasWatching = false;
+            // After the reset, so collisions it saves as ended still reach the open replay.
+            replayRecorder.stop();
         });
         SwingUtilities.invokeLater(debug::removePanel);
     }
@@ -141,6 +148,7 @@ public class RflPlugin extends Plugin
     {
         inPoh = pohDetector.inPoh(client);
         checkInterceptions();
+        replayRecorder.onGameTick(client);
     }
 
     /** Client thread: see {@link #detects}. */
@@ -259,10 +267,17 @@ public class RflPlugin extends Plugin
     public void onClientTick(final ClientTick event)
     {
         debug.refresh(inPoh);
-        if (!watchingContacts())
+        final boolean watching = watchingContacts();
+        if (!watching)
         {
             // Never leave the tracker holding pairs across a period we weren't watching.
             stopTracking();
+        }
+        // Independent of Detect contacts. Before onFrame, so this frame's collisions carry its cycle;
+        // after stopTracking, so collisions it saves as ended still reach a replay that is closing.
+        replayRecorder.onClientTick(client, inPoh);
+        if (!watching)
+        {
             return;
         }
         wasWatching = true;
@@ -278,6 +293,7 @@ public class RflPlugin extends Plugin
         {
             stopTracking();
         }
+        replayRecorder.onGameStateChanged(state);
     }
 
     /**
