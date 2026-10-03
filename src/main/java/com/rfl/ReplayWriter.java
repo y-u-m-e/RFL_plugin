@@ -52,6 +52,8 @@ final class ReplayWriter
     /** True from {@link #open} until {@link #close} or a write failure; read from any thread. */
     private volatile boolean open;
     private final AtomicLong bytesWritten = new AtomicLong();
+    private final AtomicLong deferredLines = new AtomicLong();
+    private final AtomicLong deferredBytes = new AtomicLong();
 
     ReplayWriter(Gson gson, ExecutorService executor)
     {
@@ -65,6 +67,8 @@ final class ReplayWriter
         closeQuietly();
         open = true;
         bytesWritten.set(0);
+        deferredLines.set(0);
+        deferredBytes.set(0);
         enqueue(() -> doOpen(file));
     }
 
@@ -77,6 +81,38 @@ final class ReplayWriter
         }
         String json = gson.toJson(line);
         enqueue(() -> doWrite(json));
+    }
+
+    /**
+     * Like {@link #write}, but serialises on the drain task instead of the caller's thread, for
+     * large lines (recorded models) the caller never touches again: the line and every array in
+     * it must be immutable from this call on. Order relative to {@link #write} is kept.
+     */
+    void writeDeferred(Object line)
+    {
+        if (!open)
+        {
+            return;
+        }
+        enqueue(() ->
+        {
+            String json = gson.toJson(line);
+            deferredLines.incrementAndGet();
+            deferredBytes.addAndGet(json.length() + 1);
+            doWrite(json);
+        });
+    }
+
+    /** Lines written through {@link #writeDeferred} since the last {@link #open}, for debug output. */
+    long deferredLines()
+    {
+        return deferredLines.get();
+    }
+
+    /** Uncompressed bytes of those lines, for debug output. */
+    long deferredBytes()
+    {
+        return deferredBytes.get();
     }
 
     /**

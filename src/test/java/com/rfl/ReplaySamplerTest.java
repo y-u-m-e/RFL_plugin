@@ -5,12 +5,16 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import org.junit.Test;
 
 import com.rfl.ReplaySampler.Appearance;
+import com.rfl.ReplaySampler.Loc;
 import com.rfl.ReplaySampler.Ball;
 import com.rfl.ReplaySampler.PitchFloor;
 import com.rfl.ReplaySampler.PitchObjects;
@@ -551,5 +555,265 @@ public class ReplaySamplerTest
         }
         System.out.println("pitch sample: " + json.length + " bytes raw, " + bytes.size() + " bytes gzipped");
         assertTrue(json.length < 400_000);
+    }
+
+    // ---- P6: recorded models (spec §2.3) ----
+
+    /** A fake model: {@code n} vertices offset by {@code shift}, one face, grey. */
+    private static ModelCapture.Geometry geometry(int n, int shift)
+    {
+        int[] v = new int[n * 3];
+        for (int k = 0; k < v.length; k++)
+        {
+            v[k] = k + shift;
+        }
+        return new ModelCapture.Geometry(v, new int[] { 0, 1, 2 }, new int[] { 10, 20, 30 });
+    }
+
+    /** A supplier that counts how often the sampler asks it to capture. */
+    private static Supplier<ModelCapture.Geometry> counting(AtomicInteger calls, ModelCapture.Geometry g)
+    {
+        return () ->
+        {
+            calls.incrementAndGet();
+            return g;
+        };
+    }
+
+    private static PlayerState posed(String name, int anim, Supplier<ModelCapture.Geometry> model)
+    {
+        return new PlayerState(name, 100, 200, 0, anim, 0, 808, 0, ReplaySampler.NO_SPOTS, model);
+    }
+
+    private static Appearance look(String name, int gender)
+    {
+        return new Appearance(name, gender, new int[] { 1, 2, 3 }, new int[] { 4, 5 });
+    }
+
+    private static List<String> types(List<Map<String, Object>> lines)
+    {
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> l : lines)
+        {
+            out.add((String) l.get("t"));
+        }
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<int[]> pmRows(List<Map<String, Object>> lines)
+    {
+        return (List<int[]>) firstOfType(lines, "pm").get("p");
+    }
+
+    @Test
+    public void pmOnlyWhenModelChanges()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicInteger calls = new AtomicInteger();
+        sampler.tick(1, 1, List.of(look("A", 0)));
+
+        List<Map<String, Object>> first = sampler.frame(1, List.of(posed("A", 1, counting(calls, geometry(3, 0)))),
+            List.of());
+        assertEquals(1, pmRows(first).size());
+        assertArrayEquals(new int[] { 0, 0 }, pmRows(first).get(0));
+
+        // Same key again: no pm, no capture.
+        List<Map<String, Object>> same = sampler.frame(2, List.of(posed("A", 1, counting(calls, geometry(3, 0)))),
+            List.of());
+        assertFalse(types(same).contains("pm"));
+
+        // New anim: new model id 1.
+        List<Map<String, Object>> moved = sampler.frame(3, List.of(posed("A", 2, counting(calls, geometry(3, 5)))),
+            List.of());
+        assertArrayEquals(new int[] { 0, 1 }, pmRows(moved).get(0));
+
+        // Back to the first tuple: pm points at id 0 again, nothing captured.
+        List<Map<String, Object>> back = sampler.frame(4, List.of(posed("A", 1, counting(calls, geometry(3, 9)))),
+            List.of());
+        assertArrayEquals(new int[] { 0, 0 }, pmRows(back).get(0));
+        assertFalse(types(back).contains("model"));
+        assertEquals(2, calls.get());
+    }
+
+    @Test
+    public void modelLineWrittenOncePerKey()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicInteger calls = new AtomicInteger();
+        sampler.tick(1, 1, List.of(look("A", 0), look("B", 0)));
+
+        // Two players, same appearance and tuple: one key, one model line, before the pm that uses it.
+        List<Map<String, Object>> lines = sampler.frame(1, List.of(
+            posed("A", 1, counting(calls, geometry(3, 0))),
+            posed("B", 1, counting(calls, geometry(3, 0)))), List.of());
+
+        assertEquals(1, calls.get());
+        assertEquals(1, types(lines).stream().filter("model"::equals).count());
+        assertTrue(types(lines).indexOf("model") < types(lines).indexOf("pm"));
+        Map<String, Object> model = firstOfType(lines, "model");
+        assertEquals(0, model.get("id"));
+        assertEquals("player", model.get("kind"));
+        assertArrayEquals(new int[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, (int[]) model.get("v"));
+        assertArrayEquals(new int[] { 0, 1, 2 }, (int[]) model.get("f"));
+        assertArrayEquals(new int[] { 10, 20, 30 }, (int[]) model.get("c"));
+        assertEquals(2, pmRows(lines).size());
+
+        sampler.frame(2, List.of(posed("A", 1, counting(calls, geometry(3, 0)))), List.of());
+        assertEquals(1, calls.get());
+        assertEquals(1, sampler.modelsCaptured());
+    }
+
+    @Test
+    public void ballRowCarriesModelId()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicInteger calls = new AtomicInteger();
+        Ball ball = new Ball(1528, 10, 6500.5, 6600.1, -320.0, 256, counting(calls, geometry(4, 0)));
+
+        assertTrue(sampler.frame(10, List.of(), List.of(ball)).isEmpty());
+        List<Map<String, Object>> lines = sampler.frame(11, List.of(), List.of(ball));
+
+        assertEquals(List.of("model", "ball"), types(lines));
+        assertEquals("ball", lines.get(0).get("kind"));
+        assertEquals(0, lines.get(1).get("m"));
+
+        List<Map<String, Object>> next = sampler.frame(12, List.of(), List.of(ball));
+        assertEquals(List.of("ball"), types(next));
+        assertEquals(0, next.get(0).get("m"));
+        assertEquals(1, calls.get());
+
+        // No model available: the row has no m.
+        Ball bare = new Ball(1529, 10, 1, 2, 3, 0);
+        assertFalse(sampler.frame(13, List.of(), List.of(bare)).get(0).containsKey("m"));
+    }
+
+    @Test
+    public void pitchCarriesLocsAndPaint()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicInteger calls = new AtomicInteger();
+        // config: shape 10, rotation 1.
+        int config = 10 | (1 << 6);
+        ReplaySampler.PitchLocs locs = sampler.pitchLocs(List.of(
+            new Loc(4000, config, 0, 6464, 6464, -10, counting(calls, geometry(3, 0))),
+            new Loc(4000, config, 0, 6592, 6464, -12, counting(calls, geometry(3, 7))),
+            new Loc(4000, 10, 0, 6720, 6464, 0, counting(calls, geometry(3, 1))),
+            new Loc(4001, 0, 0, 6848, 6464, 0, () -> null),
+            new Loc(4002, 0, 0, 6976, 6464, 0, null)));
+
+        assertEquals(2, calls.get());
+        assertEquals(2, locs.lines().size());
+        assertEquals("loc", locs.lines().get(0).get("kind"));
+        assertEquals(3, locs.rows().size());
+        assertArrayEquals(new int[] { 0, 6464, 6464, -10 }, locs.rows().get(0));
+        assertArrayEquals(new int[] { 0, 6592, 6464, -12 }, locs.rows().get(1));
+        assertArrayEquals(new int[] { 1, 6720, 6464, 0 }, locs.rows().get(2));
+        assertEquals(2, locs.skipped());
+
+        int[][] rgb = new int[104][104];
+        rgb[50][50] = 0x112233;
+        rgb[90][90] = 0x445566;
+        int[] paint = PitchFloor.paint(rgb, 50, 50, 20);
+        assertEquals(104 * 104 * 3, paint.length);
+        int at = (50 * 104 + 50) * 3;
+        assertArrayEquals(new int[] { 0x11, 0x22, 0x33 },
+            new int[] { paint[at], paint[at + 1], paint[at + 2] });
+        int out = (90 * 104 + 90) * 3;
+        assertEquals("outside the radius is cropped", 0, paint[out] + paint[out + 1] + paint[out + 2]);
+    }
+
+    @Test
+    public void laterPoseOfAnAppearanceIsDeltaEncoded()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.tick(1, 1, List.of(look("A", 0)));
+        sampler.frame(1, List.of(posed("A", 1, () -> geometry(3, 0))), List.of());
+
+        Map<String, Object> delta = firstOfType(
+            sampler.frame(2, List.of(posed("A", 2, () -> geometry(3, 4))), List.of()), "model");
+        assertEquals(1, delta.get("id"));
+        assertEquals(0, delta.get("base"));
+        assertArrayEquals(new int[] { 4, 4, 4, 4, 4, 4, 4, 4, 4 }, (int[]) delta.get("dv"));
+        assertFalse(delta.containsKey("v"));
+        assertFalse(delta.containsKey("f"));
+        assertFalse(delta.containsKey("c"));
+
+        // Different topology (vertex count): written in full.
+        Map<String, Object> full = firstOfType(
+            sampler.frame(3, List.of(posed("A", 3, () -> geometry(4, 0))), List.of()), "model");
+        assertFalse(full.containsKey("base"));
+        assertEquals(12, ((int[]) full.get("v")).length);
+
+        // A new appearance gets its own full base.
+        sampler.tick(4, 2, List.of(look("A", 1)));
+        Map<String, Object> other = firstOfType(
+            sampler.frame(4, List.of(posed("A", 2, () -> geometry(3, 4))), List.of()), "model");
+        assertFalse(other.containsKey("base"));
+    }
+
+    @Test
+    public void noModelUntilAppearanceKnownOrWhileSpotAnimActive()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicInteger calls = new AtomicInteger();
+        List<Map<String, Object>> lines = sampler.frame(1, List.of(posed("A", 1, counting(calls, geometry(3, 0)))),
+            List.of());
+        assertFalse(types(lines).contains("pm"));
+        assertEquals(0, calls.get());
+
+        sampler.tick(1, 1, List.of(look("A", 0)));
+        // A spot anim is merged into the client's player model: don't pin it to the key.
+        PlayerState withSpot = new PlayerState("A", 100, 200, 0, 1, 0, 808, 0, new int[] { 85, 0, 0 },
+            counting(calls, geometry(3, 0)));
+        assertFalse(types(sampler.frame(2, List.of(withSpot), List.of())).contains("pm"));
+        assertEquals(0, calls.get());
+
+        assertTrue(types(sampler.frame(3, List.of(posed("A", 1, counting(calls, geometry(3, 0)))), List.of()))
+            .contains("pm"));
+        assertEquals(1, calls.get());
+    }
+
+    @Test
+    public void respawnWritesPmAgain()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.tick(1, 1, List.of(look("A", 0)));
+        sampler.frame(1, List.of(posed("A", 1, () -> geometry(3, 0))), List.of());
+        sampler.frame(2, List.of(), List.of());
+        List<Map<String, Object>> back = sampler.frame(3, List.of(posed("A", 1, () -> geometry(3, 0))), List.of());
+        assertArrayEquals(new int[] { 0, 0 }, pmRows(back).get(0));
+    }
+
+    @Test
+    public void modelPassCostWithNoNewKeys()
+    {
+        // 12 players, every key already known: only a key build and a lookup per player.
+        ReplaySampler sampler = new ReplaySampler();
+        List<Appearance> looks = new ArrayList<>();
+        List<PlayerState> players = new ArrayList<>();
+        for (int i = 0; i < 12; i++)
+        {
+            looks.add(look("P" + i, i));
+            players.add(posed("P" + i, 1, () -> geometry(3, 0)));
+        }
+        sampler.tick(1, 1, looks);
+        for (int c = 0; c < 20_000; c++)
+        {
+            sampler.frame(c, players, List.of());
+        }
+        long total = 0;
+        long worst = 0;
+        int n = 20_000;
+        for (int c = 0; c < n; c++)
+        {
+            sampler.frame(20_000 + c, players, List.of());
+            total += sampler.lastModelNanos();
+            worst = Math.max(worst, sampler.lastModelNanos());
+        }
+        double avgMicros = total / (double) n / 1000.0;
+        System.out.printf("model pass, 12 players, no new keys: avg %.2f us, worst %.1f us%n", avgMicros,
+            worst / 1000.0);
+        assertTrue("avg " + avgMicros + " us", avgMicros < 50.0);
     }
 }

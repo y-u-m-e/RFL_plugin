@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Turns per-cycle player, ball and appearance state into the NDJSON line objects the replay
@@ -56,6 +57,13 @@ final class ReplaySampler
          */
         final int[] spots;
 
+        /**
+         * Captures this player's current client model ({@code Player#getModel()}), or null when
+         * there is none. Called on the client thread, only when the player's model key is new.
+         * May be null itself (no model capture, for example in tests of other line types).
+         */
+        final Supplier<ModelCapture.Geometry> model;
+
         PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame)
         {
             this(name, x, y, orient, anim, animFrame, pose, poseFrame, NO_SPOTS);
@@ -64,6 +72,13 @@ final class ReplaySampler
         PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame,
             int[] spots)
         {
+            this(name, x, y, orient, anim, animFrame, pose, poseFrame, spots, null);
+        }
+
+        PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame,
+            int[] spots, Supplier<ModelCapture.Geometry> model)
+        {
+            this.model = model;
             this.name = name;
             this.x = x;
             this.y = y;
@@ -261,6 +276,39 @@ final class ReplaySampler
             return out;
         }
 
+        /**
+         * The {@code pitch.paint} array: an r, g, b triple per scene tile, tile {@code (x, y)} at
+         * {@code (x * 104 + y) * 3}, from a 104x104 {@code [x][y]} grid of {@code 0xRRGGBB}.
+         * Tiles outside the radius are cropped to 0, 0, 0 like {@code under}/{@code over}; 0, 0, 0
+         * also means no paint.
+         */
+        static int[] paint(int[][] rgb, int cx, int cy, int radius)
+        {
+            final int[] out = new int[SCENE * SCENE * 3];
+            if (rgb == null)
+            {
+                return out;
+            }
+            for (int x = PitchObjects.lo(cx, radius); x <= PitchObjects.hi(cx, radius, Math.min(SCENE, rgb.length));
+                 x++)
+            {
+                final int[] col = rgb[x];
+                if (col == null)
+                {
+                    continue;
+                }
+                for (int y = PitchObjects.lo(cy, radius); y <= PitchObjects.hi(cy, radius, Math.min(SCENE, col.length));
+                     y++)
+                {
+                    final int at = (x * SCENE + y) * 3;
+                    out[at] = (col[y] >> 16) & 0xff;
+                    out[at + 1] = (col[y] >> 8) & 0xff;
+                    out[at + 2] = col[y] & 0xff;
+                }
+            }
+            return out;
+        }
+
         /** Unsigned crop of a {@code byte} plane (tile shapes). */
         static int[][] crop(byte[][] plane, int cx, int cy, int radius)
         {
@@ -289,6 +337,73 @@ final class ReplaySampler
         }
     }
 
+    /**
+     * One house object renderable at pitch time, for {@code pitch.locs}. {@code part} is 0 for an
+     * object's (first) renderable and 1 for a wall's or decoration's second one, which is a
+     * different model under the same loc id, shape and rotation.
+     */
+    static final class Loc
+    {
+        final int id;
+        final int config;
+        final int part;
+        final int x;
+        final int y;
+        final int height;
+        /** Captures the renderable's model, or null; called only for a new key. May be null. */
+        final Supplier<ModelCapture.Geometry> model;
+
+        Loc(int id, int config, int part, int x, int y, int height, Supplier<ModelCapture.Geometry> model)
+        {
+            this.id = id;
+            this.config = config;
+            this.part = part;
+            this.x = x;
+            this.y = y;
+            this.height = height;
+            this.model = model;
+        }
+
+        private String key()
+        {
+            final String key = "l:" + id + ":" + PitchObjects.shape(config) + ":" + PitchObjects.rotation(config);
+            return part == 0 ? key : key + ":" + part;
+        }
+    }
+
+    /** {@link #pitchLocs} result: model lines to write before the pitch, its locs rows, and skips. */
+    static final class PitchLocs
+    {
+        private final List<Map<String, Object>> lines;
+        private final List<int[]> rows;
+        private final int skipped;
+
+        PitchLocs(List<Map<String, Object>> lines, List<int[]> rows, int skipped)
+        {
+            this.lines = lines;
+            this.rows = rows;
+            this.skipped = skipped;
+        }
+
+        /** {@code model} lines for loc keys first seen in this pitch; write them before the pitch. */
+        List<Map<String, Object>> lines()
+        {
+            return lines;
+        }
+
+        /** {@code pitch.locs} rows {@code [modelId, localX, localY, groundHeight]}. */
+        List<int[]> rows()
+        {
+            return rows;
+        }
+
+        /** Objects left out because they had no renderable or no model. */
+        int skipped()
+        {
+            return skipped;
+        }
+    }
+
     /** One handegg projectile this cycle. */
     static final class Ball
     {
@@ -298,9 +413,17 @@ final class ReplaySampler
         final double y;
         final double z;
         final int orient;
+        /** Captures the projectile's client model, or null; called only for a new key. May be null. */
+        final Supplier<ModelCapture.Geometry> model;
 
         Ball(int id, int startCycle, double x, double y, double z, int orient)
         {
+            this(id, startCycle, x, y, z, orient, null);
+        }
+
+        Ball(int id, int startCycle, double x, double y, double z, int orient, Supplier<ModelCapture.Geometry> model)
+        {
+            this.model = model;
             this.id = id;
             this.startCycle = startCycle;
             this.x = x;
@@ -324,10 +447,75 @@ final class ReplaySampler
     /** Shared empty spot anim set, so a player with none costs no allocation. */
     static final int[] NO_SPOTS = new int[0];
 
-    /** Lines for one ClientTick: despawn, spawn, f, spot, then ball lines, in that order. */
+    static final String PLAYER = "player";
+    static final String BALL = "ball";
+    static final String LOC = "loc";
+
+    /** Model keys to ids; captures each key's first model (spec §2.3). */
+    private final ModelCapture.Registry models = new ModelCapture.Registry();
+    /** Kind of each id captured but not yet turned into a model line. */
+    private final Map<Integer, String> pendingKind = new LinkedHashMap<>();
+    /** Appearance hash of each player id captured but not yet turned into a model line. */
+    private final Map<Integer, Integer> pendingAppearance = new LinkedHashMap<>();
+    /** First full player model per appearance hash: the base later poses are delta-encoded against. */
+    private final Map<Integer, ModelCapture.Captured> appearanceBase = new LinkedHashMap<>();
+    /**
+     * Latest appearance hash per name from {@link #tick}, for player model keys. Unlike
+     * {@link #lastAppearanceHash} it is not cleared on spawn or despawn,
+     * so a returning player's model key is ready at once; every tick refreshes it.
+     */
+    private final Map<String, Integer> modelAppearance = new LinkedHashMap<>();
+    /** Last model id written in a {@code pm} row per name; cleared on despawn. */
+    private final Map<String, Integer> lastPm = new LinkedHashMap<>();
+    private long lastModelNanos;
+    private boolean lastFrameNewModels;
+
+    /** Distinct model keys captured so far. */
+    int modelsCaptured()
+    {
+        return models.size();
+    }
+
+    /** Nanoseconds the last {@link #frame} spent resolving model keys (capture included). */
+    long lastModelNanos()
+    {
+        return lastModelNanos;
+    }
+
+    /** Whether the last {@link #frame} captured at least one new model. */
+    boolean lastFrameNewModels()
+    {
+        return lastFrameNewModels;
+    }
+
+    /**
+     * Lines for one ClientTick: model lines for keys first seen this cycle, then despawn, spawn,
+     * f, pm, spot, then ball lines, in that order. Model lines come first so each precedes the
+     * {@code pm} / {@code ball} lines that refer to its id.
+     */
     List<Map<String, Object>> frame(int cycle, List<PlayerState> players, List<Ball> balls)
     {
         List<Map<String, Object>> lines = new ArrayList<>();
+
+        final long modelStart = System.nanoTime();
+        final int before = models.size();
+        final int[] playerModels = new int[players.size()];
+        for (int k = 0; k < playerModels.length; k++)
+        {
+            playerModels[k] = playerModelId(players.get(k));
+        }
+        final int[] ballModels = new int[balls.size()];
+        for (int k = 0; k < ballModels.length; k++)
+        {
+            final Ball b = balls.get(k);
+            ballModels[k] = cycle <= b.startCycle ? -1 : modelId("b:" + b.id, BALL, b.model, 0);
+        }
+        lastFrameNewModels = models.size() != before;
+        if (lastFrameNewModels)
+        {
+            lines.addAll(modelLines());
+        }
+        lastModelNanos = System.nanoTime() - modelStart;
 
         Set<String> now = new LinkedHashSet<>();
         for (PlayerState p : players)
@@ -347,6 +535,7 @@ final class ReplaySampler
                 spawned.remove(name);
                 lastTrueTile.remove(name);
                 lastSpots.remove(name);
+                lastPm.remove(name);
             }
         }
 
@@ -378,6 +567,27 @@ final class ReplaySampler
             lines.add(fLine(cycle, rows));
         }
 
+        List<int[]> pmRows = new ArrayList<>();
+        for (int k = 0; k < playerModels.length; k++)
+        {
+            final int id = playerModels[k];
+            if (id < 0)
+            {
+                continue;
+            }
+            final String name = players.get(k).name;
+            final Integer last = lastPm.get(name);
+            if (last == null || last != id)
+            {
+                pmRows.add(new int[] { indexFor(name), id });
+                lastPm.put(name, id);
+            }
+        }
+        if (!pmRows.isEmpty())
+        {
+            lines.add(pmLine(cycle, pmRows));
+        }
+
         for (PlayerState p : players)
         {
             sortSpots(p.spots);
@@ -397,15 +607,16 @@ final class ReplaySampler
             }
         }
 
-        for (Ball b : balls)
+        for (int k = 0; k < ballModels.length; k++)
         {
+            final Ball b = balls.get(k);
             // The client creates a projectile ~0.8 s early, parked at (0, 0) through its start
             // cycle; it has a real position only from the cycle after.
             if (cycle <= b.startCycle)
             {
                 continue;
             }
-            lines.add(ballLine(cycle, b));
+            lines.add(ballLine(cycle, b, ballModels[k]));
         }
 
         present = now;
@@ -431,11 +642,13 @@ final class ReplaySampler
 
         for (Appearance a : appearances)
         {
+            int hash = a.hash();
+            // Kept for every name, spawned or not, so a player's model key is ready by their spawn.
+            modelAppearance.put(a.name, hash);
             if (!spawned.contains(a.name))
             {
                 continue;
             }
-            int hash = a.hash();
             Integer lastHash = lastAppearanceHash.get(a.name);
             if (lastHash == null || lastHash != hash)
             {
@@ -571,7 +784,7 @@ final class ReplaySampler
         return m;
     }
 
-    private static Map<String, Object> ballLine(int cycle, Ball b)
+    private static Map<String, Object> ballLine(int cycle, Ball b, int modelId)
     {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("t", "ball");
@@ -582,7 +795,136 @@ final class ReplaySampler
         m.put("y", b.y);
         m.put("z", b.z);
         m.put("o", b.orient);
+        if (modelId >= 0)
+        {
+            m.put("m", modelId);
+        }
         return m;
+    }
+
+    private static Map<String, Object> pmLine(int cycle, List<int[]> rows)
+    {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("t", "pm");
+        m.put("cyc", cycle);
+        m.put("p", rows);
+        return m;
+    }
+
+    /**
+     * The model id for this player's current key, capturing on a new key; -1 when there is no
+     * model yet. Waits for the appearance hash from {@link #tick}, and never captures while a spot
+     * anim is active: the client merges spot anim models into {@code Player#getModel()}, and the
+     * first model per key is kept forever. The player's previous {@code pm} value carries on.
+     */
+    private int playerModelId(PlayerState p)
+    {
+        if (p.model == null)
+        {
+            return -1;
+        }
+        final Integer appearance = modelAppearance.get(p.name);
+        if (appearance == null)
+        {
+            return -1;
+        }
+        final String key = "p:" + appearance + ":" + p.anim + ":" + p.animFrame + ":" + p.pose + ":" + p.poseFrame;
+        return modelId(key, PLAYER, p.spots.length > 0 ? null : p.model, appearance);
+    }
+
+    /**
+     * {@link ModelCapture.Registry#idFor} that also notes a new id's kind (and, for a player, its
+     * appearance) for {@link #modelLines}. A null {@code capture} only looks the key up.
+     */
+    private int modelId(String key, String kind, Supplier<ModelCapture.Geometry> capture, int appearance)
+    {
+        final int before = models.size();
+        final int id = models.idFor(key, capture == null ? () -> null : capture);
+        if (models.size() != before)
+        {
+            pendingKind.put(id, kind);
+            if (PLAYER.equals(kind))
+            {
+                pendingAppearance.put(id, appearance);
+            }
+        }
+        return id;
+    }
+
+    /**
+     * Pitch-time house objects: one model per (loc id, shape, rotation[, part]) key, first model
+     * kept, and a {@code locs} row per object that has one. Objects with no renderable or model
+     * are skipped and counted.
+     */
+    PitchLocs pitchLocs(List<Loc> locs)
+    {
+        final List<int[]> rows = new ArrayList<>();
+        int skipped = 0;
+        for (final Loc loc : locs)
+        {
+            final int id = loc.model == null ? -1 : modelId(loc.key(), LOC, loc.model, 0);
+            if (id < 0)
+            {
+                skipped++;
+                continue;
+            }
+            rows.add(new int[] { id, loc.x, loc.y, loc.height });
+        }
+        return new PitchLocs(modelLines(), rows, skipped);
+    }
+
+    /**
+     * {@code model} lines for every id captured since the last call, in id order. A player pose
+     * whose appearance already has a base model with the same faces and colours is written as
+     * {@code base} + {@code dv} (vertex deltas, same vertex order); anything else in full, and the
+     * first full player model of an appearance becomes its base.
+     */
+    private List<Map<String, Object>> modelLines()
+    {
+        final List<Map<String, Object>> out = new ArrayList<>();
+        for (final ModelCapture.Captured c : models.takeNew())
+        {
+            final String kind = pendingKind.remove(c.id);
+            final Integer appearance = pendingAppearance.remove(c.id);
+            final Map<String, Object> m = new LinkedHashMap<>();
+            m.put("t", "model");
+            m.put("id", c.id);
+            m.put("kind", kind);
+            final ModelCapture.Captured base = appearance == null ? null : appearanceBase.get(appearance);
+            if (base != null && sameTopology(base.geometry, c.geometry))
+            {
+                m.put("base", base.id);
+                m.put("dv", deltas(base.geometry.vertices, c.geometry.vertices));
+            }
+            else
+            {
+                if (appearance != null && base == null)
+                {
+                    appearanceBase.put(appearance, c);
+                }
+                m.put("v", c.geometry.vertices);
+                m.put("f", c.geometry.faces);
+                m.put("c", c.geometry.colors);
+            }
+            out.add(m);
+        }
+        return out;
+    }
+
+    private static boolean sameTopology(ModelCapture.Geometry a, ModelCapture.Geometry b)
+    {
+        return a.vertices.length == b.vertices.length && Arrays.equals(a.faces, b.faces)
+            && Arrays.equals(a.colors, b.colors);
+    }
+
+    private static int[] deltas(int[] base, int[] vertices)
+    {
+        final int[] d = new int[vertices.length];
+        for (int k = 0; k < d.length; k++)
+        {
+            d[k] = vertices[k] - base[k];
+        }
+        return d;
     }
 
     private static Map<String, Object> tickLine(int cycle, int tick)

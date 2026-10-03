@@ -89,6 +89,63 @@ public class ReplayRecorderTest
     }
 
     @Test
+    public void onlyModelLinesAreSerialisedOffThread()
+    {
+        // Model lines (large, immutable geometry) go through writeDeferred; pm and ball rows do not.
+        assertTrue(ReplayRecorder.isModelLine(java.util.Map.of("t", "model")));
+        assertFalse(ReplayRecorder.isModelLine(java.util.Map.of("t", "pm")));
+        assertFalse(ReplayRecorder.isModelLine(java.util.Map.of("t", "ball")));
+        assertFalse(ReplayRecorder.isModelLine(java.util.Map.of("t", "pitch")));
+    }
+
+    @Test
+    public void modelLinesComeFirstInAFrameAndSurviveTheWriter() throws Exception
+    {
+        // End to end through the sampler and a real writer: the model line lands before the pm and
+        // ball rows that use its id, and the file reads back as JSON.
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        Gson gson = new GsonBuilder().create();
+        ReplayWriter writer = new ReplayWriter(gson, executor);
+        Path file = temp.getRoot().toPath().resolve("m.rflr.gz");
+        ReplaySampler sampler = new ReplaySampler();
+        ModelCapture.Geometry g = new ModelCapture.Geometry(new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 },
+            new int[] { 0, 1, 2 }, new int[] { 9, 9, 9 });
+        sampler.tick(1, 1, List.of(new ReplaySampler.Appearance("A", 0, new int[] { 1 }, new int[] { 2 })));
+
+        writer.open(file);
+        for (java.util.Map<String, Object> line : sampler.frame(5, List.of(new ReplaySampler.PlayerState("A", 1, 2, 0,
+            1, 0, 808, 0, ReplaySampler.NO_SPOTS, () -> g)), List.of(new ReplaySampler.Ball(1528, 1, 1, 2, 3, 0,
+            () -> g))))
+        {
+            if (ReplayRecorder.isModelLine(line))
+            {
+                writer.writeDeferred(line);
+            }
+            else
+            {
+                writer.write(line);
+            }
+        }
+        writer.close().get(5, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        List<String> types = new ArrayList<>();
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
+            new java.util.zip.GZIPInputStream(java.nio.file.Files.newInputStream(file)),
+            java.nio.charset.StandardCharsets.UTF_8)))
+        {
+            String s;
+            while ((s = r.readLine()) != null)
+            {
+                types.add(new JsonParser().parse(s).getAsJsonObject().get("t").getAsString());
+            }
+        }
+        assertTrue(types.toString(), types.indexOf("model") < types.indexOf("pm"));
+        assertTrue(types.toString(), types.lastIndexOf("model") < types.indexOf("ball"));
+        assertEquals(2, types.stream().filter("model"::equals).count());
+    }
+
+    @Test
     public void pluginLinesNeedAnOpenReplay() throws Exception
     {
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();

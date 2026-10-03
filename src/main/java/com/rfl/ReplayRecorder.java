@@ -26,12 +26,15 @@ import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.GroundObject;
 import net.runelite.api.IterableHashTable;
+import net.runelite.api.Model;
 import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
 import net.runelite.api.Point;
 import net.runelite.api.Projectile;
+import net.runelite.api.Renderable;
 import net.runelite.api.Scene;
 import net.runelite.api.SceneTileModel;
+import net.runelite.api.SceneTilePaint;
 import net.runelite.api.Tile;
 import net.runelite.api.WallObject;
 import net.runelite.api.WorldView;
@@ -86,6 +89,16 @@ final class ReplayRecorder
     private boolean shutDown;
     private long frameNanos;
     private long frames;
+    /** Debug: frames that captured no new model, their total and worst ClientTick cost. */
+    private long steadyFrames;
+    private long steadyNanos;
+    private long steadyWorstNanos;
+    /** Debug: the model-key part of those frames (a key build and lookup per player). */
+    private long steadyModelNanos;
+    private long steadyModelWorstNanos;
+    /** Debug: model reads that threw, and house objects with no renderable or model. */
+    private int captureFailures;
+    private int locsSkipped;
     /** The local user's own plugin list for the {@code plugins} line; may be null or return null. */
     private Supplier<List<PluginEntry>> pluginSource;
 
@@ -162,9 +175,10 @@ final class ReplayRecorder
             {
                 continue;
             }
+            // Player#getModel() builds the posed model: the sampler calls this only on a new key.
             players.add(new ReplaySampler.PlayerState(name, at.getX(), at.getY(), player.getCurrentOrientation(),
                 player.getAnimation(), player.getAnimationFrame(), player.getPoseAnimation(),
-                player.getPoseAnimationFrame(), spots(player)));
+                player.getPoseAnimationFrame(), spots(player), () -> capture(player)));
         }
         final List<ReplaySampler.Ball> balls = new ArrayList<>();
         for (final Projectile p : client.getProjectiles())
@@ -172,12 +186,21 @@ final class ReplayRecorder
             if (IncompleteDetector.HANDEGG_PROJECTILES.contains(p.getId()))
             {
                 balls.add(new ReplaySampler.Ball(p.getId(), p.getStartCycle(), p.getX(), p.getY(), p.getZ(),
-                    p.getOrientation()));
+                    p.getOrientation(), () -> capture(p)));
             }
         }
         writeAll(sampler.frame(lastCycle, players, balls));
-        frameNanos += System.nanoTime() - start;
+        final long spent = System.nanoTime() - start;
+        frameNanos += spent;
         frames++;
+        if (!sampler.lastFrameNewModels())
+        {
+            steadyFrames++;
+            steadyNanos += spent;
+            steadyWorstNanos = Math.max(steadyWorstNanos, spent);
+            steadyModelNanos += sampler.lastModelNanos();
+            steadyModelWorstNanos = Math.max(steadyModelWorstNanos, sampler.lastModelNanos());
+        }
     }
 
     /** Client thread, every GameTick: a {@code tick} line, changed appearances and changed true tiles. */
@@ -316,10 +339,24 @@ final class ReplayRecorder
             final Path path = file;
             final int cycles = lastCycle - startCycle;
             final long avgMicros = frames == 0 ? 0 : frameNanos / frames / 1000;
+            final String steady = String.format("steadyFrames=%d steadyAvgUs=%.1f steadyWorstUs=%.1f"
+                    + " modelKeyAvgUs=%.2f modelKeyWorstUs=%.1f",
+                steadyFrames, steadyFrames == 0 ? 0.0 : steadyNanos / (double) steadyFrames / 1000.0,
+                steadyWorstNanos / 1000.0,
+                steadyFrames == 0 ? 0.0 : steadyModelNanos / (double) steadyFrames / 1000.0,
+                steadyModelWorstNanos / 1000.0);
+            final int models = sampler.modelsCaptured();
+            final int failures = captureFailures;
+            final int skipped = locsSkipped;
             closed = writer.close();
-            // Queued behind the close, so the byte count is final when this runs.
-            writer.enqueue(() -> log.info("[RFL debug] replay closed {} cycles={} bytes={} avgClientTickMicros={}",
-                path, cycles, writer.bytesWritten(), avgMicros));
+            // Queued behind the close, so the byte counts are final when this runs.
+            writer.enqueue(() -> log.info("[RFL debug] replay closed {} cycles={} bytes={} avgClientTickMicros={}"
+                    + " {} models={} modelLines={} modelBytes={} avgModelLineBytes={} captureFailures={}"
+                    + " locsSkipped={}",
+                path, cycles, writer.bytesWritten(), avgMicros, steady, models, writer.deferredLines(),
+                writer.deferredBytes(),
+                writer.deferredLines() == 0 ? 0 : writer.deferredBytes() / writer.deferredLines(), failures,
+                skipped));
         }
         else
         {
@@ -340,6 +377,13 @@ final class ReplayRecorder
         startCycle = lastCycle;
         frameNanos = 0;
         frames = 0;
+        steadyFrames = 0;
+        steadyNanos = 0;
+        steadyWorstNanos = 0;
+        steadyModelNanos = 0;
+        steadyModelWorstNanos = 0;
+        captureFailures = 0;
+        locsSkipped = 0;
         pitchPending = false;
         writer.open(file);
 
@@ -352,6 +396,8 @@ final class ReplayRecorder
         hdr.put("rsn", local == null ? null : sanitizedName(local));
         hdr.put("at", now);
         hdr.put("cyc", lastCycle);
+        // Self-contained: model lines carry the geometry, so the viewer needs no bundle (spec 2.3).
+        hdr.put("models", 2);
         writer.write(hdr);
         writePitch(client);
         final Supplier<List<PluginEntry>> source = pluginSource;
@@ -384,7 +430,12 @@ final class ReplayRecorder
         final short[][][] under = scene == null ? null : scene.getUnderlayIds();
         final short[][][] over = scene == null ? null : scene.getOverlayIds();
         final byte[][][] shapes = scene == null ? null : scene.getTileShapes();
-        final ReplaySampler.PitchObjects objs = objects(scene, plane, at);
+        final List<ReplaySampler.Loc> locList = new ArrayList<>();
+        final ReplaySampler.PitchObjects objs = objects(scene, plane, at, locList);
+        // House models go out before the pitch line that refers to their ids.
+        final ReplaySampler.PitchLocs locs = sampler.pitchLocs(locList);
+        locsSkipped += locs.skipped();
+        writeAll(locs.lines());
         final Map<String, Object> line = new LinkedHashMap<>();
         line.put("t", "pitch");
         line.put("cyc", lastCycle);
@@ -400,6 +451,8 @@ final class ReplayRecorder
         line.put("shapes", ReplaySampler.PitchFloor.crop(planeOf(shapes, plane), cx, cy, OBJECT_RADIUS));
         line.put("rots", rotations(scene, plane, cx, cy));
         line.put("chunksAll", chunks);
+        line.put("locs", locs.rows());
+        line.put("paint", ReplaySampler.PitchFloor.paint(paint(scene, plane, cx, cy), cx, cy, OBJECT_RADIUS));
         writer.write(line);
     }
 
@@ -455,7 +508,7 @@ final class ReplayRecorder
      * {@code [id, kind, config, x, y, sizeX, sizeY]}. A GameObject spanning several tiles is listed
      * once. Empty when the recorder's tile or the scene is unknown.
      */
-    private static ReplaySampler.PitchObjects objects(Scene scene, int plane, LocalPoint at)
+    private ReplaySampler.PitchObjects objects(Scene scene, int plane, LocalPoint at, List<ReplaySampler.Loc> locs)
     {
         final ReplaySampler.PitchObjects objs = new ReplaySampler.PitchObjects();
         final Tile[][][] tiles = scene == null ? null : scene.getTiles();
@@ -480,14 +533,14 @@ final class ReplayRecorder
                 final Tile tile = column[y];
                 if (tile != null)
                 {
-                    addObjects(objs, tile);
+                    addObjects(objs, tile, locs);
                 }
             }
         }
         return objs;
     }
 
-    private static void addObjects(ReplaySampler.PitchObjects objs, Tile tile)
+    private void addObjects(ReplaySampler.PitchObjects objs, Tile tile, List<ReplaySampler.Loc> locs)
     {
         final GameObject[] games = tile.getGameObjects();
         if (games != null)
@@ -502,35 +555,152 @@ final class ReplayRecorder
                 final Point min = o.getSceneMinLocation();
                 final Point max = o.getSceneMaxLocation();
                 final boolean footprint = min != null && max != null;
-                objs.add(ReplaySampler.PitchObjects.GAME, o.getHash(), o.getId(), o.getOrientation(),
-                    lp.getX(), lp.getY(), o.getConfig(),
+                final boolean added = objs.add(ReplaySampler.PitchObjects.GAME, o.getHash(), o.getId(),
+                    o.getOrientation(), lp.getX(), lp.getY(), o.getConfig(),
                     footprint ? ReplaySampler.PitchObjects.tileCentre(min.getX()) : lp.getX(),
                     footprint ? ReplaySampler.PitchObjects.tileCentre(min.getY()) : lp.getY(),
                     footprint ? ReplaySampler.PitchObjects.span(min.getX(), max.getX()) : 1,
                     footprint ? ReplaySampler.PitchObjects.span(min.getY(), max.getY()) : 1);
+                if (added)
+                {
+                    addLoc(locs, o.getId(), o.getConfig(), 0, lp.getX(), lp.getY(), o.getZ(), o.getRenderable());
+                }
             }
         }
         final WallObject wall = tile.getWallObject();
         final LocalPoint wallAt = wall == null ? null : wall.getLocalLocation();
         if (wallAt != null)
         {
-            objs.add(ReplaySampler.PitchObjects.WALL, wall.getHash(), wall.getId(), wall.getOrientationA(),
-                wallAt.getX(), wallAt.getY(), wall.getConfig(), wallAt.getX(), wallAt.getY(), 1, 1);
+            if (objs.add(ReplaySampler.PitchObjects.WALL, wall.getHash(), wall.getId(), wall.getOrientationA(),
+                wallAt.getX(), wallAt.getY(), wall.getConfig(), wallAt.getX(), wallAt.getY(), 1, 1))
+            {
+                addLoc(locs, wall.getId(), wall.getConfig(), 0, wallAt.getX(), wallAt.getY(), wall.getZ(),
+                    wall.getRenderable1());
+                if (wall.getRenderable2() != null)
+                {
+                    addLoc(locs, wall.getId(), wall.getConfig(), 1, wallAt.getX(), wallAt.getY(), wall.getZ(),
+                        wall.getRenderable2());
+                }
+            }
         }
         final GroundObject ground = tile.getGroundObject();
         final LocalPoint groundAt = ground == null ? null : ground.getLocalLocation();
         if (groundAt != null)
         {
-            objs.add(ReplaySampler.PitchObjects.GROUND, ground.getHash(), ground.getId(), 0,
-                groundAt.getX(), groundAt.getY(), ground.getConfig(), groundAt.getX(), groundAt.getY(), 1, 1);
+            if (objs.add(ReplaySampler.PitchObjects.GROUND, ground.getHash(), ground.getId(), 0,
+                groundAt.getX(), groundAt.getY(), ground.getConfig(), groundAt.getX(), groundAt.getY(), 1, 1))
+            {
+                addLoc(locs, ground.getId(), ground.getConfig(), 0, groundAt.getX(), groundAt.getY(), ground.getZ(),
+                    ground.getRenderable());
+            }
         }
         final DecorativeObject deco = tile.getDecorativeObject();
         final LocalPoint decoAt = deco == null ? null : deco.getLocalLocation();
         if (decoAt != null)
         {
-            objs.add(ReplaySampler.PitchObjects.DECORATIVE, deco.getHash(), deco.getId(), 0,
-                decoAt.getX(), decoAt.getY(), deco.getConfig(), decoAt.getX(), decoAt.getY(), 1, 1);
+            if (objs.add(ReplaySampler.PitchObjects.DECORATIVE, deco.getHash(), deco.getId(), 0,
+                decoAt.getX(), decoAt.getY(), deco.getConfig(), decoAt.getX(), decoAt.getY(), 1, 1))
+            {
+                // Wall decorations sit off the tile's local point by their own offsets.
+                addLoc(locs, deco.getId(), deco.getConfig(), 0, decoAt.getX() + deco.getXOffset(),
+                    decoAt.getY() + deco.getYOffset(), deco.getZ(), deco.getRenderable());
+                if (deco.getRenderable2() != null)
+                {
+                    addLoc(locs, deco.getId(), deco.getConfig(), 1, decoAt.getX() + deco.getXOffset2(),
+                        decoAt.getY() + deco.getYOffset2(), deco.getZ(), deco.getRenderable2());
+                }
+            }
         }
+    }
+
+    /**
+     * One {@code pitch.locs} candidate. A null renderable gets a null capture, which the sampler
+     * skips and counts; the model itself is read only when the loc key is new.
+     */
+    private void addLoc(List<ReplaySampler.Loc> locs, int id, int config, int part, int x, int y, int height,
+        Renderable renderable)
+    {
+        locs.add(new ReplaySampler.Loc(id, config, part, x, y, height,
+            renderable == null ? null : () -> capture(renderable)));
+    }
+
+    /**
+     * Client thread: copies a renderable's current model ({@link Renderable#getModel()}: a static
+     * loc model is itself, an animated loc, player or projectile builds its current frame) into
+     * replay geometry. Null when there is no model or its arrays are missing; a read that throws
+     * is counted and treated the same, so one odd model never breaks a recording.
+     */
+    private ModelCapture.Geometry capture(Renderable renderable)
+    {
+        try
+        {
+            final Model m = renderable.getModel();
+            if (m == null)
+            {
+                return null;
+            }
+            final int[] colors1 = m.getFaceColors1();
+            final int[] colors3 = m.getFaceColors3();
+            if (m.getVerticesX() == null || m.getFaceIndices1() == null || colors1 == null || colors3 == null)
+            {
+                return null;
+            }
+            return ModelCapture.capture(m.getVerticesX(), m.getVerticesY(), m.getVerticesZ(), m.getVerticesCount(),
+                m.getFaceIndices1(), m.getFaceIndices2(), m.getFaceIndices3(), m.getFaceCount(), colors1, colors3,
+                m.getFaceTransparencies(), m.getFaceTextures());
+        }
+        catch (RuntimeException e)
+        {
+            captureFailures++;
+            return null;
+        }
+    }
+
+    /**
+     * Floor paint colour ({@code 0xRRGGBB}) per scene tile within {@link #OBJECT_RADIUS}: a flat
+     * tile's {@link SceneTilePaint#getRBG()} (the client's own RGB for that tile), and for a shaped
+     * tile its overlay colour ({@link SceneTileModel#getModelOverlay()}, underlay when there is no
+     * overlay). 0 where a tile has neither.
+     */
+    private static int[][] paint(Scene scene, int plane, int cx, int cy)
+    {
+        final int[][] out = new int[SCENE][SCENE];
+        final Tile[][][] tiles = scene == null ? null : scene.getTiles();
+        if (tiles == null || plane < 0 || plane >= tiles.length || tiles[plane] == null)
+        {
+            return out;
+        }
+        final Tile[][] level = tiles[plane];
+        for (int x = ReplaySampler.PitchObjects.lo(cx, OBJECT_RADIUS);
+             x <= ReplaySampler.PitchObjects.hi(cx, OBJECT_RADIUS, Math.min(SCENE, level.length)); x++)
+        {
+            final Tile[] column = level[x];
+            if (column == null)
+            {
+                continue;
+            }
+            for (int y = ReplaySampler.PitchObjects.lo(cy, OBJECT_RADIUS);
+                 y <= ReplaySampler.PitchObjects.hi(cy, OBJECT_RADIUS, Math.min(SCENE, column.length)); y++)
+            {
+                final Tile tile = column[y];
+                if (tile == null)
+                {
+                    continue;
+                }
+                final SceneTilePaint flat = tile.getSceneTilePaint();
+                final SceneTileModel shaped = flat == null ? tile.getSceneTileModel() : null;
+                if (flat != null)
+                {
+                    out[x][y] = flat.getRBG() & 0xFFFFFF;
+                }
+                else if (shaped != null)
+                {
+                    final int overlay = shaped.getModelOverlay() & 0xFFFFFF;
+                    out[x][y] = overlay != 0 ? overlay : shaped.getModelUnderlay() & 0xFFFFFF;
+                }
+            }
+        }
+        return out;
     }
 
     /**
@@ -584,8 +754,22 @@ final class ReplayRecorder
     {
         for (final Map<String, Object> line : lines)
         {
-            writer.write(line);
+            if (isModelLine(line))
+            {
+                // Big and immutable once built: serialised on the writer's thread, in order.
+                writer.writeDeferred(line);
+            }
+            else
+            {
+                writer.write(line);
+            }
         }
+    }
+
+    /** Model lines go through {@link ReplayWriter#writeDeferred}; every other line is serialised at once. */
+    static boolean isModelLine(Map<String, Object> line)
+    {
+        return "model".equals(line.get("t"));
     }
 
     /** Same sanitizing as {@link ContactDetector}, so names match the spawn lines and contacts. */

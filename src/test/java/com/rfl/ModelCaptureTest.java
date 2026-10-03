@@ -144,4 +144,15 @@ public class ModelCaptureTest
 		assertEquals(2, second.get(0).id);
 		assertTrue(reg.takeNew().isEmpty());
 	}
+
+	@Test
+	public void nullCaptureIsNotRegistered()
+	{
+		// No model this time (null renderable): no id, and the key stays open for a later capture.
+		ModelCapture.Registry reg = new ModelCapture.Registry();
+		assertEquals(-1, reg.idFor("l:1", () -> null));
+		assertEquals(0, reg.size());
+		assertTrue(reg.takeNew().isEmpty());
+		assertEquals(0, reg.idFor("l:1", ModelCaptureTest::sample));
+	}
 }

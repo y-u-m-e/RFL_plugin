@@ -152,7 +152,9 @@ final class ModelCapture
 
 		/**
 		 * The id for {@code key}. On a new key, calls {@code capture} once and queues its
-		 * geometry for {@link #takeNew()}; on a known key, {@code capture} is not called.
+		 * geometry for {@link #takeNew()}; on a known key, {@code capture} is not called. When
+		 * {@code capture} yields null (no model this time), returns -1 and registers nothing, so a
+		 * later call can still capture the key.
 		 */
 		int idFor(String key, Supplier<Geometry> capture)
 		{
@@ -162,6 +164,10 @@ final class ModelCapture
 				return known;
 			}
 			Geometry geometry = capture.get();
+			if (geometry == null)
+			{
+				return -1;
+			}
 			int id = ids.size();
 			ids.put(key, id);
 			fresh.add(new Captured(id, geometry));

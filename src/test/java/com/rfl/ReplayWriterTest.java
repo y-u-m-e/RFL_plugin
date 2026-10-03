@@ -126,6 +126,28 @@ public class ReplayWriterTest
     }
 
     @Test
+    public void deferredLinesKeepTheirPlace() throws Exception
+    {
+        // Model lines are serialised on the drain task, but still land between their neighbours.
+        com.google.gson.Gson gson = new GsonBuilder().create();
+        ReplayWriter writer = new ReplayWriter(gson, sameThreadExecutor());
+        Path file = temp.getRoot().toPath().resolve("d.gz");
+        Map<String, Object> model = map("t", "model");
+        model.put("v", new int[] { 1, 2, 3 });
+
+        writer.open(file);
+        writer.write(map("t", "hdr"));
+        writer.writeDeferred(model);
+        writer.write(map("t", "pm"));
+        writer.close();
+
+        List<String> lines = gunzipLines(file);
+        assertEquals(List.of("{\"t\":\"hdr\"}", "{\"t\":\"model\",\"v\":[1,2,3]}", "{\"t\":\"pm\"}"), lines);
+        assertEquals(1, writer.deferredLines());
+        assertEquals(lines.get(1).length() + 1, writer.deferredBytes());
+    }
+
+    @Test
     public void closeFutureCompletesOnlyAfterTheFileHasItsTrailer() throws Exception
     {
         // Holds every task until the test lets it run, so "not done yet" can be observed.
