@@ -110,6 +110,9 @@ final class RflPanel extends PluginPanel
 
         ScrollingDisplay display = new ScrollingDisplay();
         tabs = new MaterialTabGroup(display);
+        // MaterialTabGroup's FlowLayout sizes itself for one row, so at sidebar width the tabs that
+        // wrap (Plugins, Debug) were clipped out of sight. Two per row, sized for every row.
+        tabs.setLayout(new GridLayout(0, 2, 4, 4));
         tabs.setAlignmentX(LEFT_ALIGNMENT);
         collisionsTab = new MaterialTab("Collisions", tabs, collisionsTab());
         MaterialTab interceptionsTab = new MaterialTab("Interceptions", tabs, interceptionsTab());
