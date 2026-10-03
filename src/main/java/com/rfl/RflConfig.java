@@ -102,6 +102,22 @@ public interface RflConfig extends Config
     }
 
     /**
+     * @return true to append each collision and interception to the local day file
+     */
+    @ConfigItem(
+        keyName = "saveCollisions",
+        name = "Save collisions",
+        description = "Saves every handegg collision and interception to .runelite/rfl/collisions, one file "
+            + "per day. Stays on this computer.",
+        section = FEATURES_SECTION,
+        position = 7
+    )
+    default boolean saveCollisions()
+    {
+        return true;
+    }
+
+    /**
      * @return true to fill the triangles where two players' models touch
      */
     @ConfigItem(

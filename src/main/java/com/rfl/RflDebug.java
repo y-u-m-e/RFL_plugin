@@ -36,15 +36,15 @@ final class RflDebug
     private final ClientToolbar clientToolbar;
     private final ContactDetector contactDetector;
     private final BareBody bareBody;
-    private final ObserverLog observerLog;
+    private final CollisionLog collisionLog;
 
     // EDT only.
     private DebugPanel panel;
     private NavigationButton button;
 
     // Client thread only.
-    /** Saved observer collisions shown in the panel. */
-    private static final int OBSERVER_ROWS = 10;
+    /** Saved collisions shown in the panel. */
+    private static final int COLLISION_ROWS = 10;
     private final Deque<String> events = new ArrayDeque<>();
     private long refreshAt;
     private List<String> lastMissing = Collections.emptyList();
@@ -55,9 +55,9 @@ final class RflDebug
 
     @Inject
     RflDebug(Client client, RflConfig config, ClientToolbar clientToolbar, ContactDetector contactDetector,
-        BareBody bareBody, ObserverLog observerLog)
+        BareBody bareBody, CollisionLog collisionLog)
     {
-        this.observerLog = observerLog;
+        this.collisionLog = collisionLog;
         this.client = client;
         this.config = config;
         this.clientToolbar = clientToolbar;
@@ -146,19 +146,19 @@ final class RflDebug
     }
 
     /** Collisions in progress, then the latest saved ones. */
-    private void appendObserver(StringBuilder sb)
+    private void appendCollisions(StringBuilder sb)
     {
-        sb.append("\nOBSERVER (saved locally, not sent)\n");
+        sb.append("\nCOLLISIONS (saved locally)\n");
         List<String> open = contactDetector.inProgress();
         sb.append("in progress: ").append(open.isEmpty() ? "none" : String.join(", ", open)).append('\n');
-        List<ObservedCollision> recent = observerLog.recent();
+        List<Collision> recent = collisionLog.recent();
         if (recent.isEmpty())
         {
             sb.append("no saved collisions yet\n");
         }
-        for (int i = 0; i < Math.min(OBSERVER_ROWS, recent.size()); i++)
+        for (int i = 0; i < Math.min(COLLISION_ROWS, recent.size()); i++)
         {
-            sb.append(ObserverLog.row(recent.get(i))).append('\n');
+            sb.append(CollisionLog.row(recent.get(i))).append('\n');
         }
     }
 
@@ -202,7 +202,7 @@ final class RflDebug
                 .append("  contact: ").append(yesNo(o.triangles > 0)).append('\n');
         }
 
-        appendObserver(sb);
+        appendCollisions(sb);
 
         sb.append("\nRECENT EVENTS (newest first)\n");
         if (events.isEmpty())

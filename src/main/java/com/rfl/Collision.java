@@ -4,10 +4,12 @@ import java.util.List;
 
 /**
  * One finished handegg collision between two players in view, saved on this computer only
- * ({@link ObserverLog}). Field names are the JSON keys of each saved line.
+ * ({@link CollisionLog}). Field names are the JSON keys of each saved line.
  */
-final class ObservedCollision
+final class Collision
 {
+    /** Line type in the day file; interceptions are {@code "interception"}. */
+    final String type = "collision";
     final String a;
     final String b;
     /** Names of the pair holding a handegg when the collision started: one, or both. */
@@ -24,7 +26,7 @@ final class ObservedCollision
     /** Largest sampled touching triangle-pair count while the collision lasted. */
     final int maxTriangles;
 
-    ObservedCollision(String a, String b, List<String> ball, long startMs, long endMs, int startTick, int endTick,
+    Collision(String a, String b, List<String> ball, long startMs, long endMs, int startTick, int endTick,
         int world, int x, int y, int plane, int maxTriangles)
     {
         this.a = a;

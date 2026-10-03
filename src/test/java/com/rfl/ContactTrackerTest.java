@@ -80,10 +80,10 @@ public class ContactTrackerTest
         assertTrue(t.takeFinished().isEmpty());
         assertTrue(t.update(NO_MESHES, NONE, false, 1600, 6, false).isEmpty());
 
-        List<ObservedCollision> done = t.takeFinished();
+        List<Collision> done = t.takeFinished();
         assertEquals(2, done.size());
-        ObservedCollision ab = done.get(0).a.equals("A") ? done.get(0) : done.get(1);
-        ObservedCollision self = ab == done.get(0) ? done.get(1) : done.get(0);
+        Collision ab = done.get(0).a.equals("A") ? done.get(0) : done.get(1);
+        Collision self = ab == done.get(0) ? done.get(1) : done.get(0);
 
         assertEquals("A", ab.a);
         assertEquals("B", ab.b);
@@ -122,7 +122,7 @@ public class ContactTrackerTest
         t.update(Map.of("Zed", zed, "Amy", mesh(THROUGH)), ALL, false, 1030, 3, false);
 
         t.update(Map.of("Zed", zed, "Amy", mesh(FAR)), ALL, false, 1040, 4, false);
-        ObservedCollision c = t.takeFinished().get(0);
+        Collision c = t.takeFinished().get(0);
         assertEquals(2, c.maxTriangles);
         // The saved tile is the last touching update's.
         assertEquals(1040, c.x);
@@ -162,7 +162,7 @@ public class ContactTrackerTest
         assertTrue(t.update(Map.of("Amy", amy, "Zed", mesh(THROUGH)), ALL, false, 40, 2, false).isEmpty());
         assertTrue(t.takeFinished().isEmpty());
         t.update(Map.of("Amy", amy, "Zed", mesh(FAR)), ALL, false, 60, 3, false);
-        List<ObservedCollision> done = t.takeFinished();
+        List<Collision> done = t.takeFinished();
         assertEquals(1, done.size());
         assertEquals(0, done.get(0).startMs);
         assertEquals(60, done.get(0).endMs);
@@ -192,7 +192,7 @@ public class ContactTrackerTest
         t.update(touching, NONE, false, 80, 4, false);
         assertTrue(t.takeFinished().isEmpty());
         t.update(Map.of("A", mesh(WALL), "B", mesh(FAR)), NONE, false, 100, 5, false);
-        List<ObservedCollision> done = t.takeFinished();
+        List<Collision> done = t.takeFinished();
         assertEquals(1, done.size());
         assertEquals(60, done.get(0).startMs);
         assertEquals(List.of("A"), done.get(0).ball);
@@ -265,7 +265,7 @@ public class ContactTrackerTest
         Map<String, PosedMesh> touching = Map.of("A", mesh(WALL), "B", mesh(THROUGH));
         t.update(touching, Set.of("A"), false, 0, 0, false);
         t.flush(99, 7);
-        List<ObservedCollision> done = t.takeFinished();
+        List<Collision> done = t.takeFinished();
         assertEquals(1, done.size());
         assertEquals(99, done.get(0).endMs);
         assertEquals(7, done.get(0).endTick);

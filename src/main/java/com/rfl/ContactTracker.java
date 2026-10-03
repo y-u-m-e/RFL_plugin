@@ -15,7 +15,7 @@ import java.util.function.IntSupplier;
  * crosses in between) is one collision. Dropping the handegg mid-collision does not end it.
  *
  * <p>Every pair in view is treated alike, the local player's included. Each finished collision is
- * queued as an {@link ObservedCollision} (with names) for {@link #takeFinished}. Open ones also
+ * queued as an {@link Collision} (with names) for {@link #takeFinished}. Open ones also
  * finish when the meshes go away or {@link #flush} is called.
  *
  * <p>Max triangles is the number of touching triangle pairs, capped at {@link PosedMesh#MAX_HITS}.
@@ -89,7 +89,7 @@ final class ContactTracker
     private final Map<String, Open> open = new HashMap<>();
 
     /** Collisions finished since the last {@link #takeFinished}. */
-    private List<ObservedCollision> finished = new ArrayList<>();
+    private List<Collision> finished = new ArrayList<>();
 
     /** pairKey to touching triangles in the latest update; null when bounds overlap but nothing touches. */
     private Map<String, PosedMesh.Hits> latest = new HashMap<>();
@@ -181,7 +181,7 @@ final class ContactTracker
     {
         Open o = open.remove(key);
         String[] names = splitKey(key);
-        finished.add(new ObservedCollision(names[0], names[1], o.ball, o.startMs, now, o.startTick, tick, o.world,
+        finished.add(new Collision(names[0], names[1], o.ball, o.startMs, now, o.startTick, tick, o.world,
             o.tile[0], o.tile[1], o.tile[2], o.max));
     }
 
@@ -195,9 +195,9 @@ final class ContactTracker
     }
 
     /** Collisions finished since the last call, oldest first; clears them. */
-    List<ObservedCollision> takeFinished()
+    List<Collision> takeFinished()
     {
-        List<ObservedCollision> result = finished;
+        List<Collision> result = finished;
         finished = new ArrayList<>();
         return result;
     }

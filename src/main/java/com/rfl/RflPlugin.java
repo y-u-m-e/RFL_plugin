@@ -16,6 +16,7 @@ import net.runelite.api.GameState;
 import net.runelite.api.Player;
 import net.runelite.api.Projectile;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
@@ -31,7 +32,7 @@ import net.runelite.client.util.ColorUtil;
 /**
  * RFL local collision plugin. Inside a player-owned house, detects handegg collisions between any
  * two players in view ({@link ContactDetector}) and interceptions ({@link InterceptionDetector}),
- * draws them, and saves them on this computer ({@link ObserverLog}). Nothing is sent anywhere.
+ * draws them, and saves them on this computer ({@link CollisionLog}). Nothing is sent anywhere.
  *
  * <p>Owns the wiring between RuneLite events and the pieces that do the work: contact detection
  * each client frame, interception checks each game tick. Debug panel and debug logging live in
@@ -78,6 +79,9 @@ public class RflPlugin extends Plugin
 
     @Inject
     private RflDebug debug;
+
+    @Inject
+    private CollisionLog collisionLog;
 
     private final InterceptionDetector interceptionDetector = new InterceptionDetector();
 
@@ -217,6 +221,7 @@ public class RflPlugin extends Plugin
         for (final InterceptionDetector.Interception interception : found)
         {
             showInterception(interception);
+            saveInterception(interception, tick);
         }
     }
 
@@ -236,6 +241,18 @@ public class RflPlugin extends Plugin
         {
             contactHighlights.addInterception(at.getX(), at.getY(), System.currentTimeMillis());
         }
+    }
+
+    /** Appends the interception to the day file (when Save collisions is on), with the receiver's tile. */
+    private void saveInterception(final InterceptionDetector.Interception interception, final int tick)
+    {
+        final Player receiver = contactDetector.players().get(interception.receiver);
+        final LocalPoint at = receiver == null ? null : receiver.getLocalLocation();
+        final WorldPoint tile = at == null ? null
+            : WorldPoint.fromLocalInstance(client, at, client.getTopLevelWorldView().getPlane());
+        collisionLog.record(new CollisionLog.Interception(interception.receiver, interception.contacts,
+            System.currentTimeMillis(), tick, client.getWorld(),
+            tile == null ? -1 : tile.getX(), tile == null ? -1 : tile.getY(), tile == null ? -1 : tile.getPlane()));
     }
 
     @Subscribe

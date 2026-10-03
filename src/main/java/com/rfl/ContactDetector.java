@@ -26,7 +26,7 @@ import net.runelite.client.util.Text;
  * client frame, from each player's posed model: the drawn model, or the bare body
  * ({@link BareBody}) per the Hitbox source setting. Keeps the latest frame's meshes and pairs for
  * the overlays and the debug panel, adds the contact tile highlight when a collision starts, hands
- * each finished collision to {@link ObserverLog}, and measures mesh cost.
+ * each finished collision to {@link CollisionLog}, and measures mesh cost.
  *
  * <p>Every pair in view is tracked alike, the local player's included; a collision needs a
  * handegg held by either body. Pairs without a holder are checked only while Show hitboxes or
@@ -46,7 +46,7 @@ final class ContactDetector
     private final ContactHighlights highlights;
     private final RflConfig config;
     private final BareBody bareBody;
-    private final ObserverLog observerLog;
+    private final CollisionLog collisionLog;
     private Map<String, PosedMesh> latestMeshes = Collections.emptyMap();
     private Map<String, Player> latestPlayers = Collections.emptyMap();
     private List<String> latestMissing = Collections.emptyList();
@@ -60,9 +60,9 @@ final class ContactDetector
 
     @Inject
     ContactDetector(Client client, ContactHighlights highlights, RflConfig config, BareBody bareBody,
-        ObserverLog observerLog)
+        CollisionLog collisionLog)
     {
-        this.observerLog = observerLog;
+        this.collisionLog = collisionLog;
         this.client = client;
         this.highlights = highlights;
         this.config = config;
@@ -162,9 +162,9 @@ final class ContactDetector
 
     private void saveFinished()
     {
-        for (ObservedCollision c : tracker.takeFinished())
+        for (Collision c : tracker.takeFinished())
         {
-            observerLog.record(c);
+            collisionLog.record(c);
         }
     }
 
