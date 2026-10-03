@@ -44,3 +44,20 @@ tasks.register('runClient', JavaExec) {
     mainClass = 'com.rfl.RflPluginTest'
     jvmArgs = ['-ea']
 }
+
+// Stress benchmark (StressBenchmarkTest): measures per-frame detection and recording cost at
+// 10/20/30 players. Skipped by `build`/`test`; run with `./gradlew benchmark`
+// (optional -Pframes=1000 -Pwarmup=500). Report: build/reports/benchmark/stress.md.
+tasks.register('benchmark', Test) {
+    group = 'verification'
+    description = 'Runs the per-frame stress benchmark (not part of build)'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    filter { includeTestsMatching 'com.rfl.StressBenchmarkTest' }
+    systemProperty 'rfl.benchmark', 'true'
+    systemProperty 'rfl.benchmark.frames', project.findProperty('frames') ?: '1000'
+    systemProperty 'rfl.benchmark.warmup', project.findProperty('warmup') ?: '500'
+    maxHeapSize = '1g'
+    testLogging { showStandardStreams = true }
+    outputs.upToDateWhen { false }
+}
