@@ -65,7 +65,10 @@ public final class IncompleteDetector
         }
     }
 
-    /** Sanitized names of players with a handegg in the weapon slot. */
+    /**
+     * Sanitized names of players with a handegg in the weapon slot. Handeggs only: a gnomeball is
+     * carried, never thrown, so it never starts or settles a catch.
+     */
     static Set<String> holders(Map<String, Integer> weapons)
     {
         Set<String> holders = new HashSet<>();

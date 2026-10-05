@@ -14,7 +14,7 @@ public final class Collision
     final String type = "collision";
     public final String a;
     public final String b;
-    /** Names of the pair holding a handegg when the collision started: one, or both. */
+    /** Names of the pair holding a ball (handegg or gnomeball) when the collision started: one, or both. */
     public final List<String> ball;
     public final long startMs;
     public final long endMs;

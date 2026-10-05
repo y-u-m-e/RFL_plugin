@@ -36,7 +36,7 @@ import net.runelite.api.kit.KitType;
  * the overlays, adds the contact tile highlight when a collision starts, and hands each finished
  * collision to {@link CollisionLog}.
  *
- * <p>A held ball is never part of a hitbox: the drawn model's faces of a handegg in the weapon slot
+ * <p>A held ball is never part of a hitbox: the drawn model's faces of a handegg or gnomeball in the weapon slot
  * are left out ({@link HeldBallFaces}), so the ball touching someone is never contact, for
  * collisions, the touching-triangle display and the incomplete rule alike. The bare body never has
  * equipment, the ball included.
@@ -45,7 +45,8 @@ import net.runelite.api.kit.KitType;
  * same-team pairs and any pair with an unassigned player never are, so with nobody assigned
  * nothing is detected, saved, recorded or drawn as touching.
  *
- * <p>A pair is triangle-checked only when a handegg is held by either body, the local player's own
+ * <p>A pair is triangle-checked only when a ball (a handegg or a gnomeball,
+ * {@link Handegg#isHeldBall}) is held by either body, the local player's own
  * pairs included; a pair with no holder is never triangle-checked, on display or off. Show
  * hitboxes and Show touching triangles only ask for the full touching count on pairs already
  * checked, so the overlay fill stays complete without widening which pairs get checked.
@@ -126,7 +127,7 @@ public final class ContactDetector
                 // The team gate: looked up once per player per frame, so each pair check is two map reads.
                 teamOf.put(name, teams.team(name));
                 PlayerComposition composition = player.getPlayerComposition();
-                if (composition != null && Handegg.isHandegg(composition.getEquipmentId(KitType.WEAPON)))
+                if (composition != null && Handegg.isHeldBall(composition.getEquipmentId(KitType.WEAPON)))
                 {
                     holders.add(name);
                 }

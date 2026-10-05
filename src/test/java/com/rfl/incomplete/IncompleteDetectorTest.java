@@ -229,6 +229,16 @@ public class IncompleteDetectorTest
         assertEquals(Set.of("Amy"), IncompleteDetector.holders(weapons));
     }
 
+    @Test
+    public void aGnomeballWithNoHandeggStartsNoIncompleteLogic()
+    {
+        Map<String, Integer> weapons = new HashMap<>();
+        weapons.put("Amy", Handegg.GNOMEBALL);
+        assertTrue("a gnomeball is never a catch's receiver", IncompleteDetector.holders(weapons).isEmpty());
+        IncompleteDetector detector = new IncompleteDetector();
+        assertTrue(detector.onHolders(1000, IncompleteDetector.holders(weapons)).isEmpty());
+    }
+
     private static Sim lateWeaponTouchDuringFlight(boolean targetKnown)
     {
         Sim s = new Sim("Amy");

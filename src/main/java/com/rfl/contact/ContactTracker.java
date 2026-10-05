@@ -147,7 +147,7 @@ public final class ContactTracker
 
     /**
      * @param meshes  this frame's meshes by sanitized name
-     * @param holders sanitized names of the players holding a handegg this frame
+     * @param holders sanitized names of the players holding a ball (handegg or gnomeball) this frame
      * @param now     epoch ms stamped on collisions
      * @param tick    game tick count, stamped on collisions and used to sample once per tick
      * @param detail  true when a display needs the full touching count on every checked pair

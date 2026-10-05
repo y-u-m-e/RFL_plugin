@@ -75,7 +75,7 @@ public interface RflConfig extends Config
         keyName = "reportContacts",
         name = "Detect contacts",
         description = "Inside a player-owned house, detects when any two players in view touch while either "
-            + "of them holds a handegg. Incompletes need this on.",
+            + "of them holds a handegg or gnomeball. Incompletes need this on.",
         section = DETECTION_SECTION,
         position = 1
     )
@@ -98,7 +98,7 @@ public interface RflConfig extends Config
         keyName = "hitboxSource",
         name = "Hitbox source",
         description = "Experimental. Equipped: the model you see, including armour and capes; a held "
-            + "handegg never counts. Bare body: the player's body without equipment. Changes which contacts are detected.",
+            + "handegg or gnomeball never counts. Bare body: the player's body without equipment. Changes which contacts are detected.",
         section = DETECTION_SECTION,
         position = 2
     )

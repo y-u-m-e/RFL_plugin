@@ -8,13 +8,18 @@ import net.runelite.api.gameval.SpotanimID;
 
 /**
  * The Easter 2018 handegg the league plays with: its three weapon items and the projectile drawn
- * while one is thrown, by RuneLite gameval id.
+ * while one is thrown, by RuneLite gameval id. Also the gnomeball, which some players carry on
+ * rushing plays: holding one counts as holding the ball, but it is never thrown in RFL, so
+ * incompletes stay handegg-only.
  */
 public final class Handegg
 {
     /** Holy, Peaceful and Chaotic handegg, as worn in the weapon slot. */
     public static final Set<Integer> ITEMS = Set.of(
         ItemID.EASTER18_HANDEGG_LIGHT, ItemID.EASTER18_HANDEGG_BALANCE, ItemID.EASTER18_HANDEGG_CHAOS);
+
+    /** The gnomeball, as worn in the weapon slot: a ball holder for collisions, not for incompletes. */
+    public static final int GNOMEBALL = ItemID.BALL_GNOMEBALL_GAME;
 
     /** The thrown handegg's in-flight projectile, one per handegg type. */
     static final Set<Integer> PROJECTILES = Set.of(
@@ -28,6 +33,8 @@ public final class Handegg
      * recorded replay. RuneLite has no gameval for model ids, hence the number.
      */
     static final int WORN_MODEL = 28545;
+    /** The gnomeball's model in the hand, male and female alike: 64 vertices, 144 faces (game cache, 2026-10-04). */
+    static final int GNOMEBALL_WORN_MODEL = 528;
 
     private Handegg()
     {
@@ -39,7 +46,20 @@ public final class Handegg
      */
     public static int wornModel(int itemId)
     {
-        return isHandegg(itemId) ? WORN_MODEL : -1;
+        if (isHandegg(itemId))
+        {
+            return WORN_MODEL;
+        }
+        return itemId == GNOMEBALL ? GNOMEBALL_WORN_MODEL : -1;
+    }
+
+    /**
+     * Whether a weapon-slot item id makes its holder the ball holder: a handegg or a gnomeball. This
+     * gates collisions and names the holder; incompletes use {@link #isHandegg}.
+     */
+    public static boolean isHeldBall(int itemId)
+    {
+        return isHandegg(itemId) || itemId == GNOMEBALL;
     }
 
     /** Whether a weapon-slot item id is a handegg. */

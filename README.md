@@ -12,8 +12,8 @@ moment. Crop: full client window (panel plus game view). Size: ~1280px wide. -->
 
 ## What it does
 
-- **Collisions** — detects when two players' 3D models touch while at least one holds a handegg,
-  but only between a player on Team A and a player on Team B. Same-team pairs and unassigned
+- **Collisions** — detects when two players' 3D models touch while at least one holds the ball (a
+  handegg, or a gnomeball carried on a rushing play), but only between a player on Team A and a player on Team B. Same-team pairs and unassigned
   players never count.
 - **Incompletes** — a catch made while the receiver is in contact with an opposing player. Decided
   at the moment the thrown handegg's projectile stops being drawn, not on the next game tick.
@@ -147,14 +147,17 @@ RFL Audit models a specific set of RFL rules, in plain language:
 - **The pitch** is the player-owned house itself. The plugin doesn't know about yardage, downs or
   field markings — just what's in front of it: players, the handegg, and contact between them.
 - **A collision** is two players' actual 3D models touching — the posed, rendered mesh, worn items
-  included by default but never the held handegg (an experimental **Bare body** hitbox strips
+  included by default but never the held ball (an experimental **Bare body** hitbox strips
   equipment out). It's measured
   by exact triangle-triangle intersection, not by which tile anyone is standing on, so two players
   can collide while a tile apart on the server, or miss each other on adjacent tiles, depending on
   how their models are moving that frame.
-- **The handegg gate.** A touch only matters if at least one of the two players holds a handegg
-  (in their weapon slot) — contact with no ball involved is ignored.
-- **The ball is not the body.** The held handegg's own triangles are left out of the holder's
+- **The ball gate.** A touch only matters if at least one of the two players holds the ball in
+  their weapon slot — any of the three handeggs (Holy, Peaceful, Chaotic) or a gnomeball, which
+  some players carry on rushing plays — and contact with no ball involved is ignored. The holder
+  is named in the day file, the replay `ev` line and the panel. Incompletes stay handegg-only: a
+  gnomeball is carried, never thrown.
+- **The ball is not the body.** The held ball's own triangles (handegg or gnomeball) are left out of the holder's
   hitbox, so the ball touching someone is never a collision, a touching-triangle highlight or an
   incomplete's contact. Only bodies (and worn gear) touching count.
 - **The incomplete rule.** The catch is decided at the exact client frame the thrown handegg's
@@ -300,8 +303,8 @@ turn it on.
 | Name | Key | Default | What it does |
 |---|---|---|---|
 | Show RFL panel | `showPanel` | `false` | Adds the RFL panel to the sidebar: house status, the replay recorder, this session's collisions and incompletes, team assignments, Copy plugin history and Open folder. |
-| Detect contacts | `reportContacts` | `false` | Inside a player-owned house, detects when any two players in view touch while either holds a handegg. Incompletes need this on. |
-| Hitbox source | `hitboxSource` | `EQUIPPED` | Experimental. `EQUIPPED`: the model you see, armour included; a held handegg's own geometry never counts. `BARE_BODY`: the player's body without equipment. Changes which contacts are detected. |
+| Detect contacts | `reportContacts` | `false` | Inside a player-owned house, detects when any two players in view touch while either holds a handegg or gnomeball. Incompletes need this on. |
+| Hitbox source | `hitboxSource` | `EQUIPPED` | Experimental. `EQUIPPED`: the model you see, armour included; a held handegg's or gnomeball's own geometry never counts. `BARE_BODY`: the player's body without equipment. Changes which contacts are detected. |
 | Save collisions | `saveCollisions` | `false` | Appends every collision and incomplete to `rfl/collisions`, one file per day. |
 | Highlight contacts | `highlightContacts` | `false` | Briefly highlights the tile under each handegg collision as it starts. |
 | Contact highlight colour | `contactHighlightColor` | `#FFE600` at ~60% alpha (RGBA 255,230,0,153) | Colour of the contact tile highlight, and of touching triangles. |
@@ -378,7 +381,7 @@ What the plugin can see about other players, and why none of it is an unfair adv
 **Nothing is being detected.** Check, in order: are both **Detect contacts** (and **Detect
 incompletes**, if you want those) turned on — everything defaults to off; are at least one Team A
 and one Team B player assigned — unassigned and same-team pairs never count; is at least one of
-the two players holding a handegg.
+the two players holding a handegg or gnomeball.
 
 **The panel is missing from the sidebar.** Turn on **Show RFL panel** in the plugin's settings —
 it's off by default.
