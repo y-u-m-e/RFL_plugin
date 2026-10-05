@@ -147,12 +147,16 @@ RFL Audit models a specific set of RFL rules, in plain language:
 - **The pitch** is the player-owned house itself. The plugin doesn't know about yardage, downs or
   field markings — just what's in front of it: players, the handegg, and contact between them.
 - **A collision** is two players' actual 3D models touching — the posed, rendered mesh, worn items
-  included by default (an experimental **Bare body** hitbox strips equipment out). It's measured
+  included by default but never the held handegg (an experimental **Bare body** hitbox strips
+  equipment out). It's measured
   by exact triangle-triangle intersection, not by which tile anyone is standing on, so two players
   can collide while a tile apart on the server, or miss each other on adjacent tiles, depending on
   how their models are moving that frame.
 - **The handegg gate.** A touch only matters if at least one of the two players holds a handegg
   (in their weapon slot) — contact with no ball involved is ignored.
+- **The ball is not the body.** The held handegg's own triangles are left out of the holder's
+  hitbox, so the ball touching someone is never a collision, a touching-triangle highlight or an
+  incomplete's contact. Only bodies (and worn gear) touching count.
 - **The incomplete rule.** The catch is decided at the exact client frame the thrown handegg's
   projectile stops being drawn, not at the next game tick. The receiver is in contact if their
   model was touching an opposing player at that frame, or touched one within 3 client cycles
@@ -297,7 +301,7 @@ turn it on.
 |---|---|---|---|
 | Show RFL panel | `showPanel` | `false` | Adds the RFL panel to the sidebar: house status, the replay recorder, this session's collisions and incompletes, team assignments, Copy plugin history and Open folder. |
 | Detect contacts | `reportContacts` | `false` | Inside a player-owned house, detects when any two players in view touch while either holds a handegg. Incompletes need this on. |
-| Hitbox source | `hitboxSource` | `EQUIPPED` | Experimental. `EQUIPPED`: the model you see, armour and handegg included. `BARE_BODY`: the player's body without equipment. Changes which contacts are detected. |
+| Hitbox source | `hitboxSource` | `EQUIPPED` | Experimental. `EQUIPPED`: the model you see, armour included; a held handegg's own geometry never counts. `BARE_BODY`: the player's body without equipment. Changes which contacts are detected. |
 | Save collisions | `saveCollisions` | `false` | Appends every collision and incomplete to `rfl/collisions`, one file per day. |
 | Highlight contacts | `highlightContacts` | `false` | Briefly highlights the tile under each handegg collision as it starts. |
 | Contact highlight colour | `contactHighlightColor` | `#FFE600` at ~60% alpha (RGBA 255,230,0,153) | Colour of the contact tile highlight, and of touching triangles. |

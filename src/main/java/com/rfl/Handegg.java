@@ -21,8 +21,25 @@ public final class Handegg
         SpotanimID.EASTER18_HANDEGG_TRAVEL_SARA, SpotanimID.EASTER18_HANDEGG_TRAVEL_GUTH,
         SpotanimID.EASTER18_HANDEGG_TRAVEL_ZAM);
 
+    /**
+     * The model all three handeggs are drawn with in the hand (item op 45/48, male and female alike;
+     * the three differ only by recolour). Read from the game cache on 2026-10-04: 114 vertices,
+     * 224 faces, which is exactly the block a held handegg adds to a player's model in every
+     * recorded replay. RuneLite has no gameval for model ids, hence the number.
+     */
+    static final int WORN_MODEL = 28545;
+
     private Handegg()
     {
+    }
+
+    /**
+     * The model drawn in the hand for a weapon-slot item that is a held ball, or -1. Used to find
+     * and leave out the ball's own faces from the holder's hitbox.
+     */
+    public static int wornModel(int itemId)
+    {
+        return isHandegg(itemId) ? WORN_MODEL : -1;
     }
 
     /** Whether a weapon-slot item id is a handegg. */

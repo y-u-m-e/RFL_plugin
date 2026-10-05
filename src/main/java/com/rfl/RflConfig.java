@@ -97,8 +97,8 @@ public interface RflConfig extends Config
     @ConfigItem(
         keyName = "hitboxSource",
         name = "Hitbox source",
-        description = "Experimental. Equipped: the model you see, including armour, capes and the handegg. "
-            + "Bare body: the player's body without equipment. Changes which contacts are detected.",
+        description = "Experimental. Equipped: the model you see, including armour and capes; a held "
+            + "handegg never counts. Bare body: the player's body without equipment. Changes which contacts are detected.",
         section = DETECTION_SECTION,
         position = 2
     )

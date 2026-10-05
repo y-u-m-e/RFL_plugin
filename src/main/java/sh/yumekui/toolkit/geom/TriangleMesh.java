@@ -132,6 +132,19 @@ public final class TriangleMesh
     public static TriangleMesh from(float[] xs, float[] ys, float[] zs, int count, int[] f1, int[] f2, int[] f3, int faceCount,
         byte[] transparencies, int[] colors3, int orientation, int baseX, int baseY)
     {
+        return from(xs, ys, zs, count, f1, f2, f3, faceCount, transparencies, colors3, orientation, baseX, baseY, 0, 0);
+    }
+
+    /**
+     * {@link #from(float[], float[], float[], int, int[], int[], int[], int, byte[], int[], int, int, int)}
+     * leaving out the model faces {@code skipFrom} (inclusive) to {@code skipTo} (exclusive), for
+     * geometry merged into the model that must not count, such as a held item. An empty range
+     * ({@code skipTo <= skipFrom}) leaves nothing out. Heights are still measured from the lowest
+     * vertex of the whole model.
+     */
+    public static TriangleMesh from(float[] xs, float[] ys, float[] zs, int count, int[] f1, int[] f2, int[] f3, int faceCount,
+        byte[] transparencies, int[] colors3, int orientation, int baseX, int baseY, int skipFrom, int skipTo)
+    {
         float bottom = -Float.MAX_VALUE;
         for (int i = 0; i < count; i++)
         {
@@ -154,6 +167,10 @@ public final class TriangleMesh
         int n = 0;
         for (int f = 0; f < faceCount; f++)
         {
+            if (f >= skipFrom && f < skipTo)
+            {
+                continue;
+            }
             if (transparencies != null && (transparencies[f] & 0xFF) == FULLY_TRANSPARENT
                 || colors3 != null && colors3[f] == HIDDEN_FACE)
             {

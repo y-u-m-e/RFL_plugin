@@ -7,6 +7,7 @@ import com.rfl.log.CollisionLog;
 import com.rfl.teams.Teams;
 import sh.yumekui.toolkit.geom.TriangleMesh;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,6 +19,7 @@ import javax.inject.Singleton;
 
 import net.runelite.api.Client;
 import net.runelite.api.Model;
+import net.runelite.api.ModelData;
 import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
 import net.runelite.api.Projectile;
@@ -33,6 +35,11 @@ import net.runelite.api.kit.KitType;
  * ({@link BareBody}) per the Hitbox source setting. Keeps the latest frame's meshes and pairs for
  * the overlays, adds the contact tile highlight when a collision starts, and hands each finished
  * collision to {@link CollisionLog}.
+ *
+ * <p>A held ball is never part of a hitbox: the drawn model's faces of a handegg in the weapon slot
+ * are left out ({@link HeldBallFaces}), so the ball touching someone is never contact, for
+ * collisions, the touching-triangle display and the incomplete rule alike. The bare body never has
+ * equipment, the ball included.
  *
  * <p>Only a pair on opposite teams (Team A against Team B, {@link Teams#opposing}) is ever checked;
  * same-team pairs and any pair with an unassigned player never are, so with nobody assigned
@@ -61,6 +68,7 @@ public final class ContactDetector
     private final BareBody bareBody;
     private final CollisionLog collisionLog;
     private final Teams teams;
+    private final HeldBallFaces heldBallFaces;
     private Map<String, TriangleMesh> latestMeshes = Collections.emptyMap();
     private Map<String, Player> latestPlayers = Collections.emptyMap();
     /** Whether detection ran since the last reset, so stopping saves and clears only once. */
@@ -76,6 +84,21 @@ public final class ContactDetector
         this.highlights = highlights;
         this.config = config;
         this.bareBody = bareBody;
+        this.heldBallFaces = new HeldBallFaces(this::wornShape);
+    }
+
+    /** A worn model's face index triples, copied, from the client's model cache. */
+    private HeldBallFaces.Shape wornShape(int modelId)
+    {
+        ModelData data = client.loadModelData(modelId);
+        if (data == null || data.getFaceIndices1() == null || data.getFaceIndices2() == null
+            || data.getFaceIndices3() == null)
+        {
+            return null;
+        }
+        int faces = data.getFaceCount();
+        return new HeldBallFaces.Shape(Arrays.copyOf(data.getFaceIndices1(), faces),
+            Arrays.copyOf(data.getFaceIndices2(), faces), Arrays.copyOf(data.getFaceIndices3(), faces), faces);
     }
 
     /**
@@ -109,6 +132,7 @@ public final class ContactDetector
                 }
             }
         }
+        heldBallFaces.retain(players.keySet());
         Set<String> receivers = flightReceivers(client, players);
         boolean wireframe = config.showHitboxes();
         // Owner ruling: every Team A and Team B player gets a mesh every frame, holder or not. The
@@ -120,7 +144,7 @@ public final class ContactDetector
         Map<String, TriangleMesh> meshes = new HashMap<>();
         for (String name : needMeshes)
         {
-            TriangleMesh mesh = meshFor(players.get(name), bare);
+            TriangleMesh mesh = meshFor(name, players.get(name), bare);
             if (mesh != null)
             {
                 meshes.put(name, mesh);
@@ -252,6 +276,7 @@ public final class ContactDetector
         tracker.reset();
         highlights.clear();
         bareBody.reset();
+        heldBallFaces.reset();
         latestMeshes = Collections.emptyMap();
         latestPlayers = Collections.emptyMap();
     }
@@ -332,8 +357,11 @@ public final class ContactDetector
         return weapons;
     }
 
-    /** Mesh of the player's drawn model, or their bare body per the Hitbox source setting. */
-    private TriangleMesh meshFor(Player player, boolean bare)
+    /**
+     * Mesh of the player's drawn model without the faces of a held ball, or their bare body (which
+     * has no equipment at all) per the Hitbox source setting.
+     */
+    private TriangleMesh meshFor(String name, Player player, boolean bare)
     {
         Model model = bare ? bareBody.posed(player) : player.getModel();
         LocalPoint localPoint = player.getLocalLocation();
@@ -342,10 +370,24 @@ public final class ContactDetector
         {
             return null;
         }
+        int[] skip = bare ? HeldBallFaces.NONE : heldBall(name, player, model);
         return TriangleMesh.from(model.getVerticesX(), model.getVerticesY(), model.getVerticesZ(),
             model.getVerticesCount(), model.getFaceIndices1(), model.getFaceIndices2(), model.getFaceIndices3(),
             model.getFaceCount(), model.getFaceTransparencies(), model.getFaceColors3(),
-            player.getCurrentOrientation(), localPoint.getX(), localPoint.getY());
+            player.getCurrentOrientation(), localPoint.getX(), localPoint.getY(), skip[0], skip[1]);
+    }
+
+    /** The held ball's face range in the player's drawn model ({@link HeldBallFaces}); empty without one. */
+    private int[] heldBall(String name, Player player, Model model)
+    {
+        PlayerComposition composition = player.getPlayerComposition();
+        if (composition == null)
+        {
+            return HeldBallFaces.NONE;
+        }
+        int worn = Handegg.wornModel(composition.getEquipmentId(KitType.WEAPON));
+        return heldBallFaces.range(name, composition.getGender(), composition.getEquipmentIds(), worn,
+            model.getFaceIndices1(), model.getFaceIndices2(), model.getFaceIndices3(), model.getFaceCount());
     }
 
 }
