@@ -1,0 +1,63 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenLocal {
+        content {
+            excludeGroupByRegex('org\\.lwjgl.*')
+        }
+    }
+    maven {
+        url = 'https://repo.runelite.net'
+        content {
+            includeGroupByRegex('net\\.runelite.*')
+        }
+    }
+    mavenCentral()
+}
+
+def runeLiteVersion = 'latest.release'
+
+dependencies {
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+    testImplementation 'junit:junit:4.12'
+    testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+    testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
+}
+
+group = 'com.rfl'
+version = '1.0-SNAPSHOT'
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release.set(11)
+}
+
+tasks.register('runClient', JavaExec) {
+    group = 'application'
+    description = 'Run RuneLite with the plugin'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.rfl.RflPluginLauncher'
+    jvmArgs = ['-ea']
+}
+
+// Stress benchmark (StressBenchmarkTest): measures per-frame detection and recording cost at
+// 10/20/30 players. Skipped by `build`/`test`; run with `./gradlew benchmark`
+// (optional -Pframes=1000 -Pwarmup=500). Report: build/reports/benchmark/stress.md.
+tasks.register('benchmark', Test) {
+    group = 'verification'
+    description = 'Runs the per-frame stress benchmark (not part of build)'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    filter { includeTestsMatching 'com.rfl.StressBenchmarkTest' }
+    systemProperty 'rfl.benchmark', 'true'
+    systemProperty 'rfl.benchmark.frames', project.findProperty('frames') ?: '1000'
+    systemProperty 'rfl.benchmark.warmup', project.findProperty('warmup') ?: '500'
+    maxHeapSize = '1g'
+    testLogging { showStandardStreams = true }
+    outputs.upToDateWhen { false }
+}

@@ -1,0 +1,33 @@
+.gradle
+build
+bin/
+.planning/
+.idea/
+.project
+.settings/
+.classpath
+nbactions.xml
+nb-configuration.xml
+nbproject/
+__pycache__/
+.factorypath
+
+# Local one-off scripts (kept outside the plugin; not part of the build)
+tools/
+*.py
+
+# Editor / OS files
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+out/
+
+
+# JVM crash dumps and logs
+hs_err_pid*.log
+*.log
+
+# Replay recordings and bundles, if ever copied in for testing
+*.rflr.gz
+*.bundle/
