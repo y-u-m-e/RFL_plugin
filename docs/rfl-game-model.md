@@ -229,7 +229,7 @@ The true tile is exactly what **True Tile Player Indicators** reveals. That's wh
 
 ## 4. Nothing is sent anywhere
 
-- **[code]** The plugin is local-only. Collisions and incompletes go to `RUNELITE_DIR/rfl/collisions/YYYY-MM-DD.jsonl` (with Save collisions on), the local user's own plugin list to `rfl/plugins/`, and replays to `rfl/replays/`. It has no network code at all.
+- **[code]** The plugin is local-only. Collisions and incompletes go to `RUNELITE_DIR/rfl/collisions/YYYY-MM-DD.jsonl` (with Save collisions on), the local user's own plugin list to `rfl/plugins/`, replays to `rfl/replays/`, and replay buffer clips to `rfl/replays/snapshot reviews/` (§8). It has no network code at all.
 - The server-side reporting, pairing and hosted-game features described in earlier versions of this file were retired on 2026-10-02 and removed from the plugin.
 
 ---
@@ -292,3 +292,26 @@ Still not measured:
 - **Rendered position vs true tile:** recordings now carry each player's true tile per tick (`tt` lines), but no recording has been analysed for it yet.
 - **PID order effects.**
 - **Long throws past 10 tiles.**
+
+---
+
+## 8. Replay buffer clips (snapshot reviews)
+
+- **[code]** While a replay records, the plugin keeps the last **Clip length** (30–300 s, default 180) plus 10 s of its lines in memory, capped at 32 MB. **Save last 3 min** in the panel, or the **Save replay clip hotkey**, writes them out as a self-contained replay in `rfl/replays/snapshot reviews/` for a quick booth review of the last play. The full recording carries on untouched.
+- **[code]** A clip covers client cycles `[fromCyc, toCyc]`: `toCyc` is the newest cycle recorded when the save was asked for, `fromCyc` is `toCyc - 50 * seconds` (a client cycle is ~20 ms, §5), moved later only when the recording is shorter than that or the memory cap dropped the oldest lines.
+- **[code]** Its start state is synthesized at `fromCyc` from everything recorded before it: each present player's `spawn`, `team`, `app`, `f` row, `pm` model, spot anims and true tile; the pitch active then, as one complete `pitch` line; and the plugin list with earlier toggles applied. So a player who stood still for minutes before the window is still placed, dressed and posed correctly at the clip's first frame.
+- **[code]** The `{collision}` file-name token names the clip's most recent collision (the same team-gated collisions as everywhere else, §1 Collisions), ball carrier first when exactly one of the pair held the ball.
+
+### Note for the replay spec (§2.3)
+
+A clip is an ordinary self-contained recording (`hdr.models` 2) with one new `hdr` field:
+
+```
+{"t":"hdr","v":1,"rev":233,"world":354,"rsn":"Ref","at":1790000000000,"cyc":81234,"models":2,
+ "clip":{"source":"2026-10-05_200102_w354.rflr.gz","fromCyc":81234,"toCyc":90234,"seconds":180}}
+```
+
+- `clip.source`: the source recording's file name as created (numbered, if it was).
+- `clip.fromCyc` / `clip.toCyc`: the window, in client cycles, both inclusive. `hdr.cyc` equals `clip.fromCyc`, so a reader's timeline starts at the clip; every other field of `hdr` (including `at`, the source's start time) is the source's.
+- `clip.seconds`: the window's length, `round((toCyc - fromCyc) / 50)`. Shorter than the setting when the recording was shorter or the memory cap trimmed it.
+- Every line with a `cyc` has `fromCyc <= cyc <= toCyc`. The start-state lines and the first pitch carry `cyc = fromCyc` (a pitch that began later keeps its own `cyc`). There are no `locs` lines: the first pitch has them merged into its `locs` and `names`. Models come before every line that uses them, delta bases included. Readers that don't know `clip` lose nothing.

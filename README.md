@@ -42,7 +42,7 @@ moment. Crop: full client window (panel plus game view). Size: ~1280px wide. -->
 Open with the whistle icon in the sidebar (shown only when **Show RFL panel** is on). Top to
 bottom: a status line (in a house or not), the replay card, the Collisions / Incompletes / Teams
 cards, the latest event, the selected list, and a footer with Copy plugin history, the record
-button and Open folder.
+button, Save last 3 min (while Record replays is on) and Open folder.
 
 ### The recording card
 
@@ -109,6 +109,29 @@ you're inside a house.
 ![The record button's two labels](docs/media/panel-record-button.png)
 <!-- Capture: two shots (or one composite), Record replays off then on. Crop: sidebar only, the
 record button row. Size: ~360px wide. -->
+
+### Save last 3 min
+
+While a replay is recording, **Save last 3 min** saves the last few minutes of it as a separate,
+self-contained replay (a *replay buffer clip*), so you can record a whole game and still pull out
+just the last play for a quick booth review. The full recording keeps going, untouched. The label
+follows the **Clip length** setting ("Save last 3 min" at 180 seconds, "Save last 1:30" at 90).
+The **Save replay clip hotkey** does the same from anywhere in the client.
+
+The button shows while **Record replays** is on and works once a file is open (inside a house). The
+line under it says how the save is going:
+
+- "Saving clip... 42%" while the clip is cut and written on its own thread.
+- "Saved clip `<file>` (845 KB, 3:00)" for a few seconds, with an Open folder button for
+  `rfl/replays/snapshot reviews`. A clip that came out shorter says why: "cut short to fit memory"
+  (see [Replay buffer clips](#replay-buffer-clips)) or "all recorded so far".
+- "Couldn't save clip: `<reason>`" if it failed (for example, a full disk).
+- Pressing the hotkey while nothing is recording shows a short notice instead.
+
+![Saving a replay buffer clip from the panel](docs/media/panel-save-clip.gif)
+<!-- Capture: Record replays on, recording in a house for at least 30 s, panel open. Click: "Save
+last 3 min", wait for "Saved clip ...", then click its Open folder. Length: 4-6 s. Crop: sidebar
+only, the footer (record button, Save last, result line). Size: ~360px wide. -->
 
 ## Teams
 
@@ -189,23 +212,75 @@ viewer. A recording holds:
 
 ### Where files go
 
-Replays are written to `.runelite/rfl/replays/` inside your RuneLite folder.
+Replays are written to `.runelite/rfl/replays/` inside your RuneLite folder. Replay buffer clips go
+in its `snapshot reviews` subfolder (with the space): `.runelite/rfl/replays/snapshot reviews/`,
+created the first time a clip is saved. The replay website opens files from any folder.
 
-### File names
+### File name templates
 
-The **Replay file name** setting is a template, expanded for each new file:
+Two settings name files: **Replay file name** for each recording, and **Clip file name** for each
+replay buffer clip. Both are templates expanded by the same rules: `.rflr.gz` is always appended,
+characters a file name can't hold become `_`, a name already on disk gets `-2`, `-3`, and so on, and
+an empty or invalid template (an unknown token or a stray brace) falls back to that setting's
+default. The folder name is never touched by these rules.
 
-| Token | Expands to |
-|---|---|
-| `{date}` | `yyyy-MM-dd` |
-| `{time}` | `HHmmss` |
-| `{world}` | the world number |
-| `{player}` | your RSN |
+| Token | Replay | Clip | Expands to | Example |
+|---|---|---|---|---|
+| `{date}` | yes | yes | the date the file was started (recording) or saved (clip), `yyyy-MM-dd` | `2026-10-05` |
+| `{time}` | yes | yes | the time the same way, `HHmmss` | `210409` |
+| `{world}` | yes | yes | the world number | `354` |
+| `{player}` | yes | yes | your RSN, as shown in game (`unknown` before it is known) | `Ref Bob` |
+| `{source}` | | yes | the source recording's file name without `.rflr.gz` | `2026-10-05_200102_w354` |
+| `{length}` | | yes | the clip's length, `m-ss` | `3-00` |
+| `{collision}` | | yes | the clip's most recent collision as `<a>-vs-<b>`, the ball carrier first when exactly one of the pair held the ball; spaces in names become `_`; `no-collision` when the clip has none. These are the same team-gated collisions the panel lists. | `Iron_Amy-vs-Big_Zed` |
+| `{collisionTime}` | | yes | when that collision started, `HHmmss`; nothing when there is none, and a separator next to it goes too, so no `__` is left behind | `210301` |
 
-`.rflr.gz` is always appended. Characters a file name can't hold become `_`, and a name already on
-disk gets `-2`, `-3`, and so on. An empty or invalid template falls back to the default,
-`{date}_{time}_w{world}` — the name every replay had before the setting existed, e.g.
-`2026-10-03_114112_w354.rflr.gz`.
+Defaults:
+
+| Setting | Default | Example |
+|---|---|---|
+| Replay file name | `{date}_{time}_w{world}` | `2026-10-03_114112_w354.rflr.gz` (the name every replay had before the setting existed) |
+| Clip file name | `{date}_{time}_w{world}_{collision}` | `2026-10-05_210409_w354_Iron_Amy-vs-Big_Zed.rflr.gz` |
+
+More examples:
+
+| Template | Setting | Result |
+|---|---|---|
+| `{player}_{date}_w{world}` | Replay | `Ref Bob_2026-10-05_w354.rflr.gz` |
+| `{source}_clip_{time}` | Clip | `2026-10-05_200102_w354_clip_210409.rflr.gz` |
+| `review_{collisionTime}_{collision}_{length}` | Clip | `review_210301_Iron_Amy-vs-Big_Zed_3-00.rflr.gz`, or `review_no-collision_3-00.rflr.gz` with no collision |
+
+### Replay buffer clips
+
+While a file is recording, the plugin keeps its last few minutes in memory, so **Save last 3 min**
+(or the hotkey) can write them out as their own replay at any moment. The website opens a clip on
+its own, exactly like a full recording. A clip holds, in order:
+
+1. the recording's `hdr` line with `cyc` set to the clip's first cycle (the website starts the
+   timeline there) and a `clip` field naming where it came from:
+   `"clip":{"source":"2026-10-05_200102_w354.rflr.gz","fromCyc":81234,"toCyc":90234,"seconds":180}`;
+2. the `plugins` line as it stood at the clip's start (any toggles before it applied);
+3. every `model` line the clip uses, delta bases included, before anything that uses them;
+4. the house as it stood at the clip's start, as one complete `pitch` line (no `locs` lines);
+5. each player present at the clip's start: their `spawn`, `team`, appearance, position and pose
+   (`f`), model (`pm`), spot anims and true tile, all at the clip's first cycle;
+6. every recorded line from the clip's window, in its original order (a house reload inside the
+   window comes through as its own `pitch` line, as in the recording).
+
+**Memory.** The buffer keeps the clip length plus 10 seconds of lines, capped at 32 MB. Measured
+with 20 players all moving and changing pose every frame for 3 minutes 10 seconds: about **9.3 MB**
+(7.5 MB of line text plus bookkeeping), so the cap is never reached at the default length. Model
+lines are kept for the whole recording, compressed (a delta-encoded player pose is about 5.6 KB),
+since a later pose can reuse any earlier one. If the cap is reached anyway, the oldest lines go
+first: the clip is just shorter, and the panel says "cut short to fit memory".
+
+**Cost and safety.** Saving costs the client thread one queued step (about 7 microseconds). The
+buffer is snapshotted on the replay writer's thread, in order behind every line already recorded,
+and the clip is cut and written on a thread of its own. A clip is announced as saved only once its
+gzip trailer is on disk; a failed clip's partial file is deleted.
+
+**Clip length** can be changed mid-recording: a longer length keeps everything already buffered and
+grows into it, a shorter one drops what is now too old.
 
 ### Crash safety
 
@@ -317,8 +392,11 @@ turn it on.
 | Highlight incompletes | `highlightIncompletes` | `false` | Briefly highlights the tile under the player who caught the handegg in contact. |
 | Incomplete colour | `incompleteColor` | `#00C8FF` at ~70% alpha (RGBA 0,200,255,180) | Colour of the incomplete tile highlight and chat label. |
 | Record replays | `recordReplays` | `false` | Records every player-owned house visit to a local replay file (`rfl/replays`) for the RFL replay viewer. |
-| Replay file name | `replayFileName` | `{date}_{time}_w{world}` | Name template for each replay file. See [Replays](#replays) for tokens and fallback behaviour. |
+| Replay file name | `replayFileName` | `{date}_{time}_w{world}` | Name template for each replay file. See [File name templates](#file-name-templates) for tokens and fallback behaviour. |
 | Record overhead chat | `recordOverheadChat` | `false` | Adds public overhead chat (yours too) to replays, for keeping time. A shared replay then contains other players' public chat. |
+| Save replay clip hotkey | `saveClipHotkey` | not set | While a replay is recording, saves its last Clip length as a [replay buffer clip](#replay-buffer-clips) in `rfl/replays/snapshot reviews`. Same as the panel's Save last button. |
+| Clip length (seconds) | `clipSeconds` | `180` (range 30–300) | How much a saved clip holds, counting back from when you save it. Changes apply to the recording in progress. |
+| Clip file name | `clipFileName` | `{date}_{time}_w{world}_{collision}` | Name template for each clip. See [File name templates](#file-name-templates) for tokens and fallback behaviour. |
 
 Team assignments are stored under a separate, hidden key (`teams`) that has no entry in the
 settings UI — they're managed entirely from the panel's Teams view and the right-click menu.
@@ -414,13 +492,13 @@ the listing icon and plugin properties, and so on.
 
 | Package | Holds |
 |---|---|
-| `com.rfl` | `RflPlugin` (wiring only), `RflConfig`, `Handegg` |
+| `com.rfl` | `RflPlugin` (wiring only), `RflConfig`, `ClipHotkey`, `Handegg` |
 | `com.rfl.contact` | Collision detection: `ContactDetector`, `ContactTracker`, `Collision`, `BareBody`, `ContactHighlights` |
 | `com.rfl.incomplete` | Incomplete detection: `IncompleteDetector`, `IncompleteReporter`, `Incomplete` |
 | `com.rfl.log` | Local logs: `CollisionLog`, `PluginLog`, `PluginAudit`, `PluginSnapshotter`, `PluginHistory` |
 | `com.rfl.overlay` | Drawing: `ContactHighlightOverlay`, `EventTileOverlay`, `HitboxOverlay`, `TeamTileOverlay`, `RflOverlays` |
 | `com.rfl.panel` | The sidebar panel: `RflPanel`, `RflPanelController`, `PanelModel`, `ReplayCard`, `TeamsView`, `EventListView`, `LatestCard`, `SessionEvents` |
-| `com.rfl.replay` | Replay recording: `ReplayRecorder`, `ReplaySampler`, `ReplayLines`, `ReplayFileName`, `FrameReader` |
+| `com.rfl.replay` | Replay recording: `ReplayRecorder`, `ReplaySampler`, `ReplayLines`, `ReplayFileName`, `FrameReader`; replay buffer clips: `ReplayRing`, `ClipBuilder`, `ClipWriter`, `ClipFileName`, `ClipStatus` |
 | `com.rfl.replay.pitch` | The house/pitch capture that feeds replays: `PitchCapture`, `PitchScanner`, `PitchFloor`, `PitchObjects` |
 | `com.rfl.teams` | Team assignment: `Teams`, `TeamMenu` |
 | `sh.yumekui.toolkit.*` | Plugin-neutral pieces vendored into this plugin — see below |
@@ -447,7 +525,9 @@ get, answered in advance.
 The replay file's line-by-line format (`.rflr.gz`: gzipped newline-delimited JSON) is specified
 outside this repository, in the **rfl-pages** project's replay format spec — that repository may
 not be public, so ask the project owner for access if you need it. [`ReplayLines.java`](src/main/java/com/rfl/replay/ReplayLines.java)
-is this plugin's side of that contract: every line shape it writes, in one place.
+is this plugin's side of that contract: every line shape it writes, in one place. A replay buffer
+clip is an ordinary recording with one extra `hdr` field, `clip` (see
+[Replay buffer clips](#replay-buffer-clips) and [`ClipBuilder.java`](src/main/java/com/rfl/replay/ClipBuilder.java)).
 
 ## Credits and licence
 
