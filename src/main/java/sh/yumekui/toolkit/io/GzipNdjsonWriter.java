@@ -53,6 +53,10 @@ import lombok.extern.slf4j.Slf4j;
  * lines still queued at close that have since been written, and reaches 1.0 only once the gzip
  * trailer is on disk ({@link WriterState#SAVED}). A deferred line's size is unknown until the
  * drain serialises it, so it counts as {@link #DEFERRED_WEIGHT} on both sides.
+ *
+ * <p>Tap ({@link #setTap}): an optional listener told, on the drain task, about each file created
+ * and each line once it is written, with the object the line was built from. It sees exactly
+ * what reaches the file, in file order, without the caller serialising anything twice.
  */
 @Slf4j
 public final class GzipNdjsonWriter
@@ -76,6 +80,25 @@ public final class GzipNdjsonWriter
     /** The panel's reason when {@link #MAX_PENDING_BYTES} is reached. */
     public static final String DISK_TOO_SLOW = "the disk fell too far behind, so writing stopped";
 
+    /**
+     * Told about the file and its lines on the drain task, in file order. Calls must be quick and
+     * must not throw; a throwing tap is treated like any failing step.
+     */
+    public interface LineTap
+    {
+        /** A new file was created (numbered if the name was taken); nothing written to it yet. */
+        void opened(Path file);
+
+        /**
+         * One line reached the file.
+         *
+         * @param source what was handed to {@link #write}, {@link #writeDeferred} or (the JSON text
+         *     itself) {@link #writeJson}
+         * @param json the line as written, without the newline
+         */
+        void written(Object source, String json);
+    }
+
     private final Gson gson;
     private final String fileSuffix;
     private final Supplier<ExecutorService> executors;
@@ -85,6 +108,8 @@ public final class GzipNdjsonWriter
 
     /** The executor steps run on; created on first use, dropped by {@link #shutdown}. Guarded by this. */
     private ExecutorService executor;
+    /** Null for none; set before the first open. */
+    private volatile LineTap tap;
     /** Drain task only: when the gzip stream was last sync-flushed. */
     private long lastFlushMs;
 
@@ -190,6 +215,15 @@ public final class GzipNdjsonWriter
     }
 
     /**
+     * Sets the {@link LineTap}, or null for none. Set it before the first {@link #open}; a tap set
+     * later starts with the next line written.
+     */
+    public void setTap(LineTap tap)
+    {
+        this.tap = tap;
+    }
+
+    /**
      * Drain task only: sync-flushes the gzip stream when {@link #FLUSH_EVERY_MS} has passed since the
      * last one, so a killed client loses at most that much and everything before it inflates.
      */
@@ -227,7 +261,7 @@ public final class GzipNdjsonWriter
         {
             return;
         }
-        writeJson(gson.toJson(line));
+        writeJson(line, gson.toJson(line));
     }
 
     /**
@@ -235,6 +269,11 @@ public final class GzipNdjsonWriter
      * line, whose {@code null} Gson would drop). Same queue, same order.
      */
     public void writeJson(String json)
+    {
+        writeJson(json, json);
+    }
+
+    private void writeJson(Object source, String json)
     {
         if (!open || json == null)
         {
@@ -250,7 +289,7 @@ public final class GzipNdjsonWriter
         {
             try
             {
-                doWrite(json);
+                doWrite(source, json);
             }
             finally
             {
@@ -290,7 +329,7 @@ public final class GzipNdjsonWriter
                     deferredLines.incrementAndGet();
                     deferredBytes.addAndGet(json.length() + 1);
                 }
-                doWrite(json);
+                doWrite(line, json);
             }
             finally
             {
@@ -465,6 +504,11 @@ public final class GzipNdjsonWriter
             out = new BufferedWriter(new OutputStreamWriter(
                 new GZIPOutputStream(new Counting(createNew(file), fileBytes), true), StandardCharsets.UTF_8));
             lastFlushMs = clock.getAsLong();
+            LineTap listener = tap;
+            if (listener != null)
+            {
+                listener.opened(created);
+            }
         }
         catch (IOException e)
         {
@@ -520,7 +564,7 @@ public final class GzipNdjsonWriter
     }
 
     /** Drain task only. */
-    private void doWrite(String json)
+    private void doWrite(Object source, String json)
     {
         if (out == null)
         {
@@ -538,6 +582,12 @@ public final class GzipNdjsonWriter
             log.warn("Gzip writer: write failed, stopping", e);
             fail(e);
             closeOut();
+            return;
+        }
+        LineTap listener = tap;
+        if (listener != null)
+        {
+            listener.written(source, json);
         }
     }
 

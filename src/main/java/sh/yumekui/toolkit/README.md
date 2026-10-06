@@ -14,7 +14,7 @@ stays inside the Plugin Hub rules.
 | Package | Type | What it does |
 |---|---|---|
 | `concurrent` | `SerialQueue` | Runs queued steps one at a time, in order, on any executor, with one drain task and no lost wake-ups. A step that throws goes to a handler and the queue carries on. |
-| `io` | `GzipNdjsonWriter` | One gzipped NDJSON file at a time on a daemon thread of its own: serialise-now or serialise-later lines, a sync flush every 2 s so a crash keeps the file readable, never-overwrite numbered names, a backlog cap that fails the file cleanly when the disk can't keep up, save progress for a UI, and `shutdown()` to end the thread. |
+| `io` | `GzipNdjsonWriter` | One gzipped NDJSON file at a time on a daemon thread of its own: serialise-now or serialise-later lines, a sync flush every 2 s so a crash keeps the file readable, never-overwrite numbered names, a backlog cap that fails the file cleanly when the disk can't keep up, save progress for a UI, an optional line tap that sees each written line (with the object it was built from) on the writer's thread, and `shutdown()` to end the thread. |
 | `io` | `WriterState` | The writer's state: idle, writing, saving, saved, error. |
 | `io` | `DailyJsonlAppender` | Appends JSON lines to `YYYY-MM-DD.jsonl` (local date) in a folder, in order, off the caller's thread. |
 | `io` | `IoErrors` | A short reason for an IO failure ("access denied") instead of a message that is just the path. |

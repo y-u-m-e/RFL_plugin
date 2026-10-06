@@ -738,4 +738,39 @@ public class GzipNdjsonWriterTest
         assertEquals(1, gunzipLines(second).size());
         writer.shutdown().get(5, TimeUnit.SECONDS);
     }
+
+    @Test
+    public void theTapSeesTheFileAndEachLineInFileOrderWithItsSource() throws Exception
+    {
+        Gson gson = new GsonBuilder().create();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        GzipNdjsonWriter writer = writer(gson, executor);
+        List<String> seen = new ArrayList<>();
+        writer.setTap(new GzipNdjsonWriter.LineTap()
+        {
+            @Override
+            public void opened(Path file)
+            {
+                seen.add("open " + file.getFileName());
+            }
+
+            @Override
+            public void written(Object source, String json)
+            {
+                seen.add((source instanceof String ? "text " : "object ") + json);
+            }
+        });
+        Path wanted = temp.getRoot().toPath().resolve("t" + SUFFIX);
+        Files.createFile(wanted);
+        Map<String, Object> deferred = new LinkedHashMap<>();
+        deferred.put("t", "model");
+        writer.open(wanted);
+        writer.write(Map.of("t", "a"));
+        writer.writeJson("{\"t\":\"b\",\"x\":null}");
+        writer.writeDeferred(deferred);
+        writer.close().get(5, TimeUnit.SECONDS);
+        writer.shutdown().get(5, TimeUnit.SECONDS);
+        assertEquals(List.of("open t-2" + SUFFIX, "object {\"t\":\"a\"}", "text {\"t\":\"b\",\"x\":null}",
+            "object {\"t\":\"model\"}"), seen);
+    }
 }
