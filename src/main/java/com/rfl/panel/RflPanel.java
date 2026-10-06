@@ -39,7 +39,8 @@ import net.runelite.client.util.ImageUtil;
  * session's collision and incomplete counts as two cards that also pick the list shown below
  * ({@link SelectableCard}), and a full-width Teams card; the latest event ({@link LatestCard}); the
  * selected list ({@link EventListView} or {@link TeamsView}); and a footer with Copy plugin history,
- * the record button and Open folder, each a full-width row so no label is cut off at sidebar width.
+ * the record button, Save last (a replay buffer clip, while Record replays is on) with its result
+ * line, and Open folder, each a full-width row so no label is cut off at sidebar width.
  * It renders a {@link PanelModel} and formats nothing itself.
  *
  * <p>Threads: Swing EDT only. Models arrive through {@link #update}.
@@ -103,6 +104,14 @@ public final class RflPanel extends PluginPanel
     private Consumer<EventTileOverlay.EventTile> eventTile = tile -> { };
 
     private final CopyFeedbackLabel copyResult = new CopyFeedbackLabel(COPY_MESSAGE_MS);
+
+    /** Save last: a clip of the open recording. Its line says how the save went, Open folder beside it. */
+    private final JButton clipButton = new JButton();
+    private final JLabel clipLine = SidebarWidgets.truncating();
+    private final JButton clipOpen = new JButton("Open folder");
+    private Runnable saveClip = () -> { };
+    private Runnable openClipFolder = () -> { };
+    private PanelModel.ClipView clipShown;
 
     private PanelModel shown;
 
@@ -247,8 +256,96 @@ public final class RflPanel extends PluginPanel
         footer.add(Box.createVerticalStrut(FOOTER_GAP));
         footer.add(SidebarWidgets.capHeight(recordButton));
         footer.add(Box.createVerticalStrut(FOOTER_GAP));
+        footer.add(SidebarWidgets.capHeight(clipButton));
+        footer.add(Box.createVerticalStrut(COPY_RESULT_GAP));
+        footer.add(clipRow());
+        footer.add(Box.createVerticalStrut(FOOTER_GAP));
         footer.add(SidebarWidgets.capHeight(open));
         return footer;
+    }
+
+    /** The Save last result line, with Open folder at its end while a just-saved clip shows; fixed height. */
+    private JComponent clipRow()
+    {
+        clipButton.setFocusable(false);
+        clipButton.setVisible(false);
+        clipButton.addActionListener(e -> saveClip.run());
+        clipLine.setFont(FontManager.getRunescapeSmallFont());
+        clipLine.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+        clipLine.setText(" ");
+        clipOpen.setFocusable(false);
+        clipOpen.setFont(FontManager.getRunescapeSmallFont());
+        clipOpen.setMargin(SidebarWidgets.BUTTON_MARGIN);
+        clipOpen.setToolTipText("Opens rfl/replays/snapshot reviews, where clips are saved.");
+        clipOpen.setVisible(false);
+        clipOpen.addActionListener(e -> openClipFolder.run());
+        int height = Math.max(clipOpen.getPreferredSize().height,
+            clipLine.getFontMetrics(clipLine.getFont()).getHeight());
+        JPanel row = SidebarWidgets.fixedRow(new BorderLayout(CARD_GAP, 0), height);
+        row.setOpaque(false);
+        row.add(clipLine, BorderLayout.CENTER);
+        row.add(clipOpen, BorderLayout.EAST);
+        return row;
+    }
+
+    /** EDT: what Save last does (on the EDT). */
+    public void setSaveClip(Runnable action)
+    {
+        saveClip = action == null ? () -> { } : action;
+    }
+
+    /** EDT: what the clip line's Open folder does (on the EDT). */
+    public void setOpenClipFolder(Runnable action)
+    {
+        openClipFolder = action == null ? () -> { } : action;
+    }
+
+    /** EDT: the Save last button and its result line. */
+    void setClip(PanelModel.ClipView view)
+    {
+        if (view == null || view.equals(clipShown))
+        {
+            return;
+        }
+        clipShown = view;
+        clipButton.setVisible(view.isButtonVisible());
+        clipButton.setEnabled(view.isButtonEnabled());
+        clipButton.setText(view.getButtonText());
+        clipButton.setToolTipText(view.getButtonTip());
+        SidebarWidgets.setTruncated(clipLine, view.getText());
+        clipLine.setForeground(clipColor(view.getTone()));
+        clipOpen.setVisible(view.isOpenVisible());
+        revalidate();
+        repaint();
+    }
+
+    private static Color clipColor(PanelModel.ClipTone tone)
+    {
+        switch (tone)
+        {
+            case PROGRESS:
+                return ColorScheme.PROGRESS_INPROGRESS_COLOR;
+            case OK:
+                return PanelStyle.OK;
+            case WARN:
+                return ColorScheme.BRAND_ORANGE;
+            case ERROR:
+                return ColorScheme.PROGRESS_ERROR_COLOR;
+            default:
+                return ColorScheme.LIGHT_GRAY_COLOR;
+        }
+    }
+
+    /** EDT, tests: the Save last button. */
+    JButton clipButton()
+    {
+        return clipButton;
+    }
+
+    /** EDT, tests: the clip result line. */
+    JLabel clipLine()
+    {
+        return clipLine;
     }
 
     /** A collision row: time and overlap, then the pair with a lone ball holder marked. */

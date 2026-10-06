@@ -1,5 +1,6 @@
 package com.rfl;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -36,6 +37,36 @@ public class RflConfigTest
         assertFalse(config.highlightIncompletes());
         assertFalse(config.recordReplays());
         assertFalse(config.recordOverheadChat());
+    }
+
+    @Test
+    public void clipSettingsDefaults()
+    {
+        assertEquals(180, config.clipSeconds());
+        assertEquals(net.runelite.client.config.Keybind.NOT_SET, config.saveClipHotkey());
+        assertEquals("{date}_{time}_w{world}_{collision}", config.clipFileName());
+    }
+
+    /** The Clip length range is 30 s to 5 min, in the setting and where the recorder re-checks it. */
+    @Test
+    public void clipLengthIsThirtySecondsToFiveMinutes() throws IOException
+    {
+        Path source = Paths.get("src", "main", "java", "com", "rfl", "RflConfig.java");
+        String text = new String(Files.readAllBytes(source), StandardCharsets.UTF_8);
+        assertTrue(text.contains("@Range(min = 30, max = 300)\n    @Units(Units.SECONDS)\n    @ConfigItem(\n"
+            + "        keyName = \"clipSeconds\""));
+        for (int[] pair : new int[][] { { 10, 30 }, { 30, 30 }, { 90, 90 }, { 300, 300 }, { 600, 300 } })
+        {
+            int set = pair[0];
+            assertEquals("set " + set, pair[1], com.rfl.replay.ReplayRecorder.clipSeconds(new RflConfig()
+            {
+                @Override
+                public int clipSeconds()
+                {
+                    return set;
+                }
+            }));
+        }
     }
 
     /** Catches a switch added later with an "on" default, without reflection: reads the source. */

@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -53,7 +54,12 @@ import net.runelite.client.RuneLite;
  * then the house models ({@link PitchCapture}). A file stays open through LOADING, which queues a
  * fresh pitch for the first logged-in frame after the load. Each file gets a fresh sampler.
  *
- * <p>Threads: all state here is client-thread only. The writer's IO is its own.
+ * <p>Replay buffer ({@link #saveClip}): every line that reaches the file is also kept for the last
+ * few minutes by a {@link ReplayRing} on the writer's thread, so the last {@code Clip length} can be
+ * saved as its own self-contained replay ({@link ClipBuilder}) while the recording carries on.
+ *
+ * <p>Threads: all state here is client-thread only. The writer's IO is its own, and clips are cut
+ * and written on the {@link ClipWriter}'s thread.
  */
 @Slf4j
 @Singleton
@@ -66,6 +72,11 @@ public final class ReplayRecorder
     static final long LOC_BUDGET_NANOS = 1_000_000L;
     /** The writer thread's name, as it shows in a thread dump. */
     private static final String WRITER_THREAD = "rfl-replay-writer";
+    /** The replay buffer keeps this much more than the clip length, so a clip is never a few lines short. */
+    static final int BUFFER_MARGIN_SECONDS = 10;
+    /** The Clip length setting's range, re-checked here for a hand-edited value. */
+    static final int MIN_CLIP_SECONDS = 30;
+    static final int MAX_CLIP_SECONDS = 300;
 
     private final RflConfig config;
     private final GzipNdjsonWriter writer;
@@ -77,6 +88,9 @@ public final class ReplayRecorder
     /** The pitch line's spread-out house model capture; it writes the pitch and locs lines. */
     private final PitchCapture pitch;
     private final PitchScanner scanner;
+    /** The replay buffer: the writer's tap, on the writer's thread. */
+    private final ReplayRing ring;
+    private final ClipWriter clips;
 
     /** Non-null while a file is open. */
     private ReplaySampler sampler;
@@ -111,21 +125,32 @@ public final class ReplayRecorder
     @Inject
     ReplayRecorder(RflConfig config, Gson gson)
     {
-        this(config, new GzipNdjsonWriter(gson, ReplayFileName.SUFFIX, WRITER_THREAD), RuneLite.RUNELITE_DIR.toPath().resolve("rfl").resolve("replays"), gson);
+        this(config, new GzipNdjsonWriter(gson, ReplayFileName.SUFFIX, WRITER_THREAD), RuneLite.RUNELITE_DIR.toPath().resolve("rfl").resolve("replays"), gson,
+            new ClipWriter(gson));
     }
 
-    /** Tests: a given writer and folder, and no warm-up. */
+    /** Tests: a given writer and folder, no warm-up, and no clips. */
     ReplayRecorder(RflConfig config, GzipNdjsonWriter writer, Path dir)
     {
-        this(config, writer, dir, null);
+        this(config, writer, dir, null, new ClipWriter(null));
     }
 
-    private ReplayRecorder(RflConfig config, GzipNdjsonWriter writer, Path dir, Gson gson)
+    /** Tests: a given writer and folder, no warm-up, and clips written with {@code gson} on {@code clipExecutors}. */
+    ReplayRecorder(RflConfig config, GzipNdjsonWriter writer, Path dir, Gson gson,
+        java.util.function.Supplier<ExecutorService> clipExecutors)
+    {
+        this(config, writer, dir, null, new ClipWriter(gson, clipExecutors));
+    }
+
+    private ReplayRecorder(RflConfig config, GzipNdjsonWriter writer, Path dir, Gson gson, ClipWriter clips)
     {
         this.gson = gson;
         this.config = config;
         this.writer = writer;
         this.dir = dir;
+        this.clips = clips;
+        this.ring = new ReplayRing(clipSeconds(config) + BUFFER_MARGIN_SECONDS, ReplayRing.DEFAULT_CAP_BYTES);
+        writer.setTap(ring);
         this.pitch = new PitchCapture(new PitchCapture.Sink()
         {
             @Override
@@ -384,6 +409,50 @@ public final class ReplayRecorder
         }
     }
 
+    /**
+     * Client thread: saves the open recording's last {@code Clip length} as a clip, without stopping
+     * it. Costs the client thread one queued step: the buffer is snapshotted on the writer's thread,
+     * in order behind every line already handed to it, and the clip is cut and written on the
+     * {@link ClipWriter}'s thread. False, and nothing happens, when no file is being recorded.
+     */
+    public boolean saveClip(long nowMs)
+    {
+        if (!recording())
+        {
+            return false;
+        }
+        int seconds = clipSeconds(config);
+        ring.setKeepSeconds(seconds + BUFFER_MARGIN_SECONDS);
+        String template = config.clipFileName();
+        ZoneId zone = ZoneId.systemDefault();
+        int cycles = seconds * ReplayRing.CYCLES_PER_SECOND;
+        clips.requested();
+        writer.enqueue(() -> clips.submit(ring.snapshot(), cycles, dir, template, nowMs, zone));
+        return true;
+    }
+
+    /**
+     * Client thread: the Clip length setting changed. The buffer keeps the new length (plus the
+     * margin) from now on: a longer one keeps everything already buffered and grows into it, a
+     * shorter one drops what is now too old as the next line arrives.
+     */
+    public void onClipLengthChanged()
+    {
+        ring.setKeepSeconds(clipSeconds(config) + BUFFER_MARGIN_SECONDS);
+    }
+
+    /** Any thread: the last clip's state, for the panel. */
+    public ClipStatus clipStatus()
+    {
+        return clips.status();
+    }
+
+    /** The Clip length setting, kept inside its range. */
+    public static int clipSeconds(RflConfig config)
+    {
+        return Math.max(MIN_CLIP_SECONDS, Math.min(MAX_CLIP_SECONDS, config.clipSeconds()));
+    }
+
     /** Latest game cycle seen, for stamping plugin lines. */
     public int cycle()
     {
@@ -399,7 +468,8 @@ public final class ReplayRecorder
     {
         shutDown = true;
         stop();
-        return writer.shutdown();
+        // The clip writer last: a clip asked for just now is handed to it from the writer's thread.
+        return writer.shutdown().thenCompose(ignored -> clips.shutdown());
     }
 
     /**
@@ -409,7 +479,7 @@ public final class ReplayRecorder
     public CompletableFuture<Void> stopAndReleaseWriter()
     {
         stop();
-        return writer.shutdown();
+        return writer.shutdown().thenCompose(ignored -> clips.shutdown());
     }
 
     /**
@@ -429,6 +499,8 @@ public final class ReplayRecorder
         CompletableFuture<Void> closed = writer.close();
         // Queued behind the close, so the writer's byte counts are final when it runs.
         writer.enqueue(summary);
+        // The buffer goes with the file; a clip asked for before the close was snapshotted already.
+        writer.enqueue(ring::clear);
         sampler = null;
         pitchPending = false;
         pluginsDue = false;
@@ -473,6 +545,7 @@ public final class ReplayRecorder
         lastModels = 0;
         startCycle = lastCycle;
         stats.reset();
+        ring.setKeepSeconds(clipSeconds(config) + BUFFER_MARGIN_SECONDS);
         pitch.reset();
         pitch.setLocNames(id -> locName(client, id));
         pitchPending = false;

@@ -8,6 +8,7 @@ import com.rfl.log.PluginHistory;
 import com.rfl.log.PluginLog;
 import com.rfl.overlay.EventTileOverlay;
 import com.rfl.overlay.TeamTileOverlay;
+import com.rfl.replay.ClipStatus;
 import com.rfl.replay.ReplayRecorder;
 import com.rfl.replay.ReplayState;
 import com.rfl.replay.ReplayStatus;
@@ -34,6 +35,7 @@ import net.runelite.api.Client;
 import net.runelite.api.Player;
 import net.runelite.api.WorldView;
 import net.runelite.client.RuneLite;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
@@ -42,7 +44,8 @@ import net.runelite.client.util.LinkBrowser;
 /**
  * The RFL sidebar panel behind "Show RFL panel": adds and removes it, builds a {@link PanelModel}
  * on the client thread at most every {@link #REFRESH_MS} (sooner when an event arrives) and hands
- * it to the EDT only when it changed, and runs the Copy plugin history, Clear and Open folder buttons.
+ * it to the EDT only when it changed, and runs the Copy plugin history, Clear, Save last (a replay
+ * buffer clip, also on the Save replay clip hotkey) and Open folder buttons.
  *
  * <p>Threads: {@link #syncPanel}, {@link #removePanel} and the button handlers on the EDT;
  * {@link #refresh} on the client thread; file IO on the injected executor.
@@ -70,6 +73,7 @@ public final class RflPanelController
     private final Client client;
     private final TeamTileOverlay teamTiles;
     private final EventTileOverlay eventTiles;
+    private final ClientThread clientThread;
 
     // EDT only.
     private RflPanel panel;
@@ -84,6 +88,11 @@ public final class RflPanelController
     private boolean seenArmed;
     private ReplayState seenReplayState = ReplayState.IDLE;
     private PanelModel lastModel;
+    private PanelModel.ClipView lastClip;
+    private ClipStatus.State seenClipState = ClipStatus.State.IDLE;
+    /** A short notice on the clip line (the hotkey while not recording), and until when; client thread. */
+    private String clipNotice;
+    private long clipNoticeUntil;
     /**
      * Set from any thread (a new panel on the EDT, a team change) so the next refresh sends a model
      * unconditionally. Read and cleared in one step, so a set racing the refresh is never lost.
@@ -94,8 +103,9 @@ public final class RflPanelController
     RflPanelController(RflConfig config, ClientToolbar clientToolbar, SessionEvents session,
         PluginLog pluginLog, CollisionLog collisionLog, ReplayRecorder replayRecorder,
         ScheduledExecutorService executor, ConfigManager configManager, Gson gson, Teams teams, Client client,
-        TeamTileOverlay teamTiles, EventTileOverlay eventTiles)
+        TeamTileOverlay teamTiles, EventTileOverlay eventTiles, ClientThread clientThread)
     {
+        this.clientThread = clientThread;
         this.eventTiles = eventTiles;
         this.teamTiles = teamTiles;
         this.teams = teams;
@@ -117,6 +127,12 @@ public final class RflPanelController
         return RuneLite.RUNELITE_DIR.toPath().resolve("rfl");
     }
 
+    /** {@code RUNELITE_DIR/rfl/replays/snapshot reviews}, where clips are saved. */
+    static Path clipDir()
+    {
+        return rflDir().resolve("replays").resolve("snapshot reviews");
+    }
+
     /** EDT: adds or removes the RFL panel to match the setting. */
     public void syncPanel()
     {
@@ -133,6 +149,8 @@ public final class RflPanelController
             this::clearIncompletes, teams::assign, teams::clear);
         panel.setTeamsShowing(teamTiles::setShowing);
         panel.setEventTile(eventTiles::select);
+        panel.setSaveClip(this::saveClip);
+        panel.setOpenClipFolder(this::openClipFolder);
         button = NavigationButton.builder()
             .tooltip("RFL")
             .icon(RflPanel.icon())
@@ -183,10 +201,12 @@ public final class RflPanelController
         ReplayState replayState = replayRecorder.state();
         boolean force = resend.getAndSet(false);
         long teamsVersion = teams.version();
+        ClipStatus clip = replayRecorder.clipStatus();
         boolean changed = force || sessionVersion != seenSessionVersion || teamsVersion != seenTeamsVersion
             || inPoh != seenInPoh || recording != seenRecording || armed != seenArmed
-            || replayState != seenReplayState;
-        long every = replayState == ReplayState.SAVING ? SAVING_REFRESH_MS : REFRESH_MS;
+            || replayState != seenReplayState || clip.getState() != seenClipState;
+        long every = replayState == ReplayState.SAVING || clip.getState() == ClipStatus.State.SAVING
+            ? SAVING_REFRESH_MS : REFRESH_MS;
         if (!changed && now - refreshAt < every)
         {
             return;
@@ -210,6 +230,8 @@ public final class RflPanelController
             });
         }
         seenArmed = armed;
+        seenClipState = clip.getState();
+        sendClip(force, clip, armed, recording, now);
 
         PanelModel model = PanelModel.of(inPoh, recording, session.collisionCount(), session.incompleteCount(),
             session.collisions(), session.incompletes(), session.latest(), PanelModel.replayStrip(replay, armed, now),
@@ -227,6 +249,70 @@ public final class RflPanelController
             {
                 panel.update(model);
             }
+        });
+    }
+
+    /** Client thread: the Save last button and clip line, sent to the EDT only when they changed. */
+    private void sendClip(boolean force, ClipStatus clip, boolean armed, boolean recording, long now)
+    {
+        if (clipNotice != null && now >= clipNoticeUntil)
+        {
+            clipNotice = null;
+        }
+        PanelModel.ClipView view = PanelModel.clipView(clip, armed, recording, ReplayRecorder.clipSeconds(config),
+            clipNotice, now);
+        if (!force && view.equals(lastClip))
+        {
+            return;
+        }
+        lastClip = view;
+        SwingUtilities.invokeLater(() ->
+        {
+            if (panel != null)
+            {
+                panel.setClip(view);
+            }
+        });
+    }
+
+    /**
+     * Any thread (the Save last button on the EDT, the hotkey on the EDT): saves a clip of the open
+     * recording on the client thread, where the recorder's state lives. Not recording, it puts a
+     * short notice on the clip line instead.
+     */
+    public void saveClip()
+    {
+        clientThread.invoke(() ->
+        {
+            long now = System.currentTimeMillis();
+            if (!replayRecorder.saveClip(now))
+            {
+                clipNotice = PanelModel.CLIP_NOT_RECORDING;
+                clipNoticeUntil = now + PanelModel.CLIP_NOTICE_SHOW_MS;
+            }
+            else
+            {
+                clipNotice = null;
+            }
+            invalidate();
+        });
+    }
+
+    /** EDT: creates the clips folder off the EDT, then opens it as a plain path. */
+    private void openClipFolder()
+    {
+        executor.execute(() ->
+        {
+            Path dir = clipDir();
+            try
+            {
+                Files.createDirectories(dir);
+            }
+            catch (IOException e)
+            {
+                log.warn("RFL: can't create {}", dir, e);
+            }
+            LinkBrowser.open(dir.toAbsolutePath().toString());
         });
     }
 

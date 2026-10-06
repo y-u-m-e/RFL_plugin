@@ -4,6 +4,7 @@ import sh.yumekui.toolkit.text.PlayerNames;
 import sh.yumekui.toolkit.text.Html;
 import com.rfl.contact.Collision;
 import com.rfl.incomplete.Incomplete;
+import com.rfl.replay.ClipStatus;
 import com.rfl.replay.ReplayState;
 import com.rfl.replay.ReplayStatus;
 import com.rfl.teams.Teams;
@@ -369,6 +370,123 @@ public final class PanelModel
         String noun = count == 1 && plural.endsWith("s") ? plural.substring(0, plural.length() - 1) : plural;
         return "Clear " + count + " " + noun + " from this panel? Only the list and count here are reset; "
             + "the saved files in rfl/collisions are kept.";
+    }
+
+    /** How long a saved clip's line stays up. */
+    static final long CLIP_SAVED_SHOW_MS = 8_000;
+    /** How long a failed clip's reason stays up. */
+    static final long CLIP_ERROR_SHOW_MS = 15_000;
+    /** How long the "not recording" notice from the hotkey stays up. */
+    static final long CLIP_NOTICE_SHOW_MS = 4_000;
+    static final String CLIP_NOT_RECORDING = "Not recording: clips are saved from a recording in a house";
+
+    /** The clip line's colour. */
+    enum ClipTone
+    {
+        NONE,
+        PROGRESS,
+        OK,
+        WARN,
+        ERROR
+    }
+
+    /**
+     * The Save last button and the clip line under it, as plain values. The line keeps its height
+     * when blank (" "), so nothing below moves.
+     */
+    @Value
+    static class ClipView
+    {
+        /** The button shows while Record replays is on. */
+        boolean buttonVisible;
+        /** It works only while a file is being recorded. */
+        boolean buttonEnabled;
+        String buttonText;
+        String buttonTip;
+        String text;
+        ClipTone tone;
+        /** Open folder next to a just-saved clip. */
+        boolean openVisible;
+    }
+
+    /** "3 min" for whole minutes, else "1:30". */
+    static String clipLength(int seconds)
+    {
+        int total = Math.max(0, seconds);
+        return total % (int) SECONDS_PER_MINUTE == 0 ? total / SECONDS_PER_MINUTE + " min"
+            : elapsed(total * MS_PER_SECOND);
+    }
+
+    /** "Save last 3 min", "Save last 1:30". */
+    static String clipButtonText(int seconds)
+    {
+        return "Save last " + clipLength(seconds);
+    }
+
+    /**
+     * The button and line for the last clip's status, the Record replays setting, whether a file is
+     * open, the clip length, and a notice still up (null for none).
+     */
+    static ClipView clipView(ClipStatus status, boolean armed, boolean recording, int clipSeconds, String notice,
+        long nowMs)
+    {
+        String buttonText = clipButtonText(clipSeconds);
+        String tip = recording
+            ? "Saves the last " + elapsed(clipSeconds * MS_PER_SECOND) + " of this recording as its own replay in "
+                + "rfl/replays/snapshot reviews. The recording keeps going."
+            : "Works while a replay is recording in a house.";
+        ClipStatus clip = status == null ? ClipStatus.IDLE : status;
+        String text = " ";
+        ClipTone tone = ClipTone.NONE;
+        boolean open = false;
+        switch (clip.getState())
+        {
+            case SAVING:
+            {
+                int percent = (int) Math.floor(Math.max(0.0, Math.min(1.0, clip.getProgress())) * PERCENT);
+                text = "Saving clip... " + percent + "%";
+                tone = ClipTone.PROGRESS;
+                break;
+            }
+            case SAVED:
+                if (nowMs - clip.getAtMs() < CLIP_SAVED_SHOW_MS)
+                {
+                    text = "Saved clip " + clip.getFileName() + " (" + size(clip.getBytes()) + ", "
+                        + elapsed(clip.getSeconds() * MS_PER_SECOND) + shortNote(clip.getShortened()) + ")";
+                    tone = ClipTone.OK;
+                    open = true;
+                }
+                break;
+            case ERROR:
+                if (nowMs - clip.getAtMs() < CLIP_ERROR_SHOW_MS)
+                {
+                    text = "Couldn't save clip: " + clip.getError();
+                    tone = ClipTone.ERROR;
+                }
+                break;
+            default:
+                break;
+        }
+        if (notice != null && clip.getState() != ClipStatus.State.SAVING)
+        {
+            text = notice;
+            tone = ClipTone.WARN;
+            open = false;
+        }
+        return new ClipView(armed, recording, buttonText, tip, text, tone, open);
+    }
+
+    private static String shortNote(ClipStatus.Short shortened)
+    {
+        if (shortened == ClipStatus.Short.MEMORY_CAP)
+        {
+            return ", cut short to fit memory";
+        }
+        if (shortened == ClipStatus.Short.NOT_ENOUGH)
+        {
+            return ", all recorded so far";
+        }
+        return "";
     }
 
     /** The record button's label: what a click does. {@code armed} is the Record replays setting. */

@@ -42,6 +42,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.PluginChanged;
+import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
@@ -125,6 +126,12 @@ public class RflPlugin extends Plugin
     @Inject
     private RflPanelController panel;
 
+    @Inject
+    private KeyManager keyManager;
+
+    /** The Save replay clip hotkey; registered from startUp to shutDown. */
+    private ClipHotkey clipHotkey;
+
     /** Recomputed each {@link GameTick}; the POH check only needs to run once per tick. */
     private volatile boolean inPoh;
 
@@ -166,11 +173,19 @@ public class RflPlugin extends Plugin
             }
         });
         SwingUtilities.invokeLater(panel::syncPanel);
+        // Unset by default, so it does nothing until a key is chosen; the panel saves the clip.
+        clipHotkey = new ClipHotkey(config::saveClipHotkey, panel::saveClip);
+        keyManager.registerKeyListener(clipHotkey);
     }
 
     @Override
     protected void shutDown()
     {
+        if (clipHotkey != null)
+        {
+            keyManager.unregisterKeyListener(clipHotkey);
+            clipHotkey = null;
+        }
         overlays.removeAll();
         teams.setListener(null);
         // Detection state is client-thread only; a ClientTick may still be running right now.
@@ -210,6 +225,12 @@ public class RflPlugin extends Plugin
         if (RflConfig.GROUP.equals(event.getGroup()) && "showPanel".equals(event.getKey()))
         {
             SwingUtilities.invokeLater(panel::syncPanel);
+        }
+        if (RflConfig.GROUP.equals(event.getGroup()) && "clipSeconds".equals(event.getKey()))
+        {
+            // The replay buffer keeps the new length from now on, mid-recording included.
+            clientThread.invoke(replayRecorder::onClipLengthChanged);
+            panel.invalidate();
         }
     }
 

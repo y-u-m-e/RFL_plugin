@@ -1,5 +1,6 @@
 package com.rfl;
 
+import com.rfl.replay.ClipFileName;
 import com.rfl.replay.ReplayFileName;
 
 import java.awt.Color;
@@ -8,6 +9,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.config.Range;
 import net.runelite.client.config.Units;
 
@@ -337,5 +339,59 @@ public interface RflConfig extends Config
     default boolean recordOverheadChat()
     {
         return false;
+    }
+
+    /**
+     * @return the key that saves the last {@link #clipSeconds} of the open recording as a clip
+     */
+    @ConfigItem(
+        keyName = "saveClipHotkey",
+        name = "Save replay clip hotkey",
+        description = "While a replay is recording, saves its last few minutes (Clip length) as a separate "
+            + "replay file in rfl/replays/snapshot reviews, for a quick review on the replay website. The "
+            + "recording keeps going. Unset by default; the panel's Save last button does the same.",
+        section = REPLAYS_SECTION,
+        position = 29
+    )
+    default Keybind saveClipHotkey()
+    {
+        return Keybind.NOT_SET;
+    }
+
+    /**
+     * @return how many seconds a saved clip covers
+     */
+    @Range(min = 30, max = 300)
+    @Units(Units.SECONDS)
+    @ConfigItem(
+        keyName = "clipSeconds",
+        name = "Clip length (seconds)",
+        description = "How much of the recording a saved clip holds, counting back from when you save it: 30 "
+            + "seconds to 5 minutes. A change applies at once to the recording in progress. A very crowded "
+            + "house can make a clip a little shorter (the panel says so).",
+        section = REPLAYS_SECTION,
+        position = 30
+    )
+    default int clipSeconds()
+    {
+        return 180;
+    }
+
+    /**
+     * @return the clip file name template; {@link ClipFileName} expands and sanitises it
+     */
+    @ConfigItem(
+        keyName = "clipFileName",
+        name = "Clip file name",
+        description = "Name for each saved clip. Tokens: {date}, {time}, {world}, {player} as for replays, plus "
+            + "{source} (the recording's name), {length} (m-ss), {collision} (the clip's latest collision, "
+            + "carrier first, or no-collision) and {collisionTime} (HHmmss). .rflr.gz is always added and a "
+            + "taken name gets -2. Empty or invalid uses the default, {date}_{time}_w{world}_{collision}.",
+        section = REPLAYS_SECTION,
+        position = 31
+    )
+    default String clipFileName()
+    {
+        return ClipFileName.DEFAULT_TEMPLATE;
     }
 }
