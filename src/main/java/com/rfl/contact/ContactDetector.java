@@ -6,6 +6,7 @@ import com.rfl.RflConfig;
 import com.rfl.log.CollisionLog;
 import com.rfl.teams.Teams;
 import sh.yumekui.toolkit.geom.TriangleMesh;
+import sh.yumekui.toolkit.scene.ScenePlane;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -254,11 +255,18 @@ public final class ContactDetector
      * World tile {x, y, plane} under a local point, plus that point's scene tile {sceneX, sceneY}.
      * fromLocalInstance maps instance chunks to their template, so two players in the same house get
      * the same world x/y/plane; the scene tile stays unique within the loaded house (0..103).
+     *
+     * <p>The plane is the local player's resolved plane ({@link ScenePlane}), not
+     * {@code worldView.getPlane()}: right after a reload the view's plane can still read the old
+     * scene's for a tick, which would stamp the tile on the wrong floor. Falls back to the view's
+     * plane only when there is no local player at all to read it from (no contact can be real
+     * without one, so this never actually picks a wrong floor in practice).
      */
     private TileRef tile(double localX, double localY)
     {
         WorldView worldView = client.getTopLevelWorldView();
-        int plane = worldView.getPlane();
+        Integer settled = ScenePlane.settled(client);
+        int plane = settled != null ? settled : worldView.getPlane();
         LocalPoint localPoint = new LocalPoint((int) Math.round(localX), (int) Math.round(localY), worldView);
         WorldPoint world = WorldPoint.fromLocalInstance(client, localPoint, plane);
         return new TileRef(world.getX(), world.getY(), world.getPlane(), localPoint.getSceneX(), localPoint.getSceneY());

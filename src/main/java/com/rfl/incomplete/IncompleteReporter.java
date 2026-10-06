@@ -5,6 +5,7 @@ import com.rfl.RflConfig;
 import com.rfl.contact.ContactDetector;
 import com.rfl.contact.ContactHighlights;
 import com.rfl.log.CollisionLog;
+import sh.yumekui.toolkit.scene.ScenePlane;
 
 import java.util.HashMap;
 import java.util.List;
@@ -135,13 +136,20 @@ public final class IncompleteReporter
     /**
      * Appends the incomplete to the day file (when Save collisions is on), with the receiver's tile
      * at the catch and the exact catch time and cycle.
+     *
+     * <p>The plane is the local player's resolved plane ({@link ScenePlane}), not
+     * {@code view.getPlane()}: right after a reload the view's plane can still read the old
+     * scene's for a tick, which would stamp the tile on the wrong floor. Falls back to the view's
+     * plane only when there is no local player at all to read it from.
      */
     private void save(IncompleteDetector.Call incomplete)
     {
         WorldView view = client.getTopLevelWorldView();
+        Integer settled = ScenePlane.settled(client);
+        int plane = settled != null ? settled : (view == null ? 0 : view.getPlane());
         LocalPoint at = incomplete.receiverAt == null || view == null ? null
             : new LocalPoint(incomplete.receiverAt[0], incomplete.receiverAt[1], view);
-        WorldPoint tile = at == null ? null : WorldPoint.fromLocalInstance(client, at, view.getPlane());
+        WorldPoint tile = at == null ? null : WorldPoint.fromLocalInstance(client, at, plane);
         collisionLog.record(new Incomplete(incomplete.receiver, incomplete.contacts,
             incomplete.catchMs, incomplete.catchTick, client.getWorld(),
             tile == null ? UNKNOWN : tile.getX(), tile == null ? UNKNOWN : tile.getY(),

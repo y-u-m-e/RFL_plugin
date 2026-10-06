@@ -15,6 +15,7 @@ import com.rfl.replay.ReplayRecorder;
 import com.rfl.teams.TeamMenu;
 import com.rfl.teams.Teams;
 import sh.yumekui.toolkit.scene.PohDetector;
+import sh.yumekui.toolkit.scene.ScenePlane;
 import sh.yumekui.toolkit.scene.SceneStamps;
 
 import java.util.concurrent.CompletableFuture;
@@ -189,12 +190,18 @@ public class RflPlugin extends Plugin
     /**
      * Caller's thread (the client thread): a saved collision or incomplete goes to an open replay
      * and the panel, stamped with the scene it happened in so the panel only highlights its tile there.
+     *
+     * <p>The stamp's plane is the local player's resolved plane ({@link ScenePlane}), not
+     * {@code view.getPlane()}, for the same reason the collision and incomplete tiles themselves
+     * are: right after a reload the view's plane can still read the old scene's for a tick.
      */
     private void onCollisionOrIncomplete(Object event)
     {
         replayRecorder.onEvent(event);
         final WorldView view = client.getTopLevelWorldView();
-        sessionEvents.onEvent(event, view == null ? SceneStamps.NONE : sceneStamps.stamp(view.getPlane()));
+        final Integer settled = ScenePlane.settled(client);
+        final int plane = settled != null ? settled : (view == null ? -1 : view.getPlane());
+        sessionEvents.onEvent(event, view == null ? SceneStamps.NONE : sceneStamps.stamp(plane));
     }
 
     @Subscribe

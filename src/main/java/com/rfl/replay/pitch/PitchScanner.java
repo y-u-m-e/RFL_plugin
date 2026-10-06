@@ -4,6 +4,7 @@ import com.rfl.replay.RecorderStats;
 import com.rfl.replay.ReplaySampler;
 import sh.yumekui.toolkit.model.ModelCapture;
 import sh.yumekui.toolkit.model.RenderableModels;
+import sh.yumekui.toolkit.scene.ScenePlane;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -45,6 +46,11 @@ import net.runelite.api.coords.LocalPoint;
  * once per pitch, never per frame. {@code under}, {@code over}, {@code shapes} and {@code rots} are
  * 104x104 {@code [x][y]} grids for the current plane, cropped to the window (0 outside it). A
  * LOADING restarts the scan ({@link #start}); a stop mid-scan writes no pitch.
+ *
+ * <p>The floor stage takes its plane from {@link ScenePlane}, not {@link WorldView#getPlane()}:
+ * right after a reload the view's plane can still read the old scene's for a tick while the new
+ * scene is already loaded. While there is no local player to read it from yet, the floor stage
+ * defers rather than scan the wrong plane ({@link #step} is a no-op that tick).
  *
  * <p>Client thread only; it only reads the client.
  */
@@ -123,8 +129,12 @@ public final class PitchScanner
         switch (stage)
         {
             case READ_FLOOR:
-                readFloor(client, cycle);
-                stage = READ_OBJECTS;
+                if (readFloor(client, cycle))
+                {
+                    stage = READ_OBJECTS;
+                }
+                // Else: no local player yet to read the settled plane from. Stay on READ_FLOOR
+                // and try again next ClientTick instead of scanning a guessed plane.
                 break;
             case READ_OBJECTS:
                 locs = new ArrayList<>();
@@ -145,11 +155,20 @@ public final class PitchScanner
         stats.addPitchNanos(System.nanoTime() - start);
     }
 
-    /** The first stage: the line with every key in place, the floor filled in. */
-    private void readFloor(Client client, int cycle)
+    /**
+     * The first stage: the line with every key in place, the floor filled in. Returns false
+     * without touching any state when the local player isn't known yet, so the caller retries
+     * next tick instead of scanning on a guessed plane.
+     */
+    private boolean readFloor(Client client, int cycle)
     {
         WorldView view = client.getTopLevelWorldView();
-        plane = view.getPlane();
+        Integer settled = ScenePlane.settled(client);
+        if (view == null || settled == null)
+        {
+            return false;
+        }
+        plane = settled;
         // Copied: the line is serialised later, on the writer's thread.
         int[][][] chunks = copy(view.getInstanceTemplateChunks());
         int[][][] heights = view.getTileHeights();
@@ -183,6 +202,7 @@ public final class PitchScanner
         // Filled in when PitchCapture writes the line.
         line.put("locs", null);
         line.put("paint", null);
+        return true;
     }
 
     /** The scanned plane's tiles, or null when the scene is unknown. */

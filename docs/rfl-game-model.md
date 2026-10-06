@@ -26,6 +26,7 @@ Each fact is tagged:
   - Detected by the POH template regions 7257, 7534, 7535, 7790, 7791, 8046, 8047, 8302 and 8303 (RuneLite's Roof Removal list).
   - Positions use `WorldPoint.fromLocalInstance`, so every player in the same house gets the same template coordinates.
   - **[code]** Collision/incomplete log lines carry this same template `x`/`y`/`plane`, which repeats across the 52 scene chunks that share one template chunk in a POH; `sx`/`sy` is the scene tile (0–103, unique within the loaded house) of the same point, and is what disambiguates which tile (or end zone) an event happened on.
+  - **[code]** The plane for a tile, a pitch scan or the POH check is always read off the local player's resolved world location (`ScenePlane`), never off `WorldView.getPlane()` directly. Right after a LOADING reload the view's plane can still read the old scene's for a tick (or more) while the new scene's tiles are already loaded; the player's own world location doesn't have that lag. A scan that needs the plane and finds no local player yet (same window) defers to the next tick instead of guessing — see `PitchScanner`, `PohDetector`, `ContactDetector.tile`, `IncompleteReporter.save` and `RflPlugin.onCollisionOrIncomplete`.
 - **[decided]** The field is **16 columns × 40 rows** of tiles, numbered from 1.
   - **Endzones:** rows 1 and 40.
   - **Out of bounds:** columns 1 and 16.
