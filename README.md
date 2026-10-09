@@ -138,7 +138,8 @@ only, the footer (record button, Save last, result line). Size: ~360px wide. -->
 Every league player should run the plugin and be assigned to a team before a game. Assign a
 player from the panel's **Teams** view (A / B / - buttons per row) or by right-clicking them while
 in the house, which adds **RFL: Team A**, **RFL: Team B** and **RFL: Unassign** entries (only the
-ones that would change something) to their player menu.
+ones that would change something) to their player menu. The right-click entries need **Teams →
+Right-click team options** turned on (off by default); the panel's Teams view always works.
 
 ![Assigning teams from the right-click menu](docs/media/teams-right-click.gif)
 <!-- Capture: in a house, another player nearby, nobody assigned yet. Click: right-click the
@@ -394,6 +395,7 @@ turn it on.
 | Record replays | `recordReplays` | `false` | Records every player-owned house visit to a local replay file (`rfl/replays`) for the RFL replay viewer. |
 | Replay file name | `replayFileName` | `{date}_{time}_w{world}` | Name template for each replay file. See [File name templates](#file-name-templates) for tokens and fallback behaviour. |
 | Record overhead chat | `recordOverheadChat` | `false` | Adds public overhead chat (yours too) to replays, for keeping time. A shared replay then contains other players' public chat. |
+| Right-click team options | `teamMenuEntries` | `false` | Adds RFL: Team A / Team B / Unassign to other players' right-click menus in a house. The panel's Teams view works either way. |
 | Save replay clip hotkey | `saveClipHotkey` | not set | While a replay is recording, saves its last Clip length as a [replay buffer clip](#replay-buffer-clips) in `rfl/replays/snapshot reviews`. Same as the panel's Save last button. |
 | Clip length (seconds) | `clipSeconds` | `180` (range 30–300) | How much a saved clip holds, counting back from when you save it. Changes apply to the recording in progress. |
 | Clip file name | `clipFileName` | `{date}_{time}_w{world}_{collision}` | Name template for each clip. See [File name templates](#file-name-templates) for tokens and fallback behaviour. |

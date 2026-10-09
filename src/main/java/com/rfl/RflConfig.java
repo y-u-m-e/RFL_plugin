@@ -51,6 +51,13 @@ public interface RflConfig extends Config
     )
     String REPLAYS_SECTION = "replays";
 
+    @ConfigSection(
+        name = "Teams",
+        description = "Team A / Team B assignments. Only players on opposite teams can collide.",
+        position = 5
+    )
+    String TEAMS_SECTION = "teams";
+
     // ---- Top ----
 
     /**
@@ -64,6 +71,24 @@ public interface RflConfig extends Config
         position = 0
     )
     default boolean showPanel()
+    {
+        return false;
+    }
+
+    // ---- Teams ----
+
+    /**
+     * @return true to add the RFL: Team A / Team B / Unassign entries to other players' right-click menus
+     */
+    @ConfigItem(
+        keyName = "teamMenuEntries",
+        name = "Right-click team options",
+        description = "Adds RFL: Team A, RFL: Team B and RFL: Unassign to other players' right-click menus "
+            + "inside a house. Teams can always be assigned from the RFL panel's Teams view.",
+        section = TEAMS_SECTION,
+        position = 6
+    )
+    default boolean teamMenuEntries()
     {
         return false;
     }

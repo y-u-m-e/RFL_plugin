@@ -287,7 +287,10 @@ public class RflPlugin extends Plugin
     @Subscribe
     public void onMenuEntryAdded(final MenuEntryAdded event)
     {
-        teamMenu.onMenuEntryAdded(event, inPoh);
+        if (config.teamMenuEntries())
+        {
+            teamMenu.onMenuEntryAdded(event, inPoh);
+        }
     }
 
     @Subscribe

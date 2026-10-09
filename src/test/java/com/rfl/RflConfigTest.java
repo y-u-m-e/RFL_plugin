@@ -37,6 +37,7 @@ public class RflConfigTest
         assertFalse(config.highlightIncompletes());
         assertFalse(config.recordReplays());
         assertFalse(config.recordOverheadChat());
+        assertFalse(config.teamMenuEntries());
     }
 
     @Test
