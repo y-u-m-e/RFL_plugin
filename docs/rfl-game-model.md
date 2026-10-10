@@ -82,7 +82,7 @@ Each fact is tagged:
 - **[decided] [code]** Owner rulings 2026-10-03, replacing the old once-per-tick check:
   - **Decided at projectile despawn.** The catch is the client cycle the thrown handegg's projectile stops being drawn, checked frame by frame, not at the next game tick (which could be up to 29 cycles later).
   - **Receiver:** the player whose weapon slot gained a handegg for this throw. The server hands the egg over before the cosmetic flight ends, often before the projectile starts, so a gain up to 60 cycles before the throw was first drawn counts, and a weapon packet up to one tick after the catch is still matched.
-  - **Contact:** at the catch cycle the receiver is in an **open collision** with an opposing player (it holds while the models' bounds overlap), **or** their models touched within **3 client cycles (60 ms) before** the catch, inclusive.
+  - **Contact:** bodies must actually touch — triangles intersecting, held-ball faces excluded as they already are — at the catch or within **3 client cycles (60 ms) before** it, inclusive. An open collision whose bounds merely overlap in that window, with no triangle touch in it, does not count on its own: staying close after a tackle doesn't count (owner ruling 2026-10-09, replacing the "open collision counts" rule above, which produced a false incomplete when the last real body touch was 32 cycles before the catch).
   - **Contact that begins after the catch does not count**, even if the weapon packet arrives later.
   - **Opposite teams only** (Team A vs Team B), the same gate as collisions.
   - Recorded with the exact catch time: the day file's `timeMs` and `catchCyc`, and the replay `ev` line's `cyc` = `catchCyc` = the catch cycle. `tick` stays for older readers.

@@ -30,8 +30,13 @@ import sh.yumekui.toolkit.geom.TriangleMesh;
  *   <li>692073, the catch: Sharnos holds the egg above his head into C J N J's hat. Only the egg
  *   crosses C J N J, so with its faces left out nothing touches.</li>
  *   <li>692041: their arms cross (17 touching triangle pairs, the count the plugin saved for the
- *   collision), which is body contact and still counts.</li>
+ *   collision), which is body contact and counts on its own.</li>
  * </ul>
+ *
+ * <p>692041 is 32 cycles before the catch at 692073 — outside the 3-cycle grace window — so under
+ * the stricter owner ruling (2026-10-09) it does not make 692073 an incomplete, even though the
+ * collision the arms opened is still open (bounds overlapping) at the catch: an open collision
+ * with no triangle touch in the window no longer counts by itself.
  */
 public class HeldBallRealCaseTest
 {
@@ -111,12 +116,13 @@ public class HeldBallRealCaseTest
     }
 
     /**
-     * Why the recording still logged C J N J at the catch: the collision opened by the arms at
-     * 692041 is still open at 692073, because a collision holds while the two bounds overlap, so
-     * the incomplete rule counts it even though no triangles touch at the catch.
+     * The collision opened by the arms at 692041 is still open at 692073 (bounds still overlap),
+     * but that touch is 32 cycles before the catch — outside the 3-cycle grace window — and under
+     * the stricter owner ruling (2026-10-09) an open collision with no triangle touch in the
+     * window no longer counts by itself. The real recording's 692073 catch is now no incomplete.
      */
     @Test
-    public void anOpenCollisionStillCountsAtTheCatch()
+    public void anOpenCollisionWithNoRecentTouchDoesNotCountAtTheCatch()
     {
         ContactTracker tracker = tracker();
         tracker.setCycle(692041);
@@ -127,7 +133,7 @@ public class HeldBallRealCaseTest
         TriangleMesh hat = mesh(CJNJ, "692073", HeldBallFaces.NONE);
         assertTrue(TriangleMesh.boundsOverlap(carrier, hat));
         tracker.update(Map.of(SHARNOS, carrier, CJNJ, hat), Set.of(SHARNOS), 1640, 6309, true);
-        assertEquals(List.of(CJNJ), tracker.contactsAt(692073, 3).get(SHARNOS));
+        assertTrue(tracker.contactsAt(692073, 3).isEmpty());
     }
 
     private static int[] range(String name)

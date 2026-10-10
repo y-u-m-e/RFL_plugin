@@ -14,10 +14,13 @@ import java.util.function.Supplier;
 /**
  * Incomplete rule (owner rulings, docs/rfl-game-model.md): a throw is decided at the client cycle
  * its handegg projectile stops being drawn, the catch cycle. The receiver is the player whose
- * weapon slot gained a handegg for this throw. It is an incomplete when, at the catch cycle, the
- * receiver is in an open collision with an opposing player, or touched one within
- * {@link #CONTACT_GRACE_CYCLES} cycles before it. Contact that only begins after the catch never
- * counts. Only opposite teams can be in contact at all (the tracker's team gate).
+ * weapon slot gained a handegg for this throw. It is an incomplete when the receiver's body mesh
+ * actually touched an opposing player's (triangles intersecting, held-ball faces excluded) at the
+ * catch cycle or within {@link #CONTACT_GRACE_CYCLES} cycles before it, inclusive (owner ruling
+ * 2026-10-09). An open collision whose bounds merely overlap in that window, with no triangle
+ * touch in it, does not count — staying close after a tackle is not a touch. Contact that only
+ * begins after the catch never counts. Only opposite teams can be in contact at all (the
+ * tracker's team gate).
  *
  * <p>Two clocks feed it. {@link #onHolders} runs each GameTick, when weapon slots change, and
  * records when each player gained a handegg. {@link #onFrame} runs each ClientTick; only the frame
@@ -150,8 +153,8 @@ public final class IncompleteDetector
      * disappears, which asks {@code contactsAtCatch} once.
      *
      * @param ballInFlight a handegg projectile is drawn this frame
-     * @param contactsAtCatch everyone's qualifying contacts now (open collisions, or touched within
-     *     {@link #CONTACT_GRACE_CYCLES}); only called on the catch frame
+     * @param contactsAtCatch everyone's qualifying contacts now (triangles actually touched at or
+     *     within {@link #CONTACT_GRACE_CYCLES} before it); only called on the catch frame
      * @param positionsAtCatch everyone's local {x, y} now; only called on the catch frame, so a
      *     receiver named by a late weapon packet still gets the tile they caught it on
      */

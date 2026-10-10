@@ -274,14 +274,17 @@ public final class ContactTracker
     }
 
     /**
-     * Who each player counts as in contact with at {@code at} for the incomplete rule: an open
-     * collision (it holds while the bounds overlap, through frames with no crossing triangles), or
-     * triangles that touched within {@code grace} cycles before it, inclusive. A touch after
-     * {@code at} never counts. Only pairs the team gate allows are ever tracked.
+     * Who each player counts as in contact with at {@code at} for the incomplete rule (owner
+     * ruling 2026-10-09): triangles that actually touched, at {@code at} or within {@code grace}
+     * cycles before it, inclusive. A touch after {@code at} never counts. An open collision whose
+     * bounds merely overlap in that window, with no triangle touch in it, does not count by
+     * itself — staying close after a tackle is not a touch. Only pairs the team gate allows are
+     * ever tracked. This never changes {@link #open}: a collision still opens and closes on its
+     * own bounds-overlap rule, for logging and the UI.
      */
     public Map<String, List<String>> contactsAt(int at, int grace)
     {
-        Set<String> keys = new java.util.TreeSet<>(open.keySet());
+        Set<String> keys = new java.util.TreeSet<>();
         for (Map.Entry<String, Integer> touch : lastTouch.entrySet())
         {
             if (touch.getValue() <= at && touch.getValue() >= at - grace)

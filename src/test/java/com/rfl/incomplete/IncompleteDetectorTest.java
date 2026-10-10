@@ -25,8 +25,9 @@ import org.junit.Test;
 
 /**
  * {@link IncompleteDetector} with a real {@link ContactTracker}, frame by frame in client cycles:
- * decided at the projectile's despawn, contact open or within 3 cycles before it, never after it,
- * opposite teams only.
+ * decided at the projectile's despawn, a real triangle touch at or within 3 cycles before it,
+ * never after it, opposite teams only (owner ruling 2026-10-09: an open collision with no
+ * triangle touch in that window does not count by itself).
  */
 public class IncompleteDetectorTest
 {
@@ -189,10 +190,12 @@ public class IncompleteDetectorTest
     }
 
     @Test
-    public void anOpenCollisionAtTheCatchCountsThroughFramesWithNoCrossingTriangles()
+    public void anOpenCollisionWithoutTrianglesInTheWindowDoesNotCount()
     {
         // Last crossing at 1090, then bounds still overlap without crossing until 1110: the
-        // collision stays open over the catch at 1100, so it counts though no triangle touched within 3 cycles.
+        // collision stays open over the catch at 1100, but 1090 is 10 cycles before it — outside
+        // the 3-cycle grace window — so under the stricter ruling (2026-10-09) it no longer
+        // counts just because the collision is still open.
         Sim s = new Sim("Amy");
         s.teams.put("Amy", Teams.Team.A);
         s.teams.put("Zed", Teams.Team.B);
@@ -202,8 +205,7 @@ public class IncompleteDetectorTest
         s.touching.put("Zed", between(1080, 1090));
         s.near.put("Zed", between(1091, 1110));
         s.run(1000, 1130);
-        assertEquals(1, s.found.size());
-        assertEquals(List.of("Zed"), s.found.get(0).contacts);
+        assertTrue(s.found.isEmpty());
     }
 
     @Test

@@ -185,10 +185,11 @@ RFL Audit models a specific set of RFL rules, in plain language:
   hitbox, so the ball touching someone is never a collision, a touching-triangle highlight or an
   incomplete's contact. Only bodies (and worn gear) touching count.
 - **The incomplete rule.** The catch is decided at the exact client frame the thrown handegg's
-  projectile stops being drawn, not at the next game tick. The receiver is in contact if their
-  model was touching an opposing player at that frame, or touched one within 3 client cycles
-  (about 60 ms) before it. Contact that starts *after* the catch never counts, even if the game's
-  own weapon-slot update arrives later.
+  projectile stops being drawn, not at the next game tick. Bodies must actually touch — triangles
+  intersecting, held-ball faces excluded as above — at the catch or within 3 client cycles
+  (about 60 ms) before it; staying close after a tackle doesn't count (owner ruling 2026-10-09).
+  Contact that starts *after* the catch never counts, even if the game's own weapon-slot update
+  arrives later.
 - **Why every team player is tracked.** The incomplete rule needs to know the receiver's contacts
   during the whole flight, before anyone is known to hold the egg — so the plugin builds a mesh for
   every Team A and Team B player, every frame, holder or not. Unassigned players are skipped; they

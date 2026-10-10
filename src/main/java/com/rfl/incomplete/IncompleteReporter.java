@@ -70,9 +70,9 @@ public final class IncompleteReporter
 
     /**
      * ClientTick, after the contact update: the incomplete is decided on the client cycle the
-     * handegg projectile disappears (the catch), against open collisions and touches within
-     * {@link IncompleteDetector#CONTACT_GRACE_CYCLES} before it. Every other frame costs one pass
-     * over the drawn projectiles.
+     * handegg projectile disappears (the catch), against triangles that actually touched at that
+     * cycle or within {@link IncompleteDetector#CONTACT_GRACE_CYCLES} before it. Every other frame
+     * costs one pass over the drawn projectiles.
      */
     public void onFrame()
     {
