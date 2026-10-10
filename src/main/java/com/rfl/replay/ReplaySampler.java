@@ -428,12 +428,12 @@ public final class ReplaySampler
         if (player.spots.length == 0)
         {
             spotDeferred.remove(player.name);
-            return models.idFor(key, ModelLines.PLAYER, player.model, appearance);
+            return models.idForPlayer(key, player.model, appearance);
         }
         // A spot anim is merged into the client's player model. Use the clean pose if it is known;
         // otherwise wait up to SPOT_DEFER_CAP ClientTicks for the spot anim to end, then capture
         // under a key naming the spot ids, so the merged model never takes the clean key.
-        int clean = models.idFor(key, ModelLines.PLAYER, null, appearance);
+        int clean = models.idForPlayer(key, null, appearance);
         if (clean >= 0)
         {
             return clean;
@@ -443,7 +443,7 @@ public final class ReplaySampler
         {
             return -1;
         }
-        return models.idFor(spotKey(key, player.spots), ModelLines.PLAYER, player.model, appearance);
+        return models.idForPlayer(spotKey(key, player.spots), player.model, appearance);
     }
 
     /** {@code key} plus {@link #SPOT_KEY} and the sorted spot ids, comma separated. */

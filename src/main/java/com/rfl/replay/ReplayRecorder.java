@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -32,6 +33,7 @@ import com.google.gson.Gson;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.Model;
 import net.runelite.api.ObjectComposition;
 import net.runelite.api.Player;
 import net.runelite.api.WorldView;
@@ -358,6 +360,15 @@ public final class ReplayRecorder
         {
             writer.write(line);
         }
+    }
+
+    /**
+     * Client thread: where a captured player model's held-ball faces {start, end} come from, for the
+     * model line's {@code held} field ({@code ContactDetector#heldBallFaces}, the hitboxes' own lookup).
+     */
+    public void setHeldBallSource(BiFunction<Player, Model, int[]> source)
+    {
+        reader.setHeldBalls(source == null ? null : source::apply);
     }
 
     /** Client thread: where {@code team} lines get each player's team ({@link Teams#team}). */

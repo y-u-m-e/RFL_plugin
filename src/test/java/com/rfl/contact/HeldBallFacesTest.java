@@ -184,4 +184,21 @@ public class HeldBallFacesTest
         cache.range("Zed", 0, equipment, BALL_MODEL, model.f1, model.f2, model.f3, 4);
         assertEquals(3, cache.searches);
     }
+
+    @Test
+    public void aMissIsSearchedAgainWhenTheModelChanges()
+    {
+        HeldBallFaces cache = faces();
+        Composite model = new Composite(BODY_FAR, BALL_THROUGH, BODY_FAR_2);
+        // The frame the weapon changed still drew the previous model: no ball in it yet.
+        int[] stale1 = {model.f1[0], model.f1[3]};
+        int[] stale2 = {model.f2[0], model.f2[3]};
+        int[] stale3 = {model.f3[0], model.f3[3]};
+        assertArrayEquals(HeldBallFaces.NONE, cache.range("Amy", 0, EQUIPMENT, BALL_MODEL, stale1, stale2, stale3, 2));
+        assertArrayEquals(HeldBallFaces.NONE, cache.range("Amy", 0, EQUIPMENT, BALL_MODEL, stale1, stale2, stale3, 2));
+        assertEquals("the same model is not searched twice", 1, cache.searches);
+        // The next frame draws the ball: found, not stuck on the earlier miss.
+        assertArrayEquals(new int[] {1, 3}, cache.range("Amy", 0, EQUIPMENT, BALL_MODEL, model.f1, model.f2, model.f3, 4));
+        assertEquals(2, cache.searches);
+    }
 }

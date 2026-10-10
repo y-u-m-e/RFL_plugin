@@ -153,6 +153,8 @@ public class RflPlugin extends Plugin
         // First-use costs (class loading, the colour table, Gson adapters) off the client thread.
         executor.execute(replayRecorder::warmUp);
         replayRecorder.setPluginSource(pluginSnapshotter::snapshot);
+        // The replay marks the held ball's faces with the same match the hitboxes leave out.
+        replayRecorder.setHeldBallSource(contactDetector::heldBallFaces);
         // Team assignments survive restarts; a change reaches an open replay as a team line.
         teams.load();
         replayRecorder.setTeamSource(teams::team);

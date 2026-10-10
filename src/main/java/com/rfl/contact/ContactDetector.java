@@ -389,6 +389,22 @@ public final class ContactDetector
             player.getCurrentOrientation(), localPoint.getX(), localPoint.getY(), skip[0], skip[1]);
     }
 
+    /**
+     * The held ball's faces in {@code model}, the player's drawn model, as {start, end} (end
+     * exclusive), or {@link HeldBallFaces#NONE}: the same result the hitboxes leave out, for the
+     * replay's {@code held} field. Client thread only.
+     */
+    public int[] heldBallFaces(Player player, Model model)
+    {
+        String name = PlayerNames.sanitized(player);
+        if (name == null || model == null || model.getFaceIndices1() == null || model.getFaceIndices2() == null
+            || model.getFaceIndices3() == null)
+        {
+            return HeldBallFaces.NONE;
+        }
+        return heldBall(name, player, model);
+    }
+
     /** The held ball's face range in the player's drawn model ({@link HeldBallFaces}); empty without one. */
     private int[] heldBall(String name, Player player, Model model)
     {

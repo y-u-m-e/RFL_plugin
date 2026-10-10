@@ -7,6 +7,7 @@ import sh.yumekui.toolkit.model.ModelCapture;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
@@ -568,6 +569,52 @@ public class ReplaySamplerTest
         // No model available: the row has no m.
         Ball bare = new Ball(1529, 10, 1, 2, 3, 0, null);
         assertFalse(sampler.frame(13, List.of(), List.of(bare)).get(0).containsKey("m"));
+    }
+
+    /** A pose whose capture reports held-ball faces {@code held} (recorded indices) or none. */
+    private static PlayerState holding(String name, int anim, ModelCapture.Geometry g, int[] held)
+    {
+        return PlayerState.withHeld(name, 100, 200, 0, anim, 0, 808, 0, PlayerState.NO_SPOTS,
+            () -> new PlayerModel(g, held), null);
+    }
+
+    @Test
+    public void heldBallFacesRideOnTheFullLineAndDeltasShareTheirBases()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.tick(1, 1, List.of(look("A", 0)), List.of());
+        Map<String, Object> base = firstOfType(
+            sampler.frame(1, List.of(holding("A", 1, geometry(3, 0), new int[] {0, 1})), List.of()), "model");
+        assertArrayEquals(new int[] {0, 1}, (int[]) base.get("held"));
+
+        // Same faces and the same held block: a delta line, with no held of its own.
+        Map<String, Object> delta = firstOfType(
+            sampler.frame(2, List.of(holding("A", 2, geometry(3, 4), new int[] {0, 1})), List.of()), "model");
+        assertEquals(0, delta.get("base"));
+        assertFalse(delta.containsKey("held"));
+
+        // Same faces but no held block (not matched this time): written in full, without held,
+        // so a delta never borrows a held block its own capture didn't have.
+        Map<String, Object> full = firstOfType(
+            sampler.frame(3, List.of(holding("A", 3, geometry(3, 8), null)), List.of()), "model");
+        assertFalse(full.containsKey("base"));
+        assertFalse(full.containsKey("held"));
+        assertEquals(9, ((int[]) full.get("v")).length);
+    }
+
+    @Test
+    public void heldRangeCountsOnlyTheFacesARecordingKeeps()
+    {
+        // Faces 0..5; the ball is live faces 2..4. Face 1 (before it) and face 3 (inside it) are
+        // hidden, so in the recorded f the ball starts at 1 and is 2 faces long.
+        int[] colors3 = {0, -2, 0, 0, 0, 0};
+        byte[] transparencies = {0, 0, 0, (byte) 255, 0, 0};
+        assertArrayEquals(new int[] {1, 2}, PlayerModel.recorded(new int[] {2, 5}, 6, colors3, transparencies));
+        assertArrayEquals(new int[] {2, 3}, PlayerModel.recorded(new int[] {2, 5}, 6, null, null));
+        assertNull(PlayerModel.recorded(new int[] {0, 0}, 6, colors3, transparencies));
+        assertNull(PlayerModel.recorded(null, 6, colors3, transparencies));
+        assertNull(PlayerModel.recorded(new int[] {3, 4}, 6, colors3, transparencies));
+        assertNull(PlayerModel.recorded(new int[] {2, 7}, 6, colors3, transparencies));
     }
 
     @Test

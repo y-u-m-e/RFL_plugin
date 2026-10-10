@@ -532,6 +532,11 @@ not be public, so ask the project owner for access if you need it. [`ReplayLines
 is this plugin's side of that contract: every line shape it writes, in one place. A replay buffer
 clip is an ordinary recording with one extra `hdr` field, `clip` (see
 [Replay buffer clips](#replay-buffer-clips) and [`ClipBuilder.java`](src/main/java/com/rfl/replay/ClipBuilder.java)).
+A full player `model` line whose model holds a matched ball also carries
+`"held":[firstFace, faceCount]`: that run of its `f` (recorded face indices) is the ball, found by
+the same match the hitboxes leave out, so a viewer can leave out the same faces. Delta lines never
+carry it; they share their base's faces and so its `held` (see
+[`ModelLines.java`](src/main/java/com/rfl/replay/ModelLines.java)).
 
 ## Credits and licence
 

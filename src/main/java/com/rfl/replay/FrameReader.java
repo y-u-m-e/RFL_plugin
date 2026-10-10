@@ -31,11 +31,25 @@ import net.runelite.api.coords.WorldPoint;
  */
 final class FrameReader
 {
+    /** A player's held-ball faces {start, end} in their drawn model, as the hitboxes leave them out. */
+    interface HeldBalls
+    {
+        /** {start, end} (end exclusive); an empty range or null when they hold no matched ball. */
+        int[] faces(Player player, Model model);
+    }
+
     private final RecorderStats stats;
+    private HeldBalls heldBalls = (player, model) -> null;
 
     FrameReader(RecorderStats stats)
     {
         this.stats = stats;
+    }
+
+    /** Sets where a captured player model's held-ball faces come from ({@code ContactDetector}). */
+    void setHeldBalls(HeldBalls heldBalls)
+    {
+        this.heldBalls = heldBalls == null ? (player, model) -> null : heldBalls;
     }
 
     /** Every named player in view with a position, this frame. */
@@ -51,9 +65,9 @@ final class FrameReader
                 continue;
             }
             // Player#getModel() builds the posed model: the sampler calls this only on a new key.
-            players.add(new PlayerState(name, at.getX(), at.getY(), player.getCurrentOrientation(),
+            players.add(PlayerState.withHeld(name, at.getX(), at.getY(), player.getCurrentOrientation(),
                 player.getAnimation(), player.getAnimationFrame(), player.getPoseAnimation(),
-                player.getPoseAnimationFrame(), spots(player), () -> capture(player), look(player)));
+                player.getPoseAnimationFrame(), spots(player), () -> capturePlayer(player), look(player)));
         }
         return players;
     }
@@ -112,6 +126,32 @@ final class FrameReader
         {
             Model model = renderable.getModel();
             return model == null || !RenderableModels.hasArrays(model) ? null : RenderableModels.geometry(model);
+        }
+        catch (RuntimeException e)
+        {
+            stats.captureFailed();
+            return null;
+        }
+    }
+
+    /**
+     * A player's current model as replay geometry, with its held ball's faces as recorded face
+     * indices ({@link PlayerModel#recorded}) from the same lookup the hitboxes use. Null like
+     * {@link #capture}.
+     */
+    private PlayerModel capturePlayer(Player player)
+    {
+        try
+        {
+            Model model = player.getModel();
+            if (model == null || !RenderableModels.hasArrays(model))
+            {
+                return null;
+            }
+            ModelCapture.Geometry geometry = RenderableModels.geometry(model);
+            int[] held = PlayerModel.recorded(heldBalls.faces(player, model), model.getFaceCount(),
+                model.getFaceColors3(), model.getFaceTransparencies());
+            return new PlayerModel(geometry, held);
         }
         catch (RuntimeException e)
         {

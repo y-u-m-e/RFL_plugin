@@ -22,7 +22,10 @@ import java.util.Set;
  * body face is never dropped on a guess; the ball then still counts, as before.
  *
  * <p>Face indices never change with the pose, so a result is kept per player until their gender
- * or equipment changes: a frame with the same appearance costs one array compare. Client thread only.
+ * or equipment changes: a frame with the same appearance costs one array compare. A miss is kept
+ * only for the face count it was searched on: a model with a different count (the frame the
+ * equipment changed can still draw the previous model) is searched again, so one stale frame never
+ * leaves the ball in for the rest of that appearance. Client thread only.
  */
 public final class HeldBallFaces
 {
@@ -58,12 +61,15 @@ public final class HeldBallFaces
         final int gender;
         final int[] equipment;
         final int[] range;
+        /** Face count of the model the range was searched on. */
+        final int faceCount;
 
-        Entry(int gender, int[] equipment, int[] range)
+        Entry(int gender, int[] equipment, int[] range, int faceCount)
         {
             this.gender = gender;
             this.equipment = equipment;
             this.range = range;
+            this.faceCount = faceCount;
         }
     }
 
@@ -96,7 +102,8 @@ public final class HeldBallFaces
             return NONE;
         }
         Entry entry = byPlayer.get(name);
-        if (entry == null || entry.gender != gender || !Arrays.equals(entry.equipment, equipment))
+        if (entry == null || entry.gender != gender || !Arrays.equals(entry.equipment, equipment)
+            || entry.range == NONE && entry.faceCount != faceCount)
         {
             Shape shape = shape(wornModel);
             if (shape == null)
@@ -106,7 +113,8 @@ public final class HeldBallFaces
             }
             searches++;
             int start = find(f1, f2, f3, faceCount, shape);
-            entry = new Entry(gender, equipment.clone(), start < 0 ? NONE : new int[] {start, start + shape.faces});
+            entry = new Entry(gender, equipment.clone(), start < 0 ? NONE : new int[] {start, start + shape.faces},
+                faceCount);
             byPlayer.put(name, entry);
         }
         // A model with fewer faces than the cached block (not this appearance after all) leaves out nothing.

@@ -28,11 +28,11 @@ public final class PlayerState
     final int[] spots;
 
     /**
-     * Captures this player's current client model ({@code Player#getModel()}), or null when there is
-     * none. Called on the client thread, only when the player's model key is new. May be null itself
-     * (no model capture, for example in tests of other line types).
+     * Captures this player's current client model ({@code Player#getModel()}) with its held-ball
+     * faces, or null when there is none. Called on the client thread, only when the player's model
+     * key is new. May be null itself (no model capture, for example in tests of other line types).
      */
-    final Supplier<ModelCapture.Geometry> model;
+    final PlayerModel.Source model;
 
     /**
      * {@link Appearance#hash(int, int[], int[])} of the player's composition read this frame, or null
@@ -41,8 +41,22 @@ public final class PlayerState
      */
     final Integer look;
 
+    /** A pose whose model capture has no held-ball faces (tests, the warm-up). */
     public PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame,
         int[] spots, Supplier<ModelCapture.Geometry> model, Integer look)
+    {
+        this(name, x, y, orient, anim, animFrame, pose, poseFrame, spots, look, withoutHeld(model));
+    }
+
+    /** A pose whose model capture also reports the held ball's faces ({@link FrameReader}). */
+    static PlayerState withHeld(String name, int x, int y, int orient, int anim, int animFrame, int pose,
+        int poseFrame, int[] spots, PlayerModel.Source model, Integer look)
+    {
+        return new PlayerState(name, x, y, orient, anim, animFrame, pose, poseFrame, spots, look, model);
+    }
+
+    private PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame,
+        int[] spots, Integer look, PlayerModel.Source model)
     {
         this.name = name;
         this.x = x;
@@ -55,6 +69,19 @@ public final class PlayerState
         this.spots = spots == null ? NO_SPOTS : spots;
         this.model = model;
         this.look = look;
+    }
+
+    private static PlayerModel.Source withoutHeld(Supplier<ModelCapture.Geometry> model)
+    {
+        if (model == null)
+        {
+            return null;
+        }
+        return () ->
+        {
+            ModelCapture.Geometry geometry = model.get();
+            return geometry == null ? null : new PlayerModel(geometry, null);
+        };
     }
 
     /** The {@code f} row for this pose under index {@code i}. */
