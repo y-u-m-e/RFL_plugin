@@ -1,7 +1,6 @@
 package com.rfl.teams;
 
 import sh.yumekui.toolkit.text.PlayerNames;
-import java.awt.Color;
 import java.util.List;
 
 import javax.inject.Inject;
@@ -17,11 +16,12 @@ import net.runelite.client.util.Text;
 
 /**
  * The right-click team entries on a player inside a house: "RFL: Team A", "RFL: Team B" and
- * "RFL: Unassign", only the ones that change something, once per player per menu. The "RFL: "
- * prefix is always grey, and only the team name is in the team's colour; "Unassign" keeps the
- * menu's default text colour. They are added as {@link MenuAction#RUNELITE_PLAYER} entries
- * beside the game's own, never replacing or reordering them, and a click only sets a local team
- * label ({@link Teams}).
+ * "RFL: Unassign", only the ones that change something, once per player per menu. The option
+ * text itself carries no colour tags, so the client's normal hover highlight on the menu row
+ * still works; instead the team colour is on the target (the player's name) for Team A and
+ * Team B, and "Unassign" leaves the target exactly as the client gave it. They are added as
+ * {@link MenuAction#RUNELITE_PLAYER} entries beside the game's own, never replacing or
+ * reordering them, and a click only sets a local team label ({@link Teams}).
  *
  * <p>Threads: client thread only, like menu events.
  */
@@ -30,11 +30,6 @@ public final class TeamMenu
 {
     /** Every entry this menu adds starts with this, so a second player option can tell it is there. */
     private static final String PREFIX = "RFL: ";
-    /**
-     * The "RFL: " prefix colour: light enough to read on the OSRS menu's dark background, but
-     * clearly not the team colour or the menu's default white/yellow text.
-     */
-    private static final Color PREFIX_COLOR = new Color(0x9f, 0x9f, 0x9f);
     /**
      * {@code Menu#createMenuEntry} index: negative counts from the end, and -1 appends after the
      * existing entries, which the client draws at the top of the menu.
@@ -66,8 +61,8 @@ public final class TeamMenu
         for (Teams.Team team : choices)
         {
             client.getMenu().createMenuEntry(APPEND)
-                .setOption(coloredOption(team))
-                .setTarget(entry.getTarget())
+                .setOption(Teams.menuLabel(team))
+                .setTarget(coloredTarget(entry.getTarget(), team))
                 .setType(MenuAction.RUNELITE_PLAYER)
                 .setIdentifier(entry.getIdentifier())
                 .onClick(clicked -> teams.assign(name, team));
@@ -75,13 +70,13 @@ public final class TeamMenu
     }
 
     /**
-     * "RFL: Team A" / "RFL: Team B" / "RFL: Unassign", with the "RFL: " prefix always grey and
-     * only the team name in the team's colour; "Unassign" is left in the menu's default colour.
+     * The menu target for a team entry: for Team A / Team B, {@code target} (the player's name,
+     * as the client gave it) with any existing tags stripped and the team's colour wrapped back
+     * on; for Unassign, {@code target} untouched.
      */
-    static String coloredOption(Teams.Team team)
+    static String coloredTarget(String target, Teams.Team team)
     {
-        String prefix = ColorUtil.wrapWithColorTag(PREFIX, PREFIX_COLOR);
-        return prefix + (team == null ? "Unassign" : ColorUtil.wrapWithColorTag(team.label(), team.color()));
+        return team == null ? target : ColorUtil.wrapWithColorTag(Text.removeTags(target), team.color());
     }
 
     /**

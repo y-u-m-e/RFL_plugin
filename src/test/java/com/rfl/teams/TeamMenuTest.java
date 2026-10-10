@@ -24,7 +24,6 @@ import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.client.util.ColorUtil;
-import net.runelite.client.util.Text;
 
 /**
  * {@link TeamMenu}: the right-click "RFL: Team A / Team B / Unassign" entries.
@@ -73,8 +72,10 @@ public class TeamMenuTest
         List<MenuEntry> rfl = rflEntries();
         assertEquals("one Team A and one Team B, not three of each", 2, rfl.size());
         assertEquals("3 base options plus the 2 team entries, once", 5, menu.entries.size());
-        assertEquals("RFL: Team A", Text.removeTags(rfl.get(0).getOption()));
-        assertEquals("RFL: Team B", Text.removeTags(rfl.get(1).getOption()));
+        assertEquals("RFL: Team A", rfl.get(0).getOption());
+        assertEquals("RFL: Team B", rfl.get(1).getOption());
+        assertEquals(ColorUtil.wrapWithColorTag("Bob", Teams.TEAM_A_COLOR), rfl.get(0).getTarget());
+        assertEquals(ColorUtil.wrapWithColorTag("Bob", Teams.TEAM_B_COLOR), rfl.get(1).getTarget());
     }
 
     /**
@@ -135,8 +136,10 @@ public class TeamMenuTest
 
         List<MenuEntry> rfl = rflEntries();
         assertEquals("Team B and Unassign, not Team A again", 2, rfl.size());
-        assertEquals("RFL: Team B", Text.removeTags(rfl.get(0).getOption()));
-        assertEquals("RFL: Unassign", Text.removeTags(rfl.get(1).getOption()));
+        assertEquals("RFL: Team B", rfl.get(0).getOption());
+        assertEquals("RFL: Unassign", rfl.get(1).getOption());
+        assertEquals(ColorUtil.wrapWithColorTag("Bob", Teams.TEAM_B_COLOR), rfl.get(0).getTarget());
+        assertEquals("the target is left exactly as the client gave it", "Bob", rfl.get(1).getTarget());
     }
 
     @Test
@@ -152,24 +155,25 @@ public class TeamMenuTest
         assertEquals(Teams.Team.B, teams.team("Bob"));
     }
 
+    /**
+     * The option text carries no colour tags of its own, so the client's normal hover highlight
+     * on the menu row works; the team colour instead sits on the target (the player's name).
+     */
     @Test
-    public void onlyTheTeamNameIsColouredAndThePrefixIsGreyAndUnassignStaysDefault()
+    public void optionTextIsPlainAndTheTeamColourIsOnTheTargetInstead()
     {
-        String a = TeamMenu.coloredOption(Teams.Team.A);
-        String b = TeamMenu.coloredOption(Teams.Team.B);
-        String unassign = TeamMenu.coloredOption(null);
+        assertEquals("RFL: Team A", Teams.menuLabel(Teams.Team.A));
+        assertEquals("RFL: Team B", Teams.menuLabel(Teams.Team.B));
+        assertEquals("RFL: Unassign", Teams.menuLabel(null));
+        assertFalse("the option carries no colour tag", Teams.menuLabel(Teams.Team.A).contains("<col="));
 
-        assertEquals(ColorUtil.wrapWithColorTag("RFL: ", new java.awt.Color(0x9f, 0x9f, 0x9f))
-            + ColorUtil.wrapWithColorTag("Team A", Teams.TEAM_A_COLOR), a);
-        assertEquals(ColorUtil.wrapWithColorTag("RFL: ", new java.awt.Color(0x9f, 0x9f, 0x9f))
-            + ColorUtil.wrapWithColorTag("Team B", Teams.TEAM_B_COLOR), b);
-        assertEquals(ColorUtil.wrapWithColorTag("RFL: ", new java.awt.Color(0x9f, 0x9f, 0x9f)) + "Unassign", unassign);
+        assertEquals(ColorUtil.wrapWithColorTag("Bob", Teams.TEAM_A_COLOR), TeamMenu.coloredTarget("Bob", Teams.Team.A));
+        assertEquals(ColorUtil.wrapWithColorTag("Bob", Teams.TEAM_B_COLOR), TeamMenu.coloredTarget("Bob", Teams.Team.B));
+        assertEquals("Unassign leaves the target untouched", "Bob", TeamMenu.coloredTarget("Bob", null));
 
-        // "Unassign" itself is never wrapped in a colour tag: only the grey prefix is tagged.
-        assertFalse(unassign.substring(unassign.indexOf("Unassign")).contains("<col="));
-        assertEquals("RFL: Team A", Text.removeTags(a));
-        assertEquals("RFL: Team B", Text.removeTags(b));
-        assertEquals("RFL: Unassign", Text.removeTags(unassign));
+        // Any existing tags on the target are stripped before the team colour is wrapped on.
+        String tagged = ColorUtil.wrapWithColorTag("Bob", java.awt.Color.WHITE);
+        assertEquals(ColorUtil.wrapWithColorTag("Bob", Teams.TEAM_A_COLOR), TeamMenu.coloredTarget(tagged, Teams.Team.A));
     }
 
     // -- helpers --------------------------------------------------------------------------------
