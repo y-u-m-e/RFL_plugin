@@ -35,7 +35,7 @@ import net.runelite.api.kit.KitType;
  * client frame, from each player's posed model: the drawn model, or the bare body
  * ({@link BareBody}) per the Hitbox source setting. Keeps the latest frame's meshes and pairs for
  * the overlays, adds the contact tile highlight when a collision starts, and hands each finished
- * collision to {@link CollisionLog}.
+ * collision to {@link CollisionLog} and {@link CollisionChatMessage}.
  *
  * <p>A held ball is never part of a hitbox: the drawn model's faces of a handegg or gnomeball in the weapon slot
  * are left out ({@link HeldBallFaces}), so the ball touching someone is never contact, for
@@ -69,6 +69,7 @@ public final class ContactDetector
     private final RflConfig config;
     private final BareBody bareBody;
     private final CollisionLog collisionLog;
+    private final CollisionChatMessage chatMessage;
     private final Teams teams;
     private final HeldBallFaces heldBallFaces;
     private Map<String, TriangleMesh> latestMeshes = Collections.emptyMap();
@@ -78,10 +79,11 @@ public final class ContactDetector
 
     @Inject
     ContactDetector(Client client, ContactHighlights highlights, RflConfig config, BareBody bareBody,
-        CollisionLog collisionLog, Teams teams)
+        CollisionLog collisionLog, CollisionChatMessage chatMessage, Teams teams)
     {
         this.teams = teams;
         this.collisionLog = collisionLog;
+        this.chatMessage = chatMessage;
         this.client = client;
         this.highlights = highlights;
         this.config = config;
@@ -313,6 +315,7 @@ public final class ContactDetector
         for (Collision c : tracker.takeFinished())
         {
             collisionLog.record(c);
+            chatMessage.post(c);
         }
     }
 

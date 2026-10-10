@@ -29,6 +29,7 @@ public class RflConfigTest
         assertFalse(config.showPanel());
         assertFalse(config.reportContacts());
         assertFalse(config.saveCollisions());
+        assertFalse(config.collisionChatMessage());
         assertFalse(config.highlightContacts());
         assertFalse(config.showTouchingTriangles());
         assertFalse(config.showHitboxes());

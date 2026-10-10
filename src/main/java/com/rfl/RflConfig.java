@@ -150,6 +150,22 @@ public interface RflConfig extends Config
         return false;
     }
 
+    /**
+     * @return true to post a chat message for each collision
+     */
+    @ConfigItem(
+        keyName = "collisionChatMessage",
+        name = "Collision chat message",
+        description = "Posts a game message naming both players in each handegg collision, the one holding the "
+            + "handegg first when there is a lone holder.",
+        section = DETECTION_SECTION,
+        position = 4
+    )
+    default boolean collisionChatMessage()
+    {
+        return false;
+    }
+
     // ---- Display ----
 
     /**

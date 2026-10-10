@@ -382,6 +382,7 @@ turn it on.
 | Detect contacts | `reportContacts` | `false` | Inside a player-owned house, detects when any two players in view touch while either holds a handegg or gnomeball. Incompletes need this on. |
 | Hitbox source | `hitboxSource` | `EQUIPPED` | Experimental. `EQUIPPED`: the model you see, armour included; a held handegg's or gnomeball's own geometry never counts. `BARE_BODY`: the player's body without equipment. Changes which contacts are detected. |
 | Save collisions | `saveCollisions` | `false` | Appends every collision and incomplete to `rfl/collisions`, one file per day. |
+| Collision chat message | `collisionChatMessage` | `false` | Posts a game message naming both players in each handegg collision, the one holding the handegg first when there is a lone holder. |
 | Highlight contacts | `highlightContacts` | `false` | Briefly highlights the tile under each handegg collision as it starts. |
 | Contact highlight colour | `contactHighlightColor` | `#FFE600` at ~60% alpha (RGBA 255,230,0,153) | Colour of the contact tile highlight, and of touching triangles. |
 | Highlight duration | `highlightDurationMs` | `1200` ms (range 200–5000) | How long a contact or incomplete tile highlight takes to fade out. |
@@ -450,8 +451,9 @@ What the plugin can see about other players, and why none of it is an unfair adv
 - **Plugin lists** — only your own. The plugin reads your own client's `PluginManager` through
   public API; no other player's installed plugins are ever known to it, let alone recorded.
 - **Not an advantage.** Collision and incomplete detection rules a player-run minigame from what's
-  already drawn on screen — no combat, PvP, skilling or economy effect. An incomplete, at most,
-  posts an optional local chat message to the player it ruled on.
+  already drawn on screen — no combat, PvP, skilling or economy effect. Each, at most, posts an
+  optional local chat message (**Collision chat message**, **Chat message**) naming the players
+  involved — only you ever see it, and nothing is sent to the server.
 - **Show hitboxes** draws the triangles of a model the client is already rendering, the same kind
   of thing core RuneLite overlays (hull, outline) already do — it doesn't reveal anything about a
   player that wasn't already on screen.
