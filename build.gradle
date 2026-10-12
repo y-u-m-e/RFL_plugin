@@ -61,3 +61,19 @@ tasks.register('benchmark', Test) {
     testLogging { showStandardStreams = true }
     outputs.upToDateWhen { false }
 }
+
+// Tester bundle: RuneLite + this plugin + run.bat in one zip, for someone without a dev setup.
+// Runs anywhere Java 11+ does: lib/ carries LWJGL natives for every OS.
+tasks.register('testerZip', Zip) {
+    group = 'distribution'
+    description = 'Zips a double-click RuneLite with this plugin for testers'
+    archiveFileName = 'rfl-audit-tester.zip'
+    into('rfl-audit-tester') {
+        from('tester') { filePermissions { unix(0755) } }
+        into('lib') {
+            from(sourceSets.test.runtimeClasspath.filter { it.isFile() })
+            from(sourceSets.main.output)
+            from(sourceSets.test.output) { include 'com/rfl/RflPluginLauncher.class' }
+        }
+    }
+}
