@@ -1,14 +1,14 @@
 RFL Audit - test build
 ======================
 
-1. Install Java 17 if you don't have it:
-   https://adoptium.net  (click the big download button, install, done)
+You need normal RuneLite installed. Nothing else.
 
-2. Unzip this folder anywhere.
+1. Unzip this folder anywhere.
 
-3. Double-click run.bat.
+2. Double-click run.bat.
    RuneLite opens with RFL Audit already in the side panel.
-   (Mac/Linux: open a terminal in this folder and run  ./run.sh )
+   (Mac/Linux: install Java 17 from https://adoptium.net, then open a
+    terminal in this folder and run  ./run.sh )
 
 
 Logging in with a Jagex account (one time only)
