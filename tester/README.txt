@@ -1,22 +1,30 @@
 RFL Audit - test build
 ======================
 
-1. Install Java 11 or newer if you don't have it: https://adoptium.net (Temurin 17 is fine).
-2. Unzip this folder anywhere and double-click run.bat (Mac/Linux: run ./run.sh in a terminal).
-   A RuneLite window opens with RFL Audit already loaded (look for it in the side panel).
+1. Install Java 17 if you don't have it:
+   https://adoptium.net  (click the big download button, install, done)
 
-Jagex account login
--------------------
-This RuneLite can't log in to a Jagex account by itself. Do this once:
-  - Open "RuneLite (configure)" from the Start menu.
-  - In "Client arguments" add:  --insecure-write-credentials
-  - Save, then launch RuneLite through the Jagex Launcher as usual and close it once you're in.
-  - Now run.bat logs you straight in.
-Remove the argument again afterwards if you like; the saved login keeps working until it expires.
-Legacy (non-Jagex) accounts just log in normally.
+2. Unzip this folder anywhere.
+
+3. Double-click run.bat.
+   RuneLite opens with RFL Audit already in the side panel.
+   (Mac/Linux: open a terminal in this folder and run  ./run.sh )
+
+
+Logging in with a Jagex account (one time only)
+-----------------------------------------------
+This RuneLite can't do the Jagex login screen by itself, so borrow your normal login once:
+
+  a. In the Start menu, open "RuneLite (configure)".
+  b. In the "Client arguments" box, type:  --insecure-write-credentials
+  c. Click Save.
+  d. Start RuneLite from the Jagex Launcher like normal, then close it.
+  e. Now run.bat logs you in.
+
+Old-style (non-Jagex) accounts can skip this and just log in.
+
 
 Sending results back
 --------------------
-Everything the plugin records stays on your computer, in:
-  %USERPROFILE%\.runelite\rfl
-The RFL Audit side panel has an "Open folder" button for it. Zip that folder and send it over.
+In the RFL Audit side panel, click "Open folder".
+Zip that folder and send it back.
