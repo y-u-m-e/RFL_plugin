@@ -265,7 +265,7 @@ its own, exactly like a full recording. A clip holds, in order:
 3. every `model` line the clip uses, delta bases included, before anything that uses them;
 4. the house as it stood at the clip's start, as one complete `pitch` line (no `locs` lines);
 5. each player present at the clip's start: their `spawn`, `team`, appearance, position and pose
-   (`f`), model (`pm`), spot anims and true tile, all at the clip's first cycle;
+   (`f`), model (`pm`), bare body model (`pb`), spot anims and true tile, all at the clip's first cycle;
 6. every recorded line from the clip's window, in its original order (a house reload inside the
    window comes through as its own `pitch` line, as in the recording).
 
@@ -538,6 +538,15 @@ A full player `model` line whose model holds a matched ball also carries
 the same match the hitboxes leave out, so a viewer can leave out the same faces. Delta lines never
 carry it; they share their base's faces and so its `held` (see
 [`ModelLines.java`](src/main/java/com/rfl/replay/ModelLines.java)).
+
+Every recorded player's **bare body** (their identity kits posed like them, with no equipment, held
+ball or spot anims) is recorded too, always, so a viewer can run intersections against it instead
+of the equipped model. It uses `model` lines with `"kind":"bare"`, full
+(`{"t":"model","id":N,"kind":"bare","v":[..],"f":[..],"c":[..]}`) or delta
+(`{"t":"model","id":N,"kind":"bare","base":B,"dv":[..]}`, where `B` is always another `bare` model),
+never with `held`, in the same id space as every other model; and `pb` lines,
+`{"t":"pb","cyc":N,"p":[[playerIndex, bareModelId],...]}`, which work exactly like `pm`: a row only
+when that player's bare model changed, in the same frame as `pm`, after the model lines they use.
 
 ## Credits and licence
 

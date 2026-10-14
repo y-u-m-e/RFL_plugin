@@ -26,13 +26,13 @@ import com.rfl.contact.Collision;
  * name>","fromCyc":N,"toCyc":M,"seconds":S}};</li>
  * <li>the {@code plugins} line as it stands at {@code fromCyc}: the source's list with every
  * {@code plugin_toggle} before the window applied, at {@code fromCyc};</li>
- * <li>every {@code model} line the clip refers to ({@code pm} rows, {@code ball.m}, pitch locs),
+ * <li>every {@code model} line the clip refers to ({@code pm} and {@code pb} rows, {@code ball.m}, pitch locs),
  * with the delta bases those need, in id order, so each comes before its first use;</li>
  * <li>the pitch active at {@code fromCyc} as one complete pitch: the first pitch with every
  * {@code locs} line merged into its {@code locs} and {@code names}, so the clip has no
  * {@code locs} lines;</li>
  * <li>for each player present at {@code fromCyc}, their state then, all at {@code fromCyc}:
- * {@code spawn}, {@code team}, {@code app}, then one {@code f}, one {@code pm}, any {@code spot},
+ * {@code spawn}, {@code team}, {@code app}, then one {@code f}, one {@code pm}, one {@code pb}, any {@code spot},
  * and one {@code tt} line holding everyone's latest row;</li>
  * <li>every buffered line with {@code cyc} in {@code [fromCyc, toCyc]}, in file order (a pitch
  * reload inside the window comes through as its own complete pitch line, as in the source).</li>
@@ -140,6 +140,10 @@ final class ClipBuilder
             {
                 used.add(player.model);
             }
+            if (player.bare >= 0)
+            {
+                used.add(player.bare);
+            }
         }
         if (pitch != null)
         {
@@ -180,7 +184,7 @@ final class ClipBuilder
 
     private static void addModels(ReplayRing.Entry entry, TreeSet<Integer> used)
     {
-        if ("pm".equals(entry.type))
+        if ("pm".equals(entry.type) || "pb".equals(entry.type))
         {
             for (int[] row : ReplayRing.rows(entry.json))
             {
@@ -251,15 +255,17 @@ final class ClipBuilder
         int lines = 0;
         boolean rows = false;
         boolean models = false;
+        boolean bares = false;
         boolean tiles = false;
         for (ReplayRing.PlayerSnap player : players)
         {
             lines += 1 + (player.team == null ? 0 : 1) + (player.app == null ? 0 : 1) + (player.spot == null ? 0 : 1);
             rows |= player.row != null;
             models |= player.model >= 0;
+            bares |= player.bare >= 0;
             tiles |= player.tile != null;
         }
-        return lines + (rows ? 1 : 0) + (models ? 1 : 0) + (tiles ? 1 : 0);
+        return lines + (rows ? 1 : 0) + (models ? 1 : 0) + (bares ? 1 : 0) + (tiles ? 1 : 0);
     }
 
     /** Writes the planned clip's lines to {@code sink}, in order. */
@@ -386,12 +392,13 @@ final class ClipBuilder
         }
     }
 
-    /** Each present player's spawn, team, app, then everyone's f, pm, spot and tt, all at {@code from}. */
+    /** Each present player's spawn, team, app, then everyone's f, pm, pb, spot and tt, all at {@code from}. */
     private static void writeStart(Gson gson, List<ReplayRing.PlayerSnap> players, int from, Sink sink)
         throws IOException
     {
         List<int[]> rows = new ArrayList<>();
         List<int[]> models = new ArrayList<>();
+        List<int[]> bares = new ArrayList<>();
         List<int[]> tiles = new ArrayList<>();
         for (ReplayRing.PlayerSnap player : players)
         {
@@ -412,6 +419,10 @@ final class ClipBuilder
             {
                 models.add(new int[] { player.index, player.model });
             }
+            if (player.bare >= 0)
+            {
+                bares.add(new int[] { player.index, player.bare });
+            }
             if (player.tile != null)
             {
                 tiles.add(player.tile);
@@ -424,6 +435,10 @@ final class ClipBuilder
         if (!models.isEmpty())
         {
             sink.line(gson.toJson(ReplayLines.playerModels(from, models)));
+        }
+        if (!bares.isEmpty())
+        {
+            sink.line(gson.toJson(ReplayLines.bareModels(from, bares)));
         }
         for (ReplayRing.PlayerSnap player : players)
         {

@@ -41,22 +41,47 @@ public final class PlayerState
      */
     final Integer look;
 
+    /**
+     * The player's bare look hash ({@code BareBody#look}), or null when unknown: with the pose, the
+     * key of their bare body model. Read the same frame as {@link #bare} would capture.
+     */
+    final Integer bareLook;
+
+    /**
+     * Captures the player's posed bare body ({@code BareBody#posed}), or null when there is none.
+     * Called on the client thread, only when the bare key is new. May be null itself.
+     */
+    final Supplier<ModelCapture.Geometry> bare;
+
     /** A pose whose model capture has no held-ball faces (tests, the warm-up). */
     public PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame,
         int[] spots, Supplier<ModelCapture.Geometry> model, Integer look)
     {
-        this(name, x, y, orient, anim, animFrame, pose, poseFrame, spots, look, withoutHeld(model));
+        this(name, x, y, orient, anim, animFrame, pose, poseFrame, spots, model, look, null, null);
     }
 
-    /** A pose whose model capture also reports the held ball's faces ({@link FrameReader}). */
-    static PlayerState withHeld(String name, int x, int y, int orient, int anim, int animFrame, int pose,
-        int poseFrame, int[] spots, PlayerModel.Source model, Integer look)
+    /** As above, with the player's bare body ({@link #bareLook}, {@link #bare}; either may be null). */
+    public PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame,
+        int[] spots, Supplier<ModelCapture.Geometry> model, Integer look, Integer bareLook,
+        Supplier<ModelCapture.Geometry> bare)
     {
-        return new PlayerState(name, x, y, orient, anim, animFrame, pose, poseFrame, spots, look, model);
+        this(name, x, y, orient, anim, animFrame, pose, poseFrame, spots, look, withoutHeld(model), bareLook, bare);
+    }
+
+    /**
+     * A pose whose model capture also reports the held ball's faces, with the player's bare body
+     * ({@link FrameReader}); {@code bareLook} and {@code bare} may be null.
+     */
+    static PlayerState withHeld(String name, int x, int y, int orient, int anim, int animFrame, int pose,
+        int poseFrame, int[] spots, PlayerModel.Source model, Integer look, Integer bareLook,
+        Supplier<ModelCapture.Geometry> bare)
+    {
+        return new PlayerState(name, x, y, orient, anim, animFrame, pose, poseFrame, spots, look, model, bareLook,
+            bare);
     }
 
     private PlayerState(String name, int x, int y, int orient, int anim, int animFrame, int pose, int poseFrame,
-        int[] spots, Integer look, PlayerModel.Source model)
+        int[] spots, Integer look, PlayerModel.Source model, Integer bareLook, Supplier<ModelCapture.Geometry> bare)
     {
         this.name = name;
         this.x = x;
@@ -69,6 +94,8 @@ public final class PlayerState
         this.spots = spots == null ? NO_SPOTS : spots;
         this.model = model;
         this.look = look;
+        this.bareLook = bareLook;
+        this.bare = bare;
     }
 
     private static PlayerModel.Source withoutHeld(Supplier<ModelCapture.Geometry> model)

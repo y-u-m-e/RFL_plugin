@@ -10,6 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
@@ -22,7 +23,7 @@ import java.util.function.Supplier;
  * {@code f} row, the names present on the previous {@link #frame}, the names {@link #frame} has
  * spawned, and each player's last appearance hash.
  *
- * <p>A despawn forgets the player's last written row, true tile, spot anims and model, so a
+ * <p>A despawn forgets the player's last written row, true tile, spot anims and models, so a
  * respawn always writes them afresh even if they match what was last sent. {@link #tick} only
  * writes {@code app} and {@code tt} for spawned players, never assigning an index to anyone else,
  * and a spawn clears the stored appearance hash so the next tick writes a fresh {@code app}. A
@@ -35,8 +36,9 @@ public final class ReplaySampler
 {
     /** ClientTicks (about 1 s) to wait for a spot anim to end before capturing with it merged. */
     static final int SPOT_DEFER_CAP = 50;
-    /** Model key prefixes: a player pose and a thrown ball. */
+    /** Model key prefixes: a player pose, a player's bare body pose and a thrown ball. */
     private static final String PLAYER_KEY = "p:";
+    private static final String BARE_KEY = "bare:";
     private static final String BALL_KEY = "b:";
     /** Marks a player key captured with spot anims merged in, followed by the spot ids. */
     private static final String SPOT_KEY = ":s";
@@ -63,6 +65,8 @@ public final class ReplaySampler
     private final Map<String, Integer> modelAppearance = new LinkedHashMap<>();
     /** Last model id written in a {@code pm} row per name; cleared on despawn. */
     private final Map<String, Integer> lastModel = new LinkedHashMap<>();
+    /** Last bare model id written in a {@code pb} row per name; cleared on despawn. */
+    private final Map<String, Integer> lastBare = new LinkedHashMap<>();
     /**
      * ClientTicks a player's capture has waited on an active spot anim, with no clean model for the
      * pose. Cleared when the spot anims clear and on despawn.
@@ -103,8 +107,8 @@ public final class ReplaySampler
 
     /**
      * Lines for one ClientTick: model lines for keys first seen this cycle, then despawn, spawn,
-     * f, pm, spot, then ball lines, in that order. Model lines come first so each precedes the
-     * {@code pm} / {@code ball} lines that refer to its id.
+     * f, pm, pb, spot, then ball lines, in that order. Model lines come first so each precedes the
+     * {@code pm} / {@code pb} / {@code ball} lines that refer to its id.
      */
     public List<Map<String, Object>> frame(int cycle, List<PlayerState> players, List<Ball> balls)
     {
@@ -113,6 +117,7 @@ public final class ReplaySampler
         long modelStart = System.nanoTime();
         int modelsBefore = models.size();
         int[] playerModels = playerModelIds(players);
+        int[] bareModels = bareModelIds(players);
         int[] ballModels = ballModelIds(cycle, balls);
         lastFrameNewModels = models.size() != modelsBefore;
         if (lastFrameNewModels)
@@ -129,7 +134,8 @@ public final class ReplaySampler
         addDespawns(cycle, now, lines);
         addSpawns(cycle, players, lines);
         addPoseRows(cycle, players, lines);
-        addModelRows(cycle, players, playerModels, lines);
+        addModelRows(cycle, players, playerModels, lastModel, ReplayLines::playerModels, lines);
+        addModelRows(cycle, players, bareModels, lastBare, ReplayLines::bareModels, lines);
         addSpotLines(cycle, players, lines);
         addBallLines(cycle, balls, ballModels, lines);
         present = now;
@@ -142,6 +148,24 @@ public final class ReplaySampler
         for (int k = 0; k < ids.length; k++)
         {
             ids[k] = playerModelId(players.get(k));
+        }
+        return ids;
+    }
+
+    /**
+     * Each player's bare body model id, capturing on a new key; -1 when there is none. The bare
+     * body has no equipment or spot anims and its look is read the same frame, so unlike
+     * {@link #playerModelId} it never waits for a tick or a spot anim to end.
+     */
+    private int[] bareModelIds(List<PlayerState> players)
+    {
+        int[] ids = new int[players.size()];
+        for (int k = 0; k < ids.length; k++)
+        {
+            PlayerState player = players.get(k);
+            ids[k] = player.bare == null || player.bareLook == null ? -1
+                : models.idFor(BARE_KEY + player.bareLook + ":" + player.anim + ":" + player.animFrame + ":"
+                    + player.pose + ":" + player.poseFrame, ModelLines.BARE, player.bare, player.bareLook);
         }
         return ids;
     }
@@ -172,6 +196,7 @@ public final class ReplaySampler
                 lastTrueTile.remove(name);
                 lastSpots.remove(name);
                 lastModel.remove(name);
+                lastBare.remove(name);
                 spotDeferred.remove(name);
             }
         }
@@ -212,8 +237,9 @@ public final class ReplaySampler
         }
     }
 
-    /** One {@code pm} line with a row for each player whose model id changed. */
-    private void addModelRows(int cycle, List<PlayerState> players, int[] modelIds, List<Map<String, Object>> lines)
+    /** One {@code pm} (or {@code pb}) line with a row for each player whose model id changed. */
+    private void addModelRows(int cycle, List<PlayerState> players, int[] modelIds, Map<String, Integer> lastModel,
+        BiFunction<Integer, List<int[]>, Map<String, Object>> line, List<Map<String, Object>> lines)
     {
         List<int[]> rows = new ArrayList<>();
         for (int k = 0; k < modelIds.length; k++)
@@ -233,7 +259,7 @@ public final class ReplaySampler
         }
         if (!rows.isEmpty())
         {
-            lines.add(ReplayLines.playerModels(cycle, rows));
+            lines.add(line.apply(cycle, rows));
         }
     }
 

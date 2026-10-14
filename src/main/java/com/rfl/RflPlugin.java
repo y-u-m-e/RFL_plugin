@@ -155,6 +155,8 @@ public class RflPlugin extends Plugin
         replayRecorder.setPluginSource(pluginSnapshotter::snapshot);
         // The replay marks the held ball's faces with the same match the hitboxes leave out.
         replayRecorder.setHeldBallSource(contactDetector::heldBallFaces);
+        // Every recorded player's bare body too, for the viewer's bare-body intersections.
+        replayRecorder.setBareBody(bareBody);
         // Team assignments survive restarts; a change reaches an open replay as a team line.
         teams.load();
         replayRecorder.setTeamSource(teams::team);

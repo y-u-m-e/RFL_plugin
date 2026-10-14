@@ -17,6 +17,11 @@ import java.util.function.Supplier;
  * held-ball faces is written as {@code base} + {@code dv} (vertex deltas, same vertex order);
  * anything else in full, and the first full player model of an appearance becomes its base.
  *
+ * <p>A player's bare body ({@code "kind":"bare"}: identity kits only, no equipment, spot anims or
+ * held ball) is encoded the same way against the first full bare model of its bare look, kept apart
+ * from the appearance bases so a bare line's {@code base} is always another bare model. A bare line
+ * never carries {@code held}.
+ *
  * <p>A full player line whose model has a matched held ball ({@code HeldBallFaces}) carries
  * {@code "held":[firstFace, faceCount]}: those faces of its {@code f} are the ball, not the body.
  * A delta line never carries it; its faces, and so its held faces, are its base's.
@@ -29,14 +34,17 @@ final class ModelLines
     static final String PLAYER = "player";
     static final String BALL = "ball";
     static final String LOC = "loc";
+    static final String BARE = "bare";
 
     private final ModelCapture.Registry registry = new ModelCapture.Registry();
     /** Kind of each id captured but not yet turned into a model line. */
     private final Map<Integer, String> pendingKind = new LinkedHashMap<>();
-    /** Appearance hash of each player id captured but not yet turned into a model line. */
+    /** Appearance (player) or bare look (bare) hash of each id captured but not yet turned into a model line. */
     private final Map<Integer, Integer> pendingAppearance = new LinkedHashMap<>();
     /** First full player model per appearance hash: the base later poses are delta-encoded against. */
     private final Map<Integer, ModelCapture.Captured> appearanceBase = new LinkedHashMap<>();
+    /** First full bare model per bare look hash, as above. */
+    private final Map<Integer, ModelCapture.Captured> bareBase = new LinkedHashMap<>();
     /** Held-ball faces {firstFace, faceCount} of each player id captured but not yet written. */
     private final Map<Integer, int[]> pendingHeld = new LinkedHashMap<>();
     /** Held-ball faces of each appearance base, by base id; absent when the base has none. */
@@ -47,7 +55,8 @@ final class ModelLines
      * yields no model (the key stays new, so a later call can try again). A null {@code capture}
      * only looks the key up.
      *
-     * @param appearance the player's appearance hash, for delta encoding; ignored for other kinds
+     * @param appearance the player's appearance hash (bare look hash for a bare body), for delta
+     *     encoding; ignored for other kinds
      */
     int idFor(String key, String kind, Supplier<ModelCapture.Geometry> capture, int appearance)
     {
@@ -56,7 +65,7 @@ final class ModelLines
         if (registry.size() != before)
         {
             pendingKind.put(id, kind);
-            if (PLAYER.equals(kind))
+            if (PLAYER.equals(kind) || BARE.equals(kind))
             {
                 pendingAppearance.put(id, appearance);
             }
@@ -115,7 +124,8 @@ final class ModelLines
         line.put("t", "model");
         line.put("id", captured.id);
         line.put("kind", kind);
-        ModelCapture.Captured base = appearance == null ? null : appearanceBase.get(appearance);
+        Map<Integer, ModelCapture.Captured> bases = BARE.equals(kind) ? bareBase : appearanceBase;
+        ModelCapture.Captured base = appearance == null ? null : bases.get(appearance);
         // A delta line has no held field of its own (it is its base's), so the base must match it.
         if (base != null && sameTopology(base.geometry, captured.geometry)
             && Arrays.equals(baseHeld.get(base.id), held))
@@ -127,7 +137,7 @@ final class ModelLines
         {
             if (appearance != null && base == null)
             {
-                appearanceBase.put(appearance, captured);
+                bases.put(appearance, captured);
                 if (held != null)
                 {
                     baseHeld.put(captured.id, held);

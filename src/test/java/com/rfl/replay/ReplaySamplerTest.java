@@ -575,7 +575,108 @@ public class ReplaySamplerTest
     private static PlayerState holding(String name, int anim, ModelCapture.Geometry g, int[] held)
     {
         return PlayerState.withHeld(name, 100, 200, 0, anim, 0, 808, 0, PlayerState.NO_SPOTS,
-            () -> new PlayerModel(g, held), null);
+            () -> new PlayerModel(g, held), null, null, null);
+    }
+
+    // ---- Bare bodies: kind "bare" model lines and pb rows ----
+
+    /** A pose holding a matched ball, with a bare body of look {@code bareLook} captured as {@code bare}. */
+    private static PlayerState withBare(String name, int anim, ModelCapture.Geometry g, Integer bareLook,
+        Supplier<ModelCapture.Geometry> bare)
+    {
+        return PlayerState.withHeld(name, 100, 200, 0, anim, 0, 808, 0, PlayerState.NO_SPOTS,
+            () -> new PlayerModel(g, new int[] {0, 1}), null, bareLook, bare);
+    }
+
+    private static List<Map<String, Object>> ofKind(List<Map<String, Object>> lines, String kind)
+    {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> line : lines)
+        {
+            if ("model".equals(line.get("t")) && kind.equals(line.get("kind")))
+            {
+                out.add(line);
+            }
+        }
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<int[]> pbRows(List<Map<String, Object>> lines)
+    {
+        return (List<int[]>) firstOfType(lines, "pb").get("p");
+    }
+
+    @Test
+    public void bareModelLinesAreKindBareWithoutHeldAndDeltaOnlyAgainstBareBases()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        sampler.tick(1, 1, List.of(look("A", 0), look("B", 0)), List.of());
+
+        // The equipped model and the bare body share topology, so only the separate bases keep a
+        // bare line from becoming a delta of the player model (or the other way round).
+        List<Map<String, Object>> first = sampler.frame(1, List.of(withBare("A", 1, geometry(3, 0), 7,
+            () -> geometry(3, 0))), List.of());
+        Map<String, Object> player = ofKind(first, ModelLines.PLAYER).get(0);
+        Map<String, Object> bare = ofKind(first, ModelLines.BARE).get(0);
+        assertEquals(List.of("model", "model", "spawn", "f", "pm", "pb"), types(first));
+        assertEquals(0, player.get("id"));
+        assertEquals(1, bare.get("id"));
+        assertEquals(List.of("t", "id", "kind", "v", "f", "c"), new ArrayList<>(bare.keySet()));
+        assertTrue("the equipped line keeps its held", player.containsKey("held"));
+        assertArrayEquals(new int[] { 0, 1 }, pbRows(first).get(0));
+
+        // A new pose: each kind deltas against its own base.
+        List<Map<String, Object>> moved = sampler.frame(2, List.of(withBare("A", 2, geometry(3, 4), 7,
+            () -> geometry(3, 5))), List.of());
+        assertEquals(0, ofKind(moved, ModelLines.PLAYER).get(0).get("base"));
+        Map<String, Object> bareDelta = ofKind(moved, ModelLines.BARE).get(0);
+        assertEquals(1, bareDelta.get("base"));
+        assertArrayEquals(new int[] { 5, 5, 5, 5, 5, 5, 5, 5, 5 }, (int[]) bareDelta.get("dv"));
+        assertFalse(bareDelta.containsKey("held"));
+
+        // Another bare look with the same topology has no bare base yet: written in full.
+        Map<String, Object> other = ofKind(sampler.frame(3, List.of(withBare("A", 2, geometry(3, 4), 7,
+            () -> geometry(3, 5)), withBare("B", 2, geometry(3, 4), 8, () -> geometry(3, 9))), List.of()),
+            ModelLines.BARE).get(0);
+        assertFalse(other.containsKey("base"));
+        assertFalse(other.containsKey("held"));
+    }
+
+    @Test
+    public void pbRowsOnlyWhenTheBareModelChanges()
+    {
+        ReplaySampler sampler = new ReplaySampler();
+        AtomicInteger calls = new AtomicInteger();
+        // No appearance tick: the bare body does not wait for one (no pm yet, but a pb).
+        List<Map<String, Object>> first = sampler.frame(1, List.of(withBare("A", 1, geometry(3, 0), 7,
+            counting(calls, geometry(3, 0))), withBare("B", 1, geometry(3, 0), 7, counting(calls, geometry(3, 0)))),
+            List.of());
+        assertFalse(types(first).contains("pm"));
+        assertEquals("one key for two players with the same bare look and pose", 1, calls.get());
+        assertEquals(2, pbRows(first).size());
+
+        // Same keys: no pb, no capture.
+        assertFalse(types(sampler.frame(2, List.of(withBare("A", 1, geometry(3, 0), 7, counting(calls, geometry(3, 0))),
+            withBare("B", 1, geometry(3, 0), 7, counting(calls, geometry(3, 0)))), List.of())).contains("pb"));
+
+        // Only A changes pose: one row, for A.
+        List<Map<String, Object>> moved = sampler.frame(3, List.of(withBare("A", 2, geometry(3, 0), 7,
+            counting(calls, geometry(3, 1))), withBare("B", 1, geometry(3, 0), 7, counting(calls, geometry(3, 0)))),
+            List.of());
+        assertEquals(1, pbRows(moved).size());
+        assertArrayEquals(new int[] { 0, 1 }, pbRows(moved).get(0));
+        assertEquals(2, calls.get());
+
+        // Unknown bare look, or nothing to capture: no row, and the last one stands.
+        assertFalse(types(sampler.frame(4, List.of(withBare("A", 3, geometry(3, 0), null,
+            counting(calls, geometry(3, 0)))), List.of())).contains("pb"));
+        assertEquals(2, calls.get());
+
+        // B left at 4; a respawn writes its pb again although the id is unchanged.
+        List<Map<String, Object>> back = sampler.frame(5, List.of(withBare("B", 1, geometry(3, 0), 7,
+            counting(calls, geometry(3, 0)))), List.of());
+        assertArrayEquals(new int[] { 1, 0 }, pbRows(back).get(0));
     }
 
     @Test

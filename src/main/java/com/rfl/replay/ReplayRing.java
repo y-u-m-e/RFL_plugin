@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
  * <li>a ring of every line with a {@code cyc}, as its JSON text, for the last {@link #setKeepCycles
  * keep window} and at most {@link #setCapBytes cap} bytes. A line leaving the ring is folded into
  * the <em>base state</em> ({@link State}): each present player's spawn, latest {@code app},
- * {@code team}, {@code f} row, {@code pm} model, {@code tt} tile and {@code spot} set, and each
+ * {@code team}, {@code f} row, {@code pm} model, {@code pb} bare model, {@code tt} tile and {@code spot} set, and each
  * plugin toggle, as of the newest line evicted. Row lines keep only their text: their rows are
  * read back from it when needed ({@link #rows}), so a crowded house costs its JSON and no more;</li>
  * <li>the {@code hdr} line and the {@code plugins} line;</li>
@@ -134,6 +134,7 @@ final class ReplayRing implements GzipNdjsonWriter.LineTap
         int[] row;
         int[] tile;
         int model = -1;
+        int bare = -1;
 
         PlayerSnap(int index, String name)
         {
@@ -150,6 +151,7 @@ final class ReplayRing implements GzipNdjsonWriter.LineTap
             copy.row = row;
             copy.tile = tile;
             copy.model = model;
+            copy.bare = bare;
             return copy;
         }
     }
@@ -194,6 +196,7 @@ final class ReplayRing implements GzipNdjsonWriter.LineTap
                     break;
                 case "f":
                 case "pm":
+                case "pb":
                 case "tt":
                     applyRows(entry);
                     break;
@@ -245,6 +248,10 @@ final class ReplayRing implements GzipNdjsonWriter.LineTap
                 else if ("pm".equals(entry.type))
                 {
                     snap.model = row.length > 1 ? row[1] : -1;
+                }
+                else if ("pb".equals(entry.type))
+                {
+                    snap.bare = row.length > 1 ? row[1] : -1;
                 }
                 else
                 {

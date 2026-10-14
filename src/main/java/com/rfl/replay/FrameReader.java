@@ -2,6 +2,7 @@ package com.rfl.replay;
 
 import sh.yumekui.toolkit.text.PlayerNames;
 import com.rfl.Handegg;
+import com.rfl.contact.BareBody;
 import sh.yumekui.toolkit.model.ModelCapture;
 import sh.yumekui.toolkit.model.RenderableModels;
 
@@ -40,6 +41,8 @@ final class FrameReader
 
     private final RecorderStats stats;
     private HeldBalls heldBalls = (player, model) -> null;
+    /** Where each player's bare body comes from; null records none. */
+    private BareBody bareBody;
 
     FrameReader(RecorderStats stats)
     {
@@ -50,6 +53,12 @@ final class FrameReader
     void setHeldBalls(HeldBalls heldBalls)
     {
         this.heldBalls = heldBalls == null ? (player, model) -> null : heldBalls;
+    }
+
+    /** Sets where each player's bare body comes from; null records none. */
+    void setBareBody(BareBody bareBody)
+    {
+        this.bareBody = bareBody;
     }
 
     /** Every named player in view with a position, this frame. */
@@ -64,10 +73,13 @@ final class FrameReader
             {
                 continue;
             }
-            // Player#getModel() builds the posed model: the sampler calls this only on a new key.
+            // Player#getModel() and BareBody#posed build the posed models: the sampler calls these
+            // only on a new key.
+            BareBody bodies = bareBody;
             players.add(PlayerState.withHeld(name, at.getX(), at.getY(), player.getCurrentOrientation(),
                 player.getAnimation(), player.getAnimationFrame(), player.getPoseAnimation(),
-                player.getPoseAnimationFrame(), spots(player), () -> capturePlayer(player), look(player)));
+                player.getPoseAnimationFrame(), spots(player), () -> capturePlayer(player), look(player),
+                bodies == null ? null : bodies.look(player), bodies == null ? null : () -> captureBare(bodies, player)));
         }
         return players;
     }
@@ -152,6 +164,21 @@ final class FrameReader
             int[] held = PlayerModel.recorded(heldBalls.faces(player, model), model.getFaceCount(),
                 model.getFaceColors3(), model.getFaceTransparencies());
             return new PlayerModel(geometry, held);
+        }
+        catch (RuntimeException e)
+        {
+            stats.captureFailed();
+            return null;
+        }
+    }
+
+    /** A player's posed bare body as replay geometry; null like {@link #capture}. */
+    private ModelCapture.Geometry captureBare(BareBody bodies, Player player)
+    {
+        try
+        {
+            Model model = bodies.posed(player);
+            return model == null || !RenderableModels.hasArrays(model) ? null : RenderableModels.geometry(model);
         }
         catch (RuntimeException e)
         {

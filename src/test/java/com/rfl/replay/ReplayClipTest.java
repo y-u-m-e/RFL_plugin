@@ -132,7 +132,7 @@ public class ReplayClipTest
      * Writes a recording the way the recorder does (deferred hdr, plugins, models and pitch; team
      * lines as JSON text; the rest serialised at once) to {@code writer}:
      * Amy (0) moves every cycle and swaps poses (models 0, 1 = delta of 0) every 50; Bob (1) stands
-     * still from 1002 with one pm (model 2) and a spot anim from 1500; Cy (2) leaves at 1400; Dee
+     * still from 1002 with one pm (model 2), one pb (bare model 3) and a spot anim from 1500; Cy (2) leaves at 1400; Dee
      * (3) arrives at 1950 with a new model (5, delta of 4); a ball (model 20) flies 1900 to 1950;
      * Amy and Bob collide at 1920 (Bob holding the ball); app changes at 1600.
      */
@@ -143,6 +143,7 @@ public class ReplayClipTest
         writer.writeDeferred(model(0, "player", null));
         writer.writeDeferred(model(1, "player", 0));
         writer.writeDeferred(model(2, "player", null));
+        writer.writeDeferred(model(3, "bare", null));
         writer.write(ReplayLines.spawn(START + 1, 0, "Amy"));
         writer.writeJson(ReplayLines.team(START + 1, 0, Teams.Team.A));
         writer.write(ReplayLines.spawn(START + 1, 1, "Bob"));
@@ -222,6 +223,10 @@ public class ReplayClipTest
             if (!pms.isEmpty())
             {
                 writer.write(ReplayLines.playerModels(cyc, pms));
+            }
+            if (cyc == START + 2)
+            {
+                writer.write(ReplayLines.bareModels(cyc, List.of(new int[] { 1, 3 })));
             }
             if (cyc == 1500)
             {
@@ -394,6 +399,8 @@ public class ReplayClipTest
         // Bob stood still from 1002: his row, model, look and team come from long before the window.
         assertEquals(List.of(7000, 7000), rec.rowAt(1, plan.fromCyc));
         assertEquals(Integer.valueOf(2), rec.modelAt(1, plan.fromCyc));
+        assertEquals("pb at from", Integer.valueOf(plan.fromCyc), rec.firstAt(1, "pb"));
+        assertEquals(Integer.valueOf(3), rec.bareAt(1, plan.fromCyc));
         assertEquals("\"B\"", rec.teamAt(1, plan.fromCyc));
         assertEquals("the look in force at 1500 (from 1020), not the later one", "[1,1]", rec.appAt(1, plan.fromCyc));
         // Bob's spot anim started at 1500 itself: it comes through as a window line.
@@ -869,12 +876,13 @@ public class ReplayClipTest
                     }
                     break;
                 case "pm":
+                case "pb":
                     for (JsonElement r : line.getAsJsonArray("p"))
                     {
                         JsonArray row = r.getAsJsonArray();
                         int model = row.get(1).getAsInt();
                         use(model, line);
-                        track(row.get(0).getAsInt(), "pm", cyc, model);
+                        track(row.get(0).getAsInt(), t, cyc, model);
                     }
                     break;
                 case "ball":
@@ -989,6 +997,11 @@ public class ReplayClipTest
         Integer modelAt(int i, int cyc)
         {
             return (Integer) at(i, "pm", cyc);
+        }
+
+        Integer bareAt(int i, int cyc)
+        {
+            return (Integer) at(i, "pb", cyc);
         }
 
         String teamAt(int i, int cyc)

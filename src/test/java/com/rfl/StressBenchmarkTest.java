@@ -6,6 +6,7 @@ import com.rfl.contact.ContactTracker;
 import com.rfl.replay.PlayerState;
 import com.rfl.replay.ReplaySampler;
 import sh.yumekui.toolkit.geom.TriangleMesh;
+import sh.yumekui.toolkit.model.ModelCapture;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -45,8 +46,10 @@ import org.junit.Test;
  * <p>Per frame it times (a) building N meshes, (b) {@link ContactTracker#update} in display mode
  * (Show touching triangles on: same handegg-gated pairs as handegg-only, but a full count on every
  * one of them each frame) and handegg-only mode (display and debug off, sampled once per tick),
- * and (c) {@link ReplaySampler#frame}. A game tick passes every 30 frames, which forces a
- * full-count sample in handegg-only mode, as in game.
+ * and (c) {@link ReplaySampler#frame}, with every player's bare body recorded (four bare looks, the
+ * humanoid as their model; its capture is a ready array, so this times the keys, the delta encoding
+ * and the {@code pb} rows, not the client's posing). A game tick passes every 30 frames, which forces
+ * a full-count sample in handegg-only mode, as in game.
  */
 public class StressBenchmarkTest
 {
@@ -58,6 +61,8 @@ public class StressBenchmarkTest
     private static final double SPEED = 8;
     private static final double JOSTLE = 25;
     private static final int FRAMES_PER_TICK = 30;
+    /** Distinct bare looks among the players (outfits share bare bodies). */
+    private static final int BARE_LOOKS = 4;
 
     private static int frames;
     private static int warmup;
@@ -323,6 +328,26 @@ public class StressBenchmarkTest
         int meshTriangles;
     }
 
+    /** The body as recorded geometry (vertices rounded, grey faces). */
+    static ModelCapture.Geometry geometry(Body body)
+    {
+        int[] v = new int[body.count * 3];
+        for (int i = 0; i < body.count; i++)
+        {
+            v[i * 3] = Math.round(body.xs[i]);
+            v[i * 3 + 1] = Math.round(body.ys[i]);
+            v[i * 3 + 2] = Math.round(body.zs[i]);
+        }
+        int[] f = new int[body.faces * 3];
+        for (int i = 0; i < body.faces; i++)
+        {
+            f[i * 3] = body.f1[i];
+            f[i * 3 + 1] = body.f2[i];
+            f[i * 3 + 2] = body.f3[i];
+        }
+        return new ModelCapture.Geometry(v, f, new int[body.faces * 3]);
+    }
+
     /** Runs warmup + frames of one configuration; display picks the ContactTracker mode. */
     static Run run(Body body, int n, double share, boolean display)
     {
@@ -337,6 +362,7 @@ public class StressBenchmarkTest
         run.sampler = new long[frames];
         run.total = new long[frames];
         long overlaps = 0;
+        ModelCapture.Geometry bare = geometry(body);
         int total = warmup + frames;
         for (int frame = 0; frame < total; frame++)
         {
@@ -359,7 +385,8 @@ public class StressBenchmarkTest
             for (int i = 0; i < n; i++)
             {
                 states.add(new PlayerState(pitch.names[i], (int) pitch.x[i], (int) pitch.y[i],
-                    pitch.orientation(i), 1234, frame % 20, 824, frame % 12, PlayerState.NO_SPOTS, null, null));
+                    pitch.orientation(i), 1234, frame % 20, 824, frame % 12, PlayerState.NO_SPOTS, null, null,
+                    i % BARE_LOOKS, () -> bare));
             }
             sampler.frame(frame, states, Collections.emptyList());
             long t3 = System.nanoTime();

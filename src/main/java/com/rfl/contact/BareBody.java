@@ -166,8 +166,11 @@ public final class BareBody
         return ids;
     }
 
-    /** The player's posed bare body, or null when not ready. Read its vertices immediately. */
-    Model posed(Player player)
+    /**
+     * A hash of the player's bare look (gender and the kit ids {@link #posed} would build), equal for
+     * any two players whose bare bodies are the same whatever they wear; null when not ready.
+     */
+    public Integer look(Player player)
     {
         Map<Integer, Kit> table = kits;
         PlayerComposition composition = player.getPlayerComposition();
@@ -175,13 +178,21 @@ public final class BareBody
         {
             return null;
         }
-        int[] kitIds = new int[SLOTS.length];
-        for (int i = 0; i < SLOTS.length; i++)
+        boolean female = composition.getGender() == FEMALE;
+        return 31 * Arrays.hashCode(ids(table, composition, female)) + (female ? 1 : 0);
+    }
+
+    /** The player's posed bare body, or null when not ready. Read its vertices immediately. */
+    public Model posed(Player player)
+    {
+        Map<Integer, Kit> table = kits;
+        PlayerComposition composition = player.getPlayerComposition();
+        if (table == null || composition == null)
         {
-            kitIds[i] = composition.getKitId(SLOTS[i]);
+            return null;
         }
         boolean female = composition.getGender() == FEMALE;
-        int[] ids = resolve(table, defaults, female, kitIds);
+        int[] ids = ids(table, composition, female);
         String key = female + Arrays.toString(ids);
         CachedBody body = models.get(key);
         if (body == null)
@@ -205,6 +216,17 @@ public final class BareBody
         // pose: read it at once.
         return client.applyTransformations(body.model, animation, player.getAnimationFrame(),
             pose, player.getPoseAnimationFrame());
+    }
+
+    /** The kit ids the bare body is built from, per {@link #SLOTS} entry ({@link #resolve}). */
+    private int[] ids(Map<Integer, Kit> table, PlayerComposition composition, boolean female)
+    {
+        int[] kitIds = new int[SLOTS.length];
+        for (int i = 0; i < SLOTS.length; i++)
+        {
+            kitIds[i] = composition.getKitId(SLOTS[i]);
+        }
+        return resolve(table, defaults, female, kitIds);
     }
 
     void reset()

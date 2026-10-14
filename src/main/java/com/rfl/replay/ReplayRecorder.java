@@ -4,6 +4,7 @@ import sh.yumekui.toolkit.text.PlayerNames;
 import sh.yumekui.toolkit.io.GzipNdjsonWriter;
 
 import com.rfl.RflConfig;
+import com.rfl.contact.BareBody;
 import com.rfl.contact.Collision;
 import com.rfl.incomplete.Incomplete;
 import com.rfl.log.CollisionLog;
@@ -369,6 +370,12 @@ public final class ReplayRecorder
     public void setHeldBallSource(BiFunction<Player, Model, int[]> source)
     {
         reader.setHeldBalls(source == null ? null : source::apply);
+    }
+
+    /** Client thread: where each player's bare body comes from, for {@code pb} lines; null records none. */
+    public void setBareBody(BareBody bareBody)
+    {
+        reader.setBareBody(bareBody);
     }
 
     /** Client thread: where {@code team} lines get each player's team ({@link Teams#team}). */

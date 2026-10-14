@@ -103,6 +103,17 @@ public final class ReplayLines
         return line;
     }
 
+    /**
+     * {@code {"t":"pb","cyc":..,"p":[[i,modelId],...]}}: each player's bare body model
+     * ({@code "kind":"bare"}), a row only when it changed, as for {@code pm}.
+     */
+    static Map<String, Object> bareModels(int cycle, List<int[]> rows)
+    {
+        Map<String, Object> line = line("pb", cycle);
+        line.put("p", rows);
+        return line;
+    }
+
     /** {@code {"t":"spot","cyc":..,"i":..,"s":[[id,frame,height],...]}} from flat triples. */
     static Map<String, Object> spots(int cycle, int index, int[] flatTriples)
     {
