@@ -384,6 +384,7 @@ turn it on.
 | Hitbox source | `hitboxSource` | `EQUIPPED` | Experimental. `EQUIPPED`: the model you see, armour included; a held handegg's or gnomeball's own geometry never counts. `BARE_BODY`: the player's body without equipment. Changes which contacts are detected. |
 | Save collisions | `saveCollisions` | `false` | Appends every collision and incomplete to `rfl/collisions`, one file per day. |
 | Collision chat message | `collisionChatMessage` | `false` | Posts a game message naming both players in each handegg collision, the one holding the handegg first when there is a lone holder. |
+| Hide in-game highlights | `hideInGameHighlights` | `false` | Hides everything drawn in the game view (contact and incomplete tiles, touching triangles, hitboxes, team tiles, clicked panel rows). Turn on while playing: the settings below stay as they are; detection, logging and chat messages keep running. |
 | Highlight contacts | `highlightContacts` | `false` | Briefly highlights the tile under each handegg collision as it starts. |
 | Contact highlight colour | `contactHighlightColor` | `#FFE600` at ~60% alpha (RGBA 255,230,0,153) | Colour of the contact tile highlight, and of touching triangles. |
 | Highlight duration | `highlightDurationMs` | `1200` ms (range 200–5000) | How long a contact or incomplete tile highlight takes to fade out. |

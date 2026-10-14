@@ -32,4 +32,17 @@ public final class RflOverlays
     {
         overlays.forEach(overlayManager::remove);
     }
+
+    /** Adds or removes all four, for the Hide in-game highlights switch. */
+    public void setShown(boolean shown)
+    {
+        if (shown)
+        {
+            addAll();
+        }
+        else
+        {
+            removeAll();
+        }
+    }
 }

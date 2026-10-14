@@ -169,6 +169,23 @@ public interface RflConfig extends Config
     // ---- Display ----
 
     /**
+     * @return true to hide every in-game drawing at once, leaving detection, logging and chat as set
+     */
+    @ConfigItem(
+        keyName = "hideInGameHighlights",
+        name = "Hide in-game highlights",
+        description = "Hides everything this plugin draws in the game view: contact and incomplete tiles, "
+            + "touching triangles, hitboxes, team tiles and clicked panel rows. Turn on while playing: the "
+            + "settings below stay as they are; detection, logging and chat messages keep running.",
+        section = DISPLAY_SECTION,
+        position = 10
+    )
+    default boolean hideInGameHighlights()
+    {
+        return false;
+    }
+
+    /**
      * @return true to briefly highlight the tile under each collision as it starts
      */
     @ConfigItem(

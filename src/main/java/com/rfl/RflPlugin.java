@@ -144,7 +144,7 @@ public class RflPlugin extends Plugin
     @Override
     protected void startUp()
     {
-        overlays.addAll();
+        overlays.setShown(!config.hideInGameHighlights());
         // startUp runs off the client thread, so the bundled kit table is read here, not per frame.
         bareBody.load();
         // Session counts reset on every start-up.
@@ -229,6 +229,10 @@ public class RflPlugin extends Plugin
         if (RflConfig.GROUP.equals(event.getGroup()) && "showPanel".equals(event.getKey()))
         {
             SwingUtilities.invokeLater(panel::syncPanel);
+        }
+        if (RflConfig.GROUP.equals(event.getGroup()) && "hideInGameHighlights".equals(event.getKey()))
+        {
+            overlays.setShown(!config.hideInGameHighlights());
         }
         if (RflConfig.GROUP.equals(event.getGroup()) && "clipSeconds".equals(event.getKey()))
         {
