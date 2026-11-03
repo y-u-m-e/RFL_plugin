@@ -30,8 +30,9 @@ moment. Crop: full client window (panel plus game view). Size: ~1280px wide. -->
 
 1. Install **RFL Audit** from the Plugin Hub.
 2. Open the RFL panel in the sidebar (the whistle icon).
-3. Turn on the switches you want in the plugin's settings — **everything defaults to off**, so
-   nothing is detected or recorded until you say so. At minimum, turn on **Detect contacts** to
+3. Turn on the switches you want in the plugin's settings — your own plugin list is
+   always logged to local files (see [`rfl/plugins/`](#rflplugins)), and every other setting
+   defaults to off, so nothing else is detected or recorded until you say so. At minimum, turn on **Detect contacts** to
    see collisions, and **Detect incompletes** if you also want those ruled.
 4. Assign players to **Team A** and **Team B**, either in the panel's Teams view or by
    right-clicking them in the house. Nothing is detected until both teams have at least one player.
@@ -368,18 +369,20 @@ A toggle line:
 
 `source` is `"builtin"` (ships with RuneLite), `"hub"` (installed from the Plugin Hub) or
 `"sideloaded"` (anything else). Only your own client's `PluginManager` is read — no other player's
-plugins are ever known to the plugin.
+plugins are ever known to the plugin. Turning RFL Audit off while inside a house writes no closing
+`leave` snapshot; the next start-up logs an `enter`.
 
 Open either folder with the panel's **Open folder** button, which opens `.runelite/rfl/` itself.
 
 ## Configuration reference
 
-Every setting defaults to off (or to the value shown); nothing detects, draws or records until you
-turn it on.
+Every setting defaults to off (or to the value shown); apart from the always-on plugin-list log
+(see [`rfl/plugins/`](#rflplugins)), nothing detects, draws or records until you turn it on.
 
 | Name | Key | Default | What it does |
 |---|---|---|---|
 | Show RFL panel | `showPanel` | `false` | Adds the RFL panel to the sidebar: house status, the replay recorder, this session's collisions and incompletes, team assignments, Copy plugin history and Open folder. |
+| Right-click team options | `teamMenuEntries` | `false` | Adds RFL: Team A / Team B / Unassign to other players' right-click menus in a house. The panel's Teams view works either way. |
 | Detect contacts | `reportContacts` | `false` | Inside a player-owned house, detects when any two players in view touch while either holds a handegg or gnomeball. Incompletes need this on. |
 | Hitbox source | `hitboxSource` | `EQUIPPED` | Experimental. `EQUIPPED`: the model you see, armour included; a held handegg's or gnomeball's own geometry never counts. `BARE_BODY`: the player's body without equipment. Changes which contacts are detected. |
 | Save collisions | `saveCollisions` | `false` | Appends every collision and incomplete to `rfl/collisions`, one file per day. |
@@ -398,7 +401,6 @@ turn it on.
 | Record replays | `recordReplays` | `false` | Records every player-owned house visit to a local replay file (`rfl/replays`) for the RFL replay viewer. |
 | Replay file name | `replayFileName` | `{date}_{time}_w{world}` | Name template for each replay file. See [File name templates](#file-name-templates) for tokens and fallback behaviour. |
 | Record overhead chat | `recordOverheadChat` | `false` | Adds public overhead chat (yours too) to replays, for keeping time. A shared replay then contains other players' public chat. |
-| Right-click team options | `teamMenuEntries` | `false` | Adds RFL: Team A / Team B / Unassign to other players' right-click menus in a house. The panel's Teams view works either way. |
 | Save replay clip hotkey | `saveClipHotkey` | not set | While a replay is recording, saves its last Clip length as a [replay buffer clip](#replay-buffer-clips) in `rfl/replays/snapshot reviews`. Same as the panel's Save last button. |
 | Clip length (seconds) | `clipSeconds` | `180` (range 30–300) | How much a saved clip holds, counting back from when you save it. Changes apply to the recording in progress. |
 | Clip file name | `clipFileName` | `{date}_{time}_w{world}_{collision}` | Name template for each clip. See [File name templates](#file-name-templates) for tokens and fallback behaviour. |
@@ -558,3 +560,8 @@ feeds replays) is an original implementation, written from public sources only: 
 colour layout documented by RuneLite's BSD-licensed `net.runelite.api.JagexColor`, the standard
 HSL-to-RGB formula, and a brightness gamma that is the inverse of `JagexColor.rgbToHSL`. The file's
 header cites them.
+
+The bundled `identkits.json` (identity-kit to model-id mappings) was generated once from the
+OpenRS2 archive of the OSRS cache (cache 2727, index 2 group 3; the source is recorded in the
+file's first field). It is read only by the **Bare body** hitbox option and the bare-body lines in
+replays; the plugin never downloads or refreshes it.
