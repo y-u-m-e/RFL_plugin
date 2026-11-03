@@ -21,14 +21,14 @@ import org.junit.Test;
 import sh.yumekui.toolkit.geom.TriangleMesh;
 
 /**
- * {@link HeldBallFaces} on a real case: Sharnos catching a handegg next to C J N J, rebuilt from
- * the posed models in a recording (ramsvdrags_half2, 2026-10-09), trimmed to the two players at
+ * {@link HeldBallFaces} on a real case: Receiver catching a handegg next to Defender, rebuilt from
+ * the posed models in a recording (a league recording), trimmed to the two players at
  * two cycles. The recorded model already holds the egg: a 224-face block over 114 vertices at
  * faces 432..655, the same counts as the cache's handegg model.
  *
  * <ul>
- *   <li>692073, the catch: Sharnos holds the egg above his head into C J N J's hat. Only the egg
- *   crosses C J N J, so with its faces left out nothing touches.</li>
+ *   <li>692073, the catch: Receiver holds the egg above his head into Defender's hat. Only the egg
+ *   crosses Defender, so with its faces left out nothing touches.</li>
  *   <li>692041: their arms cross (17 touching triangle pairs, the count the plugin saved for the
  *   collision), which is body contact and counts on its own.</li>
  * </ul>
@@ -40,8 +40,8 @@ import sh.yumekui.toolkit.geom.TriangleMesh;
  */
 public class HeldBallRealCaseTest
 {
-    private static final String SHARNOS = "Sharnos";
-    private static final String CJNJ = "C J N J";
+    private static final String RECEIVER = "Receiver";
+    private static final String DEFENDER = "Defender";
     private static final int[] EGG_BLOCK = {432, 656};
     /** Equipment ids above this are items (id + this), as the composition stores them. */
     private static final int ITEM_OFFSET = 2048;
@@ -71,48 +71,48 @@ public class HeldBallRealCaseTest
     @Test
     public void matchesTheEggBlockInThisOutfit()
     {
-        int[] equipment = ints(players.getAsJsonObject(SHARNOS).getAsJsonArray("equipment"));
+        int[] equipment = ints(players.getAsJsonObject(RECEIVER).getAsJsonArray("equipment"));
         int weapon = equipment[3] - ITEM_OFFSET;
-        assertTrue("Sharnos's weapon slot holds a handegg", Handegg.isHandegg(weapon));
-        assertArrayEquals(EGG_BLOCK, range(SHARNOS));
-        // C J N J holds nothing, so nothing of theirs is left out.
-        int[] other = ints(players.getAsJsonObject(CJNJ).getAsJsonArray("equipment"));
+        assertTrue("Receiver's weapon slot holds a handegg", Handegg.isHandegg(weapon));
+        assertArrayEquals(EGG_BLOCK, range(RECEIVER));
+        // Defender holds nothing, so nothing of theirs is left out.
+        int[] other = ints(players.getAsJsonObject(DEFENDER).getAsJsonArray("equipment"));
         assertEquals(-1, Handegg.wornModel(other[3] - ITEM_OFFSET));
     }
 
     @Test
     public void eggAgainstTheHatAtTheCatchIsNoContact()
     {
-        TriangleMesh full = mesh(SHARNOS, "692073", HeldBallFaces.NONE);
-        TriangleMesh hat = mesh(CJNJ, "692073", HeldBallFaces.NONE);
+        TriangleMesh full = mesh(RECEIVER, "692073", HeldBallFaces.NONE);
+        TriangleMesh hat = mesh(DEFENDER, "692073", HeldBallFaces.NONE);
         TriangleMesh.Hits unmasked = new TriangleMesh.Intersector().intersect(full, hat, Integer.MAX_VALUE);
-        assertNotNull("unmasked, the egg crosses C J N J", unmasked);
+        assertNotNull("unmasked, the egg crosses Defender", unmasked);
         for (int k = 0; k < unmasked.count; k++)
         {
             int face = unmasked.pairs[k * 2];
             assertTrue("only egg faces touch, not face " + face, face >= EGG_BLOCK[0] && face < EGG_BLOCK[1]);
         }
 
-        TriangleMesh carrier = mesh(SHARNOS, "692073", range(SHARNOS));
+        TriangleMesh carrier = mesh(RECEIVER, "692073", range(RECEIVER));
         assertNull(new TriangleMesh.Intersector().intersect(carrier, hat, Integer.MAX_VALUE));
         ContactTracker tracker = tracker();
         tracker.setCycle(692073);
-        assertTrue(tracker.update(Map.of(SHARNOS, carrier, CJNJ, hat), Set.of(SHARNOS), 1000, 6309, true).isEmpty());
+        assertTrue(tracker.update(Map.of(RECEIVER, carrier, DEFENDER, hat), Set.of(RECEIVER), 1000, 6309, true).isEmpty());
         assertTrue(tracker.contactsAt(692073, 3).isEmpty());
     }
 
     @Test
     public void armsCrossingIsStillContact()
     {
-        TriangleMesh carrier = mesh(SHARNOS, "692041", range(SHARNOS));
-        TriangleMesh other = mesh(CJNJ, "692041", HeldBallFaces.NONE);
+        TriangleMesh carrier = mesh(RECEIVER, "692041", range(RECEIVER));
+        TriangleMesh other = mesh(DEFENDER, "692041", HeldBallFaces.NONE);
         ContactTracker tracker = tracker();
         tracker.setCycle(692041);
-        List<TriangleMesh.Hits> started = tracker.update(Map.of(SHARNOS, carrier, CJNJ, other), Set.of(SHARNOS),
+        List<TriangleMesh.Hits> started = tracker.update(Map.of(RECEIVER, carrier, DEFENDER, other), Set.of(RECEIVER),
             1000, 6308, true);
         assertEquals(1, started.size());
         assertEquals(17, started.get(0).count);
-        assertEquals(List.of(CJNJ), tracker.contactsAt(692041, 3).get(SHARNOS));
+        assertEquals(List.of(DEFENDER), tracker.contactsAt(692041, 3).get(RECEIVER));
     }
 
     /**
@@ -126,13 +126,13 @@ public class HeldBallRealCaseTest
     {
         ContactTracker tracker = tracker();
         tracker.setCycle(692041);
-        tracker.update(Map.of(SHARNOS, mesh(SHARNOS, "692041", range(SHARNOS)),
-            CJNJ, mesh(CJNJ, "692041", HeldBallFaces.NONE)), Set.of(SHARNOS), 1000, 6308, true);
+        tracker.update(Map.of(RECEIVER, mesh(RECEIVER, "692041", range(RECEIVER)),
+            DEFENDER, mesh(DEFENDER, "692041", HeldBallFaces.NONE)), Set.of(RECEIVER), 1000, 6308, true);
         tracker.setCycle(692073);
-        TriangleMesh carrier = mesh(SHARNOS, "692073", range(SHARNOS));
-        TriangleMesh hat = mesh(CJNJ, "692073", HeldBallFaces.NONE);
+        TriangleMesh carrier = mesh(RECEIVER, "692073", range(RECEIVER));
+        TriangleMesh hat = mesh(DEFENDER, "692073", HeldBallFaces.NONE);
         assertTrue(TriangleMesh.boundsOverlap(carrier, hat));
-        tracker.update(Map.of(SHARNOS, carrier, CJNJ, hat), Set.of(SHARNOS), 1640, 6309, true);
+        tracker.update(Map.of(RECEIVER, carrier, DEFENDER, hat), Set.of(RECEIVER), 1640, 6309, true);
         assertTrue(tracker.contactsAt(692073, 3).isEmpty());
     }
 

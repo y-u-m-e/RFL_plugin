@@ -102,24 +102,24 @@ public class IncompleteDetectorTest
     }
 
     @Test
-    public void headlineGorillebCatchesInContactWithCorcrasNotJordanClark()
+    public void headlineReceiverCatchesInContactWithDefenderANotDefenderB()
     {
-        // tlg sc=36131: egg gone at 36187; Gorilleb touches Corcras 36181-36201 and 36207-36208,
-        // nobody 36209-36219, then Jordan Clark from 36220. The old next-tick check (36211) saw nothing.
-        Sim s = new Sim("Gorilleb");
-        s.teams.put("Gorilleb", Teams.Team.A);
-        s.teams.put("Corcras", Teams.Team.B);
-        s.teams.put("Jordan Clark", Teams.Team.B);
-        s.touching.put("Corcras", c -> c >= 36181 && c <= 36201 || c >= 36207 && c <= 36208);
-        s.touching.put("Jordan Clark", c -> c >= 36220);
+        // tlg sc=36131: egg gone at 36187; Receiver touches DefenderA 36181-36201 and 36207-36208,
+        // nobody 36209-36219, then DefenderB from 36220. The old next-tick check (36211) saw nothing.
+        Sim s = new Sim("Receiver");
+        s.teams.put("Receiver", Teams.Team.A);
+        s.teams.put("DefenderA", Teams.Team.B);
+        s.teams.put("DefenderB", Teams.Team.B);
+        s.touching.put("DefenderA", c -> c >= 36181 && c <= 36201 || c >= 36207 && c <= 36208);
+        s.touching.put("DefenderB", c -> c >= 36220);
         s.throwFrom = 36091;
         s.gain = 36120;
         s.despawn = 36187;
         s.run(36090, 36260);
         assertEquals(1, s.found.size());
         IncompleteDetector.Call i = s.found.get(0);
-        assertEquals("Gorilleb", i.receiver);
-        assertEquals(List.of("Corcras"), i.contacts);
+        assertEquals("Receiver", i.receiver);
+        assertEquals(List.of("DefenderA"), i.contacts);
         assertEquals(36187, i.catchCycle);
         assertEquals(36187 * 20L, i.catchMs);
     }
