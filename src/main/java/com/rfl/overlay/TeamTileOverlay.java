@@ -24,11 +24,11 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 /**
  * While the RFL panel is the open sidebar tab and its Teams view is selected, outlines and fills
  * the tile under each player on Team A or Team B in their team colour. Unassigned players get
- * nothing. Display only; models are never tinted. Draws inside and outside a house alike, since
- * assignments are by name.
+ * nothing. Display only; models are never tinted. Draws only while in a house, like the rest of the
+ * plugin.
  *
- * <p>Threads: {@link #setShowing} from the EDT, {@link #render} on the client thread; the flag is
- * volatile. When the Teams view isn't showing, render returns before touching any player.
+ * <p>Threads: {@link #setShowing} from the EDT, {@link #setInPoh} and {@link #render} on the client
+ * thread; both flags are volatile. When the Teams view isn't showing, render returns before touching any player.
  */
 @Singleton
 public final class TeamTileOverlay extends Overlay
@@ -40,6 +40,7 @@ public final class TeamTileOverlay extends Overlay
     private final Client client;
     private final Teams teams;
     private volatile boolean showing;
+    private volatile boolean inPoh;
 
     @Inject
     TeamTileOverlay(Client client, Teams teams)
@@ -62,6 +63,18 @@ public final class TeamTileOverlay extends Overlay
         this.showing = showing;
     }
 
+    /** Client thread: whether the local player is in a house; tiles draw only then. */
+    public void setInPoh(boolean inPoh)
+    {
+        this.inPoh = inPoh;
+    }
+
+    /** Whether to draw at all: the Teams view is on screen and the player is in a house. */
+    static boolean draws(boolean showing, boolean inPoh)
+    {
+        return showing && inPoh;
+    }
+
     /** The team whose tile colour a player gets, or null to skip them (unassigned or nameless). */
     static Teams.Team tileTeam(String name, Function<String, Teams.Team> teamOf)
     {
@@ -71,7 +84,7 @@ public final class TeamTileOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        if (!showing)
+        if (!draws(showing, inPoh))
         {
             return null;
         }

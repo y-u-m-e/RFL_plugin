@@ -8,6 +8,7 @@ import com.rfl.log.CollisionLog;
 import com.rfl.log.PluginAudit;
 import com.rfl.log.PluginSnapshotter;
 import com.rfl.overlay.RflOverlays;
+import com.rfl.overlay.TeamTileOverlay;
 import com.rfl.panel.RflPanelController;
 import com.rfl.panel.SessionEvents;
 import com.rfl.replay.ReplayLines;
@@ -127,6 +128,9 @@ public class RflPlugin extends Plugin
     private RflPanelController panel;
 
     @Inject
+    private TeamTileOverlay teamTiles;
+
+    @Inject
     private KeyManager keyManager;
 
     /** The Save replay clip hotkey; registered from startUp to shutDown. */
@@ -200,6 +204,7 @@ public class RflPlugin extends Plugin
             contactDetector.reset();
             // So the next start-up inside a POH counts as entering it and takes a plugin snapshot.
             inPoh = false;
+            teamTiles.setInPoh(false);
             // After the reset, so collisions it saves as ended still reach the open replay.
             replayRecorder.stopAndReleaseWriter();
         });
@@ -329,6 +334,7 @@ public class RflPlugin extends Plugin
     {
         final boolean was = inPoh;
         inPoh = now;
+        teamTiles.setInPoh(now);
         if (now != was)
         {
             pluginAudit.onPohChanged(now);

@@ -30,6 +30,14 @@ public class TeamTileOverlayTest
     }
 
     @Test
+    public void drawsOnlyInAHouseWithTheTeamsViewShowing()
+    {
+        assertTrue(TeamTileOverlay.draws(true, true));
+        assertFalse("outside a house", TeamTileOverlay.draws(true, false));
+        assertFalse("Teams view not showing", TeamTileOverlay.draws(false, true));
+    }
+
+    @Test
     public void unassignedPlayersAreSkipped()
     {
         Map<String, Teams.Team> teams = Map.of("Amy", Teams.Team.A, "Bob", Teams.Team.B);
