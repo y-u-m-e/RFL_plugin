@@ -79,6 +79,26 @@ public class TeamMenuTest
     }
 
     /**
+     * The entries go in at index 1, just above Cancel, so the player's own top option stays the
+     * left-click action (an index of -1 would put an RFL entry on top).
+     */
+    @Test
+    public void entriesInsertAboveCancelAndNeverBecomeTheLeftClickAction()
+    {
+        FakeMenuEntry cancel = new FakeMenuEntry();
+        cancel.option = "Cancel";
+        cancel.type = MenuAction.CANCEL;
+        menu.entries.add(cancel);
+
+        fireBaseOption(fakePlayer("Bob"), 5, "Follow");
+
+        assertEquals(List.of(1, 1), menu.insertIndexes);
+        MenuEntry top = menu.entries.get(menu.entries.size() - 1);
+        assertEquals("Follow", top.getOption());
+        assertEquals("Cancel", menu.entries.get(0).getOption());
+    }
+
+    /**
      * Root cause of M12: when the live menu is cleared and rebuilt (what happens many times a
      * second above 50 fps even with nothing open), the team entries must be added again. A
      * dedupe keyed on a remembered tick or identifier would wrongly skip this and drop them from
@@ -197,9 +217,11 @@ public class TeamMenuTest
 
     private List<MenuEntry> rflEntries()
     {
+        // On-screen order: the menu's last entry is the top one.
         List<MenuEntry> out = new ArrayList<>();
-        for (MenuEntry entry : menu.entries)
+        for (int i = menu.entries.size() - 1; i >= 0; i--)
         {
+            MenuEntry entry = menu.entries.get(i);
             if (entry.getType() == MenuAction.RUNELITE_PLAYER)
             {
                 out.add(entry);
@@ -275,10 +297,13 @@ public class TeamMenuTest
     private static final class FakeMenu implements Menu
     {
         final List<MenuEntry> entries = new ArrayList<>();
+        /** Every index {@code createMenuEntry} was asked for. */
+        final List<Integer> insertIndexes = new ArrayList<>();
 
         @Override
         public MenuEntry createMenuEntry(int index)
         {
+            insertIndexes.add(index);
             FakeMenuEntry entry = new FakeMenuEntry();
             int size = entries.size();
             int pos = index < 0 ? size + index + 1 : index;

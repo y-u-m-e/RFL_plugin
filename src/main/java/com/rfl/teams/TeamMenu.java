@@ -31,10 +31,11 @@ public final class TeamMenu
     /** Every entry this menu adds starts with this, so a second player option can tell it is there. */
     private static final String PREFIX = "RFL: ";
     /**
-     * {@code Menu#createMenuEntry} index: negative counts from the end, and -1 appends after the
-     * existing entries, which the client draws at the top of the menu.
+     * {@code Menu#createMenuEntry} index: entries at higher indexes draw nearer the top and the
+     * last one is the left-click action, so 1 puts ours just above Cancel (the core chat-history
+     * "Copy to clipboard" entry does the same) and never in front of the player's own options.
      */
-    private static final int APPEND = -1;
+    private static final int ABOVE_CANCEL = 1;
 
     private final Client client;
     private final Teams teams;
@@ -60,7 +61,7 @@ public final class TeamMenu
         }
         for (Teams.Team team : choices)
         {
-            client.getMenu().createMenuEntry(APPEND)
+            client.getMenu().createMenuEntry(ABOVE_CANCEL)
                 .setOption(Teams.menuLabel(team))
                 .setTarget(coloredTarget(entry.getTarget(), team))
                 .setType(MenuAction.RUNELITE_PLAYER)
