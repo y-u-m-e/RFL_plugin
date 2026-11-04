@@ -23,6 +23,7 @@ stays inside the Plugin Hub rules.
 | `text` | `Html` | Escapes text for Swing HTML labels. |
 | `time` | `FrameBudget` | Runs a long job a few steps per frame within a time budget, always at least one step. |
 | `clipboard` | `Clipboard` | Copies text and returns false when the clipboard is busy, instead of throwing. |
+| `crypto` | `SealedBox` | Seals bytes to an X25519 public key (ephemeral X25519, HKDF-SHA256, AES-256-GCM, JDK only) so only the private key opens them and any edit fails to open; `open` for the reader side. |
 | `geom` | `TriangleMesh` | A posed model's triangles in scene space and an exact triangle-triangle intersection (Moller 1997) with a sort-and-sweep broad phase. Its `Intersector` reuses buffers, so per-frame checks allocate nothing per candidate pair. |
 | `model` | `ModelCapture` | Copies a model's arrays into compact geometry (hidden faces dropped, colours through `Palette`), rotates it, and keeps one id per model key. |
 | `model` | `Palette` | The client's HSL16-to-RGB table at brightness 0.8, built once. Original implementation from the packed layout in RuneLite's `JagexColor`, the standard HSL-to-RGB formula and the inverse of `JagexColor.rgbToHSL`'s gamma (sources cited in its header). |
