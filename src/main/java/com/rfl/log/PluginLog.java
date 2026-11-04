@@ -6,6 +6,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -72,6 +75,10 @@ public final class PluginLog
 
     private final Gson gson;
     private final DailyJsonlAppender days;
+    /** This session's lines as objects, oldest first, for the encrypted copy; guarded by itself. */
+    private final Deque<Object> session = new ArrayDeque<>();
+    // shortcut: oldest lines fall off past this; a ref copy shows the newest visits anyway.
+    static final int SESSION_LINES = 5000;
 
     @Inject
     PluginLog(Gson gson, ScheduledExecutorService executor)
@@ -120,7 +127,34 @@ public final class PluginLog
 
     private void write(Object line, long epochMs)
     {
+        synchronized (session)
+        {
+            if (session.size() == SESSION_LINES)
+            {
+                session.removeFirst();
+            }
+            session.addLast(line);
+        }
         days.append(() -> gson.toJson(line), epochMs);
+    }
+
+    /**
+     * Any thread, off the client thread: this session's lines from memory, encoded the same way as
+     * the day file's. Never reads the files, which the player can edit.
+     */
+    public List<String> sessionLines()
+    {
+        List<Object> lines;
+        synchronized (session)
+        {
+            lines = new ArrayList<>(session);
+        }
+        List<String> out = new ArrayList<>(lines.size());
+        for (Object line : lines)
+        {
+            out.add(gson.toJson(line));
+        }
+        return out;
     }
 
     /** Any thread: epoch ms the last line reached disk, 0 before any; for the panel's "Saved" tick. */

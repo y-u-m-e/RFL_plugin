@@ -114,7 +114,50 @@ public final class PluginHistory
         String tail = day.outside == 0 ? ""
             : "\n" + day.outside + (day.outside == 1 ? " plugin toggle" : " plugin toggles")
                 + " outside a house (full list in rfl/plugins)\n";
-        return fit(header(day, zone), blocks(day.visits, zone), tail, limit, day.visits.size());
+        return fit(header(day, zone, ""), blocks(day.visits, zone), tail, limit, Integer.MAX_VALUE, true);
+    }
+
+    /**
+     * The encrypted copy's text, built only from memory: this session's lines ({@link PluginLog#sessionLines})
+     * and the plugin list at the moment of copying. Not code-fenced and not cut to a length: the
+     * caller drops the oldest visits with {@code maxVisits} until the sealed text fits.
+     *
+     * @param rsn the local player now, or null
+     * @param world the world now, or 0
+     * @param maxVisits how many of the newest visits to keep; the rest are counted on a "… N more visits" line
+     */
+    public static Result session(Gson gson, List<String> lines, List<PluginEntry> live, String rsn, int world,
+        long nowMs, ZoneId zone, int maxVisits)
+    {
+        Day day = read(gson, lines);
+        if (rsn != null && !rsn.isEmpty())
+        {
+            day.players.add(rsn);
+        }
+        if (world > 0)
+        {
+            day.worlds.add(world);
+        }
+        day.first = day.first < 0 ? nowMs : day.first;
+        day.last = Math.max(day.last, nowMs);
+        List<String> now = new ArrayList<>();
+        for (PluginEntry plugin : live)
+        {
+            if (plugin.enabled)
+            {
+                boolean side = PluginEntry.SIDELOADED.equals(plugin.source);
+                day.sideloaded |= side;
+                now.add(side ? plugin.name + "*" : plugin.name);
+            }
+        }
+        now.sort(String.CASE_INSENSITIVE_ORDER);
+        Visit newest = day.visits.isEmpty() ? null : day.visits.get(day.visits.size() - 1);
+        String header = header(day, zone, " - live session only") + (newest != null && newest.on.equals(now)
+            ? "Now on: same as the newest visit\n"
+            : "Now on (" + now.size() + "): " + (now.isEmpty() ? "none" : String.join(", ", now)) + "\n");
+        String tail = day.outside == 0 ? ""
+            : "\n" + day.outside + (day.outside == 1 ? " plugin toggle" : " plugin toggles") + " outside a house\n";
+        return fit(header, blocks(day.visits, zone), tail, Integer.MAX_VALUE, maxVisits, false);
     }
 
     private static Day read(Gson gson, List<String> lines)
@@ -230,7 +273,7 @@ public final class PluginHistory
     }
 
     /** Who, which worlds, the time range and the visit count, and the sideloaded marker's key. */
-    private static String header(Day day, ZoneId zone)
+    private static String header(Day day, ZoneId zone, String note)
     {
         StringBuilder head = new StringBuilder();
         head.append("RFL plugin history - ")
@@ -244,6 +287,7 @@ public final class PluginHistory
             }
             head.append(" - ").append(String.join(", ", worlds));
         }
+        head.append(note);
         int visits = day.visits.size();
         head.append('\n').append(DATE.format(at(day.first, zone))).append(' ').append(time(day.first, zone))
             .append(" to ").append(time(day.last, zone)).append(" - ").append(visits)
@@ -267,10 +311,12 @@ public final class PluginHistory
     }
 
     /**
-     * The code-fenced text: the header and as many blocks, newest first, as fit within
-     * {@code limit} (always the newest), then a "… N more visits" line and the tail.
+     * The text, code-fenced when {@code fenced}: the header and as many blocks, newest first, as fit
+     * within {@code limit} (always the newest) up to {@code maxShown}, then a "… N more visits" line
+     * and the tail.
      */
-    private static Result fit(String header, List<String> blocks, String tail, int limit, int visits)
+    private static Result fit(String header, List<String> blocks, String tail, int limit, int maxShown,
+        boolean fenced)
     {
         StringBuilder body = new StringBuilder(header);
         int shown = 0;
@@ -280,7 +326,7 @@ public final class PluginHistory
             String more = left > 0 ? moreLine(left) : "";
             // Two fences and their newlines, the text so far, a newline, this block, then what follows it.
             int length = FENCE.length() * 2 + 2 + body.length() + 1 + block.length() + more.length() + tail.length();
-            if (shown > 0 && length > limit)
+            if (shown >= maxShown || shown > 0 && length > limit)
             {
                 break;
             }
@@ -292,8 +338,8 @@ public final class PluginHistory
             body.append(moreLine(blocks.size() - shown));
         }
         body.append(tail);
-        String text = FENCE + "\n" + body.toString().replaceAll("\n+$", "") + "\n" + FENCE;
-        return new Result(text, visits, shown);
+        String text = body.toString().replaceAll("\n+$", "");
+        return new Result(fenced ? FENCE + "\n" + text + "\n" + FENCE : text, blocks.size(), shown);
     }
 
     /** "… 4 more visits" (older, left out to fit). */
