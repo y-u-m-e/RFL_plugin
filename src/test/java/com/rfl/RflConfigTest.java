@@ -41,11 +41,12 @@ public class RflConfigTest
         assertFalse(config.teamMenuEntries());
     }
 
-    /** Not a switch, but off the same way: empty copies plain text until a key is pasted. */
+    /** Defaults to the league admin's key, which must parse as a 32-byte X25519 key. */
     @Test
-    public void historyPublicKeyDefaultsToEmpty()
+    public void historyPublicKeyDefaultsToTheAdminKey()
     {
-        assertEquals("", config.historyPublicKey());
+        assertEquals(RflConfig.RFL_ADMIN_PUBLIC_KEY, config.historyPublicKey());
+        assertEquals(32, com.rfl.log.SealedHistory.parseKey(config.historyPublicKey()).length);
     }
 
     @Test

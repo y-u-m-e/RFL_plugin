@@ -99,8 +99,9 @@ the whole day's history wouldn't fit, and the newest visit is always kept whole.
 
 #### Encrypted copy
 
-With **Encryption public key** set (Plugin history section; paste the key your league admin
-gives you), Copy plugin history copies one `RFL1:...` line instead of plain text. It is encrypted
+**Encryption public key** (Plugin history section) is set to the RFL league admin's key by default,
+so Copy plugin history copies one `RFL1:...` line instead of plain text. Clear the setting to copy
+plain text. It is encrypted
 to the admin's key: only the admin can read it, by pasting it into rfl.gg, and changing any
 character makes it fail to open. The panel says "Copied encrypted history (N visits, M chars)".
 
@@ -118,8 +119,8 @@ character makes it fail to open. The panel says "Copied encrypted history (N vis
   against casual editing, not proof.
 - The copy comes wrapped in a Discord code block, so Discord's markdown can't eat the `_`
   characters in it. Paste it as it is.
-- Nothing is sent anywhere: it only goes to your clipboard. Empty (the default) copies plain text
-  exactly as before.
+- Nothing is sent anywhere: it only goes to your clipboard. Clearing the key copies plain
+  text exactly as before.
 
 ![Copy plugin history and its result line](docs/media/panel-copy-history.gif)
 <!-- Capture: at least one house visit logged today. Click: "Copy plugin history". Length: 2-3 s.
@@ -406,7 +407,7 @@ Every setting defaults to off (or to the value shown); apart from the always-on 
 | Name | Key | Default | What it does |
 |---|---|---|---|
 | Show RFL panel | `showPanel` | `false` | Adds the RFL panel to the sidebar: house status, the replay recorder, this session's collisions and incompletes, team assignments, Copy plugin history and Open folder. |
-| Encryption public key | `historyPublicKey` | empty | Plugin history section. The league admin's public key (32 bytes, base64url). When set, Copy plugin history copies this session's history encrypted to it (see [Encrypted copy](#encrypted-copy)); empty copies plain text. |
+| Encryption public key | `historyPublicKey` | the RFL admin's key | Plugin history section. The league admin's public key (32 bytes, base64url). When set, Copy plugin history copies this session's history encrypted to it (see [Encrypted copy](#encrypted-copy)); empty copies plain text. |
 | Right-click team options | `teamMenuEntries` | `false` | Adds RFL: Team A / Team B / Unassign to other players' right-click menus in a house. The panel's Teams view works either way. |
 | Detect contacts | `reportContacts` | `false` | Inside a player-owned house, detects when any two players in view touch while either holds a handegg or gnomeball. Incompletes need this on. |
 | Hitbox source | `hitboxSource` | `EQUIPPED` | Experimental. `EQUIPPED`: the model you see, armour included; a held handegg's or gnomeball's own geometry never counts. `BARE_BODY`: the player's body without equipment. Changes which contacts are detected. |

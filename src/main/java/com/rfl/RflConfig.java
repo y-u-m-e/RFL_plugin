@@ -84,21 +84,24 @@ public interface RflConfig extends Config
 
     // ---- Plugin history ----
 
+    /** The RFL league admin's X25519 public key (base64url): copies are encrypted to it unless changed. */
+    String RFL_ADMIN_PUBLIC_KEY = "04eXU4-2ueqBLOqUAs66hG1I1Qq89FC0nfB3yOhYW3g";
+
     /**
      * @return the league admin's X25519 public key (base64url), or empty to copy plain text
      */
     @ConfigItem(
         keyName = "historyPublicKey",
         name = "Encryption public key",
-        description = "Paste the key your league admin gives you. When set, Copy plugin history copies this "
+        description = "The RFL league admin's public key (set by default). Copy plugin history copies this "
             + "session's plugin history encrypted so only the admin can read it, on rfl.gg, and any edit makes "
-            + "it unreadable. Empty copies plain text. Nothing is sent anywhere.",
+            + "it unreadable. Clear it to copy plain text. Nothing is sent anywhere.",
         section = HISTORY_SECTION,
         position = 31
     )
     default String historyPublicKey()
     {
-        return "";
+        return RFL_ADMIN_PUBLIC_KEY;
     }
 
     // ---- Teams ----
