@@ -76,14 +76,15 @@ public final class SealedHistory
         Result result;
         try
         {
-            result = build(gson, sessionLines, live, rsn, world, nowMs, zone, key, PluginHistory.DISCORD_LIMIT);
+            result = build(gson, sessionLines, live, rsn, world, nowMs, zone, key,
+                PluginHistory.DISCORD_LIMIT - FENCE_OVERHEAD);
         }
         catch (GeneralSecurityException e)
         {
             // A low-order point or similar: 32 bytes, but not a usable key.
             return new Copy(null, INVALID_KEY);
         }
-        return result == null ? new Copy(null, TOO_LONG) : new Copy(result.getBlob(), copiedMessage(result));
+        return result == null ? new Copy(null, TOO_LONG) : new Copy(fenced(result.getBlob()), copiedMessage(result));
     }
 
     /** The blob, and how many of the session's visits it shows. */
@@ -97,6 +98,16 @@ public final class SealedHistory
 
     private SealedHistory()
     {
+    }
+
+    /** Code-block fences around the blob, so Discord's markdown can't eat its {@code _} characters. */
+    private static final String FENCE = "```";
+    private static final int FENCE_OVERHEAD = 2 * FENCE.length() + 2;
+
+    /** The blob inside a Discord code block: the form a player pastes. */
+    static String fenced(String blob)
+    {
+        return FENCE + "\n" + blob + "\n" + FENCE;
     }
 
     /**

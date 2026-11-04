@@ -155,7 +155,10 @@ public class SealedHistoryTest
         }
         SealedHistory.Copy ok = SealedHistory.copy(GSON, "9MRwbGGJod1aX4P_tNPNT-z_114HLH2rnjx76hw44XM", lines,
             live("Agility"), "Ref Bob", 354, T, ZoneOffset.UTC);
-        assertTrue(ok.getText().startsWith("RFL1:"));
+        // Wrapped in a Discord code block so markdown can't eat the blob's underscores.
+        assertTrue(ok.getText().startsWith("```\nRFL1:"));
+        assertTrue(ok.getText().endsWith("\n```"));
+        assertTrue(ok.getText().length() <= PluginHistory.DISCORD_LIMIT);
         assertTrue(ok.getMessage().startsWith("Copied encrypted history (0 visits, "));
     }
 

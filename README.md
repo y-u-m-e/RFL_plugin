@@ -116,8 +116,8 @@ character makes it fail to open. The panel says "Copied encrypted history (N vis
   the public key is public, so someone who writes their own encoder can seal any text they like,
   and a player can turn plugins on and off while RFL Audit itself is off. It is tamper-evidence
   against casual editing, not proof.
-- Paste it inside a code block (`` ` ``) in Discord: the line contains `_`, which Discord's
-  markdown can eat when the message is copied back out.
+- The copy comes wrapped in a Discord code block, so Discord's markdown can't eat the `_`
+  characters in it. Paste it as it is.
 - Nothing is sent anywhere: it only goes to your clipboard. Empty (the default) copies plain text
   exactly as before.
 
