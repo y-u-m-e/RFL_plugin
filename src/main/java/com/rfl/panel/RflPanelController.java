@@ -5,7 +5,10 @@ import sh.yumekui.toolkit.text.PlayerNames;
 import com.rfl.RflConfig;
 import com.rfl.log.CollisionLog;
 import com.rfl.log.PluginHistory;
+import com.rfl.log.PluginEntry;
 import com.rfl.log.PluginLog;
+import com.rfl.log.PluginSnapshotter;
+import com.rfl.log.SealedHistory;
 import com.rfl.overlay.EventTileOverlay;
 import com.rfl.overlay.TeamTileOverlay;
 import com.rfl.replay.ClipStatus;
@@ -74,6 +77,7 @@ public final class RflPanelController
     private final TeamTileOverlay teamTiles;
     private final EventTileOverlay eventTiles;
     private final ClientThread clientThread;
+    private final PluginSnapshotter snapshotter;
 
     // EDT only.
     private RflPanel panel;
@@ -103,8 +107,10 @@ public final class RflPanelController
     RflPanelController(RflConfig config, ClientToolbar clientToolbar, SessionEvents session,
         PluginLog pluginLog, CollisionLog collisionLog, ReplayRecorder replayRecorder,
         ScheduledExecutorService executor, ConfigManager configManager, Gson gson, Teams teams, Client client,
-        TeamTileOverlay teamTiles, EventTileOverlay eventTiles, ClientThread clientThread)
+        TeamTileOverlay teamTiles, EventTileOverlay eventTiles, ClientThread clientThread,
+        PluginSnapshotter snapshotter)
     {
+        this.snapshotter = snapshotter;
         this.clientThread = clientThread;
         this.eventTiles = eventTiles;
         this.teamTiles = teamTiles;
@@ -385,6 +391,12 @@ public final class RflPanelController
      */
     private void copyPluginHistory()
     {
+        String key = config.historyPublicKey();
+        if (key != null && !key.trim().isEmpty())
+        {
+            copyEncryptedHistory(key);
+            return;
+        }
         long now = System.currentTimeMillis();
         executor.execute(() ->
         {
@@ -414,6 +426,40 @@ public final class RflPanelController
                 {
                     panel.showCopyResult(message);
                 }
+            });
+        });
+    }
+
+    /**
+     * EDT: the encrypted copy ({@link SealedHistory}), from memory only, never the day files a
+     * player can edit: this session's lines and the plugin list right now. Player, world and
+     * plugins are read on the client thread; compression and sealing (well under a millisecond)
+     * run on the executor; the clipboard on the EDT. An invalid key copies nothing.
+     */
+    private void copyEncryptedHistory(String key)
+    {
+        clientThread.invoke(() ->
+        {
+            long now = System.currentTimeMillis();
+            String rsn = PlayerNames.sanitized(client.getLocalPlayer());
+            int world = client.getWorld();
+            List<PluginEntry> live = snapshotter.snapshot();
+            executor.execute(() ->
+            {
+                SealedHistory.Copy copy = SealedHistory.copy(gson, key, pluginLog.sessionLines(), live, rsn, world,
+                    now, ZoneId.systemDefault());
+                SwingUtilities.invokeLater(() ->
+                {
+                    String message = copy.getMessage();
+                    if (copy.getText() != null && !Clipboard.copy(copy.getText()))
+                    {
+                        message = PanelModel.CLIPBOARD_BUSY;
+                    }
+                    if (panel != null)
+                    {
+                        panel.showCopyResult(message);
+                    }
+                });
             });
         });
     }

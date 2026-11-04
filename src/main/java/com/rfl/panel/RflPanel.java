@@ -218,7 +218,8 @@ public final class RflPanel extends PluginPanel
     {
         JButton copy = new JButton(PanelModel.COPY_BUTTON);
         copy.setToolTipText("Copies today's plugin history to the clipboard, laid out for Discord: "
-            + "each house visit's plugin list and the plugins turned on (+) or off (-) during it.");
+            + "each house visit's plugin list and the plugins turned on (+) or off (-) during it. "
+            + "With an encryption key set, copies this session's history encrypted for the league admin.");
         copy.setFocusable(false);
         copy.addActionListener(e -> copyHistory.run());
 

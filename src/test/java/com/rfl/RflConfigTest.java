@@ -41,6 +41,13 @@ public class RflConfigTest
         assertFalse(config.teamMenuEntries());
     }
 
+    /** Not a switch, but off the same way: empty copies plain text until a key is pasted. */
+    @Test
+    public void historyPublicKeyDefaultsToEmpty()
+    {
+        assertEquals("", config.historyPublicKey());
+    }
+
     @Test
     public void clipSettingsDefaults()
     {

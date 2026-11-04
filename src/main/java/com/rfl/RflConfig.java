@@ -58,6 +58,13 @@ public interface RflConfig extends Config
     )
     String TEAMS_SECTION = "teams";
 
+    @ConfigSection(
+        name = "Plugin history",
+        description = "How Copy plugin history in the RFL panel copies your plugin list.",
+        position = 30
+    )
+    String HISTORY_SECTION = "history";
+
     // ---- Top ----
 
     /**
@@ -73,6 +80,25 @@ public interface RflConfig extends Config
     default boolean showPanel()
     {
         return false;
+    }
+
+    // ---- Plugin history ----
+
+    /**
+     * @return the league admin's X25519 public key (base64url), or empty to copy plain text
+     */
+    @ConfigItem(
+        keyName = "historyPublicKey",
+        name = "Encryption public key",
+        description = "Paste the key your league admin gives you. When set, Copy plugin history copies this "
+            + "session's plugin history encrypted so only the admin can read it, on rfl.gg, and any edit makes "
+            + "it unreadable. Empty copies plain text. Nothing is sent anywhere.",
+        section = HISTORY_SECTION,
+        position = 31
+    )
+    default String historyPublicKey()
+    {
+        return "";
     }
 
     // ---- Teams ----
