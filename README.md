@@ -97,6 +97,30 @@ and every plugin turned on (`+Name`) or off (`-Name`) during it, wrapped in a co
 2000-character limit is respected — older visits are dropped and counted as "… N more visits" if
 the whole day's history wouldn't fit, and the newest visit is always kept whole.
 
+#### Encrypted copy
+
+With **Encryption public key** set (Plugin history section; paste the key your league admin
+gives you), Copy plugin history copies one `RFL1:...` line instead of plain text. It is encrypted
+to the admin's key: only the admin can read it, by pasting it into rfl.gg, and changing any
+character makes it fail to open. The panel says "Copied encrypted history (N visits, M chars)".
+
+- **Built from memory only**, never from the files in `rfl/plugins` (which you can edit): the
+  plugin list RuneLite has on at the moment you copy, plus this session's house visits and
+  toggles. Its first line says "live session only". A session starts when RFL Audit loads, so
+  anything from before a client restart isn't in it.
+- **Fits one Discord message.** If the whole session's blob would pass 2000 characters, the oldest
+  visits are dropped and the text says how many.
+- **A key that isn't 32 bytes of base64url copies nothing** and shows "Copy failed: invalid
+  encryption key". It never falls back to plain text.
+- **What it protects against:** deleting or editing lines in the pasted text. **What it doesn't:**
+  the public key is public, so someone who writes their own encoder can seal any text they like,
+  and a player can turn plugins on and off while RFL Audit itself is off. It is tamper-evidence
+  against casual editing, not proof.
+- Paste it inside a code block (`` ` ``) in Discord: the line contains `_`, which Discord's
+  markdown can eat when the message is copied back out.
+- Nothing is sent anywhere: it only goes to your clipboard. Empty (the default) copies plain text
+  exactly as before.
+
 ![Copy plugin history and its result line](docs/media/panel-copy-history.gif)
 <!-- Capture: at least one house visit logged today. Click: "Copy plugin history". Length: 2-3 s.
 Crop: sidebar only, the footer (button plus result line). Size: ~360px wide. -->
@@ -382,6 +406,7 @@ Every setting defaults to off (or to the value shown); apart from the always-on 
 | Name | Key | Default | What it does |
 |---|---|---|---|
 | Show RFL panel | `showPanel` | `false` | Adds the RFL panel to the sidebar: house status, the replay recorder, this session's collisions and incompletes, team assignments, Copy plugin history and Open folder. |
+| Encryption public key | `historyPublicKey` | empty | Plugin history section. The league admin's public key (32 bytes, base64url). When set, Copy plugin history copies this session's history encrypted to it (see [Encrypted copy](#encrypted-copy)); empty copies plain text. |
 | Right-click team options | `teamMenuEntries` | `false` | Adds RFL: Team A / Team B / Unassign to other players' right-click menus in a house. The panel's Teams view works either way. |
 | Detect contacts | `reportContacts` | `false` | Inside a player-owned house, detects when any two players in view touch while either holds a handegg or gnomeball. Incompletes need this on. |
 | Hitbox source | `hitboxSource` | `EQUIPPED` | Experimental. `EQUIPPED`: the model you see, armour included; a held handegg's or gnomeball's own geometry never counts. `BARE_BODY`: the player's body without equipment. Changes which contacts are detected. |
@@ -453,7 +478,8 @@ What the plugin can see about other players, and why none of it is an unfair adv
   The setting's own description warns that a shared replay then contains other players' public
   chat.
 - **Plugin lists** — only your own. The plugin reads your own client's `PluginManager` through
-  public API; no other player's installed plugins are ever known to it, let alone recorded.
+  public API; no other player's installed plugins are ever known to it, let alone recorded. The
+  encrypted copy only goes to your clipboard; you decide whether to paste it.
 - **Not an advantage.** Collision and incomplete detection rules a player-run minigame from what's
   already drawn on screen — no combat, PvP, skilling or economy effect. Each, at most, posts an
   optional local chat message (**Collision chat message**, **Chat message**) naming the players
