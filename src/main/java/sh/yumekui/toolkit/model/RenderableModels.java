@@ -1,5 +1,6 @@
 package sh.yumekui.toolkit.model;
 
+import java.util.function.IntUnaryOperator;
 import net.runelite.api.DynamicObject;
 import net.runelite.api.Model;
 import net.runelite.api.ModelData;
@@ -86,12 +87,21 @@ public final class RenderableModels
             && model.getFaceColors3() != null;
     }
 
-    /** The model copied into {@link ModelCapture.Geometry}; check {@link #hasArrays} first. */
+    /** The model copied into {@link ModelCapture.Geometry}, textured faces grey; check {@link #hasArrays} first. */
     public static ModelCapture.Geometry geometry(Model model)
+    {
+        return geometry(model, null);
+    }
+
+    /**
+     * As {@link #geometry(Model)}, textured faces taking {@code textureRgb}'s colour (see
+     * {@link ModelCapture#capture}).
+     */
+    public static ModelCapture.Geometry geometry(Model model, IntUnaryOperator textureRgb)
     {
         return ModelCapture.capture(model.getVerticesX(), model.getVerticesY(), model.getVerticesZ(),
             model.getVerticesCount(), model.getFaceIndices1(), model.getFaceIndices2(), model.getFaceIndices3(),
-            model.getFaceCount(), model.getFaceColors1(), model.getFaceColors3(), model.getFaceTransparencies(),
-            model.getFaceTextures());
+            model.getFaceCount(), model.getFaceColors1(), model.getFaceColors2(), model.getFaceColors3(),
+            model.getFaceTransparencies(), model.getFaceTextures(), textureRgb);
     }
 }

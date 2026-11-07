@@ -1,5 +1,6 @@
 package com.rfl.replay;
 
+import sh.yumekui.toolkit.model.ModelCapture;
 import sh.yumekui.toolkit.text.PlayerNames;
 import com.rfl.incomplete.Incomplete;
 import com.rfl.log.PluginEntry;
@@ -151,6 +152,25 @@ public final class ReplayLines
      * {@code {"t":"ball","cyc":..,"id":..,"sc":..,"x":..,"y":..,"z":..,"o":..,"m":..}}; {@code sc}
      * is the projectile's start cycle, and {@code m} is left out when there is no model.
      */
+    static Map<String, Object> fidelity(int cycle, ModelCapture.Fidelity f)
+    {
+        Map<String, Object> line = new LinkedHashMap<>();
+        line.put("t", "fid");
+        line.put("cyc", cycle);
+        line.put("models", f.models);
+        line.put("faces", f.faces);
+        line.put("hidden", f.hidden);
+        line.put("textured", f.textured);
+        line.put("texturedGrey", f.texturedGrey);
+        line.put("translucent", f.translucent);
+        line.put("colourFaces", f.colourFaces);
+        line.put("smooth", f.smooth);
+        line.put("colourErrMean", f.colourFaces == 0 ? 0 : Math.round(f.colourErrorSum / f.colourFaces * 10) / 10.0);
+        line.put("colourErrMax", Math.round(f.colourErrorMax * 10) / 10.0);
+        line.put("vertexErrMax", Math.round(f.vertexErrorMax * 1000) / 1000.0);
+        return line;
+    }
+
     static Map<String, Object> ball(int cycle, Ball ball, int modelId)
     {
         Map<String, Object> line = line("ball", cycle);

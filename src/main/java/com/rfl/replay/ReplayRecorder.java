@@ -1,5 +1,8 @@
 package com.rfl.replay;
 
+import java.util.function.IntUnaryOperator;
+import net.runelite.api.TextureProvider;
+import sh.yumekui.toolkit.model.Palette;
 import sh.yumekui.toolkit.text.PlayerNames;
 import sh.yumekui.toolkit.io.GzipNdjsonWriter;
 
@@ -514,6 +517,7 @@ public final class ReplayRecorder
         pitch.stop();
         lastModels = sampler.modelsCaptured();
         Runnable summary = closeSummary();
+        writer.writeDeferred(ReplayLines.fidelity(lastCycle, sampler.fidelity()), false);
         CompletableFuture<Void> closed = writer.close();
         // Queued behind the close, so the writer's byte counts are final when it runs.
         writer.enqueue(summary);
@@ -566,6 +570,9 @@ public final class ReplayRecorder
         ring.setKeepSeconds(clipSeconds(config) + BUFFER_MARGIN_SECONDS);
         pitch.reset();
         pitch.setLocNames(id -> locName(client, id));
+        IntUnaryOperator textures = id -> textureRgb(client, id);
+        reader.setTextures(textures);
+        scanner.setTextures(textures);
         pitchPending = false;
         long openStart = System.nanoTime();
         writer.open(file);
@@ -574,6 +581,20 @@ public final class ReplayRecorder
         pluginsDue = true;
         scanner.start();
         stats.addOpenNanos(System.nanoTime() - openStart);
+    }
+
+    /** A texture's average colour as 0xRRGGBB, or -1 when the client has none for {@code id}. */
+    private static int textureRgb(Client client, int id)
+    {
+        TextureProvider provider = client.getTextureProvider();
+        try
+        {
+            return provider == null ? -1 : Palette.rgb(provider.getDefaultColor(id));
+        }
+        catch (RuntimeException e)
+        {
+            return -1;
+        }
     }
 
     /** The ClientTick after open: the {@code plugins} line, built here and serialised on the writer's thread. */

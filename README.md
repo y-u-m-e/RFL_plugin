@@ -569,6 +569,14 @@ the same match the hitboxes leave out, so a viewer can leave out the same faces.
 carry it; they share their base's faces and so its `held` (see
 [`ModelLines.java`](src/main/java/com/rfl/replay/ModelLines.java)).
 
+A textured face is saved in its texture's average colour (the client's `TextureProvider` default
+colour), not drawn as a texture. A full `model` line with any partly see-through face also carries
+`"a":[..]`, one transparency per face of `f` (0 opaque to 254). Each recording ends with one `fid`
+line counting how closely the saved models match the client's: faces, hidden faces (dropped, as in
+game), textured faces and how many had no colour, see-through faces, how many faces had smooth
+shading flattened to one colour and the mean and worst colour error that caused (RGB distance,
+0 to 441), and the largest vertex rounding (model units).
+
 Every recorded player's **bare body** (their identity kits posed like them, with no equipment, held
 ball or spot anims) is recorded too, always, so a viewer can run intersections against it instead
 of the equipped model. It uses `model` lines with `"kind":"bare"`, full

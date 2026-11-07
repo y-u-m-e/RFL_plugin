@@ -37,6 +37,8 @@ final class ModelLines
     static final String BARE = "bare";
 
     private final ModelCapture.Registry registry = new ModelCapture.Registry();
+    /** Summed over every model written so far ({@link #fidelity}). */
+    private final ModelCapture.Fidelity fidelity = new ModelCapture.Fidelity();
     /** Kind of each id captured but not yet turned into a model line. */
     private final Map<Integer, String> pendingKind = new LinkedHashMap<>();
     /** Appearance (player) or bare look (bare) hash of each id captured but not yet turned into a model line. */
@@ -120,6 +122,10 @@ final class ModelLines
         String kind = pendingKind.remove(captured.id);
         Integer appearance = pendingAppearance.remove(captured.id);
         int[] held = pendingHeld.remove(captured.id);
+        if (captured.geometry.fidelity != null)
+        {
+            fidelity.add(captured.geometry.fidelity);
+        }
         Map<String, Object> line = new LinkedHashMap<>();
         line.put("t", "model");
         line.put("id", captured.id);
@@ -146,6 +152,10 @@ final class ModelLines
             line.put("v", captured.geometry.vertices);
             line.put("f", captured.geometry.faces);
             line.put("c", captured.geometry.colors);
+            if (captured.geometry.alphas != null)
+            {
+                line.put("a", captured.geometry.alphas);
+            }
             if (held != null)
             {
                 line.put("held", held);
@@ -154,11 +164,17 @@ final class ModelLines
         return line;
     }
 
-    /** Same vertex count, faces and colours: only the vertex positions differ. */
+    /** Same vertex count, faces, colours and transparency: only the vertex positions differ. */
     private static boolean sameTopology(ModelCapture.Geometry base, ModelCapture.Geometry pose)
     {
         return base.vertices.length == pose.vertices.length && Arrays.equals(base.faces, pose.faces)
-            && Arrays.equals(base.colors, pose.colors);
+            && Arrays.equals(base.colors, pose.colors) && Arrays.equals(base.alphas, pose.alphas);
+    }
+
+    /** What the models written so far kept and approximated, summed. */
+    ModelCapture.Fidelity fidelity()
+    {
+        return fidelity;
     }
 
     private static int[] deltas(int[] base, int[] vertices)

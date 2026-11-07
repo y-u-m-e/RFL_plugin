@@ -9,6 +9,7 @@ import sh.yumekui.toolkit.model.RenderableModels;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.IntUnaryOperator;
 
 import net.runelite.api.ActorSpotAnim;
 import net.runelite.api.Client;
@@ -43,6 +44,8 @@ final class FrameReader
     private HeldBalls heldBalls = (player, model) -> null;
     /** Where each player's bare body comes from; null records none. */
     private BareBody bareBody;
+    /** A texture id's average colour (0xRRGGBB, -1 unknown); null saves textured faces grey. */
+    private IntUnaryOperator textures;
 
     FrameReader(RecorderStats stats)
     {
@@ -59,6 +62,12 @@ final class FrameReader
     void setBareBody(BareBody bareBody)
     {
         this.bareBody = bareBody;
+    }
+
+    /** Sets where textured faces get their colour ({@link ModelCapture#capture}). */
+    void setTextures(IntUnaryOperator textures)
+    {
+        this.textures = textures;
     }
 
     /** Every named player in view with a position, this frame. */
@@ -137,7 +146,7 @@ final class FrameReader
         try
         {
             Model model = renderable.getModel();
-            return model == null || !RenderableModels.hasArrays(model) ? null : RenderableModels.geometry(model);
+            return model == null || !RenderableModels.hasArrays(model) ? null : RenderableModels.geometry(model, textures);
         }
         catch (RuntimeException e)
         {
@@ -160,7 +169,7 @@ final class FrameReader
             {
                 return null;
             }
-            ModelCapture.Geometry geometry = RenderableModels.geometry(model);
+            ModelCapture.Geometry geometry = RenderableModels.geometry(model, textures);
             int[] held = PlayerModel.recorded(heldBalls.faces(player, model), model.getFaceCount(),
                 model.getFaceColors3(), model.getFaceTransparencies());
             return new PlayerModel(geometry, held);
@@ -178,7 +187,7 @@ final class FrameReader
         try
         {
             Model model = bodies.posed(player);
-            return model == null || !RenderableModels.hasArrays(model) ? null : RenderableModels.geometry(model);
+            return model == null || !RenderableModels.hasArrays(model) ? null : RenderableModels.geometry(model, textures);
         }
         catch (RuntimeException e)
         {

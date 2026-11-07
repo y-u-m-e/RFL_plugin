@@ -194,4 +194,53 @@ public class ModelCaptureTest
         assertEquals(65535, net.runelite.api.Perspective.SINE[512]);
         assertEquals(0, net.runelite.api.Perspective.COSINE[512]);
     }
+
+    @Test
+    public void texturedFacesTakeTheTextureColourAndAlphasAreKept()
+    {
+        // Face 0 textured (texture 40, lava-orange), face 1 half see-through, face 2 plain.
+        short[] tex = {40, -1, -1};
+        byte[] tr = {0, (byte) 128, 0};
+        ModelCapture.Geometry g = ModelCapture.capture(vx(), vy(), vz(), 4, f1(), f2(), f3(), 3,
+            new int[]{0, BLUE, GREY}, null, new int[]{-1, -1, -1}, tr, tex, id -> id == 40 ? 0xff6600 : -1);
+        assertArrayEquals(concat(new int[]{0xff, 0x66, 0x00}, channels(BLUE), channels(GREY)), g.colors);
+        assertArrayEquals(new int[]{0, 128, 0}, g.alphas);
+        assertEquals(1, g.fidelity.textured);
+        assertEquals(0, g.fidelity.texturedGrey);
+        assertEquals(1, g.fidelity.translucent);
+    }
+
+    @Test
+    public void unknownTextureIsGreyAndOpaqueModelsHaveNoAlphas()
+    {
+        ModelCapture.Geometry g = ModelCapture.capture(vx(), vy(), vz(), 4, f1(), f2(), f3(), 3,
+            new int[]{0, BLUE, GREY}, null, new int[]{-1, -1, -1}, null, new short[]{7, -1, -1}, id -> -1);
+        assertArrayEquals(concat(TEXTURED, channels(BLUE), channels(GREY)), g.colors);
+        assertEquals(null, g.alphas);
+        assertEquals(1, g.fidelity.texturedGrey);
+    }
+
+    @Test
+    public void fidelityCountsHiddenFacesShadingAndRounding()
+    {
+        // Face 0 hidden; face 1 smooth (corners RED, BLUE, BLUE); face 2 flat.
+        ModelCapture.Geometry g = ModelCapture.capture(vx(), vy(), vz(), 4, f1(), f2(), f3(), 3,
+            new int[]{GREY, RED, GREY}, new int[]{0, BLUE, 0}, new int[]{-2, BLUE, -1}, null, null, null);
+        ModelCapture.Fidelity f = g.fidelity;
+        assertEquals(1, f.models);
+        assertEquals(3, f.faces);
+        assertEquals(1, f.hidden);
+        assertEquals(2, f.colourFaces);
+        assertEquals(1, f.smooth);
+        assertTrue(f.colourErrorMax > 0);
+        assertEquals(f.colourErrorMax, f.colourErrorSum, 1e-9);
+        // 10.4 -> 10 and -4.5 -> -4 (Math.round): the largest move is 0.5.
+        assertEquals(0.5, f.vertexErrorMax, 1e-6);
+
+        ModelCapture.Fidelity total = new ModelCapture.Fidelity();
+        total.add(f);
+        total.add(f);
+        assertEquals(6, total.faces);
+        assertEquals(f.colourErrorMax, total.colourErrorMax, 1e-9);
+    }
 }

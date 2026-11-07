@@ -1,5 +1,6 @@
 package com.rfl.replay.pitch;
 
+import java.util.function.IntUnaryOperator;
 import com.rfl.replay.RecorderStats;
 import com.rfl.replay.ReplaySampler;
 import sh.yumekui.toolkit.model.ModelCapture;
@@ -79,6 +80,8 @@ public final class PitchScanner
     private final PitchCapture capture;
     private final RecorderStats stats;
     private final RenderableModels renderables = new RenderableModels();
+    /** A texture id's average colour (0xRRGGBB, -1 unknown); null saves textured faces grey. */
+    private IntUnaryOperator textures;
 
     private int stage = IDLE;
     /** The line so far, and what the floor stage fixed for the later stages. */
@@ -87,6 +90,12 @@ public final class PitchScanner
     private Scene scene;
     private int plane;
     private PitchWindow window;
+
+    /** Sets where textured faces get their colour ({@link ModelCapture#capture}). */
+    public void setTextures(IntUnaryOperator textures)
+    {
+        this.textures = textures;
+    }
 
     public PitchScanner(PitchCapture capture, RecorderStats stats)
     {
@@ -361,7 +370,7 @@ public final class PitchScanner
                 stats.locRead(renderables.path(), false);
                 return LocModel.skipped(LocSkip.NO_ARRAYS);
             }
-            ModelCapture.Geometry geometry = RenderableModels.geometry(model);
+            ModelCapture.Geometry geometry = RenderableModels.geometry(model, textures);
             int turn = orient & ORIENTATION_MASK;
             if (turn != 0)
             {

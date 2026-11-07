@@ -93,6 +93,12 @@ public final class ReplaySampler
         return lastFrameNewModels;
     }
 
+    /** What every model written so far kept and approximated (the {@code fid} line). */
+    public ModelCapture.Fidelity fidelity()
+    {
+        return models.fidelity();
+    }
+
     /** {@code model} lines for every id captured since the last call (by any path), in id order. */
     public List<Map<String, Object>> newModelLines()
     {
