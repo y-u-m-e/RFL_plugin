@@ -56,7 +56,7 @@ else in the panel. It has four states:
 - **Saved** — the file name and final size, with an Open folder shortcut.
 - **Error** — "Couldn't save replay" and a short reason (for example, a full disk).
 
-![The replay card moving through idle, recording, saving and saved](docs/media/panel-recording-states.gif)
+![The replay card moving through idle, recording, saving and saved](docs/media/panel-recording-states.webp)
 <!-- Capture: Record replays on, panel open. Click: enter a house (starts recording), wait a few
 seconds, leave the house (saves, then shows saved). Length: 5-6 s, sped up if needed to show all
 four states. Crop: sidebar only, just the replay card. Size: ~360px wide. -->
@@ -71,7 +71,7 @@ Click **Collisions** or **Incompletes** to show that session's list below the ca
 Click a row in the Collisions or Incompletes list to highlight the tile it happened on in the game
 view (with Highlight contacts / Highlight incompletes on); click it again to clear the highlight.
 
-![Clicking a collision row highlights its tile in the game view](docs/media/panel-row-highlight.gif)
+![Clicking a collision row highlights its tile in the game view](docs/media/panel-row-highlight.webp)
 <!-- Capture: panel open on the Collisions (or Incompletes) view with at least one row, the
 matching Highlight setting on. Click: a row. Length: 2-3 s. Crop: full client window, since the
 highlight is in the game view while the click is in the sidebar. Size: ~700px wide. -->
@@ -145,7 +145,7 @@ in the house, which adds **RFL: Team A**, **RFL: Team B** and **RFL: Unassign** 
 ones that would change something) to their player menu. The right-click entries need **Teams →
 Right-click team options** turned on (off by default); the panel's Teams view always works.
 
-![Assigning teams from the right-click menu](docs/media/teams-right-click.gif)
+![Assigning teams from the right-click menu](docs/media/teams-right-click.webp)
 <!-- Capture: in a house, another player nearby, nobody assigned yet. Click: right-click the
 player, hover Player options, click "RFL: Team A". Length: 2-4 s. Crop: game view only, menu
 included. Size: ~600px wide. -->
@@ -309,7 +309,7 @@ Open a recorded file at **[rfl.gg/replay](https://rfl.gg/replay)**.
 > A dev build of the viewer, for testing against replays made by a dev build of the plugin, is at
 > **<https://dev.rfl.gg/replay>**.
 
-![A replay playing back in the viewer](docs/media/replay-viewer-playback.gif)
+![A replay playing back in the viewer](docs/media/replay-viewer-playback.webp)
 <!-- Capture: a replay open and playing. Length: 4-6 s. Crop: the pitch/viewer area of the page.
 Size: full width. -->
 
