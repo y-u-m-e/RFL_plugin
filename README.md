@@ -8,7 +8,8 @@ refs do, and keeps a record of what it saw, entirely on your own computer.
 ![A refereed RFL play, with touching triangles highlighted](docs/media/hero.png)
 <!-- Capture: a game in progress inside the POH, two opposing-team players mid-collision with the
 handegg out, Show touching triangles on so the overlap is visible. Click: nothing, just get the
-moment. Crop: full client window (panel plus game view). Size: ~1280px wide. -->
+moment. Crop: game view only, framed on the two players with some pitch around them (no sidebar,
+no chat box). Size: ~1280px wide. -->
 
 ## What it does
 
@@ -65,11 +66,6 @@ four states. Crop: sidebar only, just the replay card. Size: ~360px wide. -->
 Click **Collisions** or **Incompletes** to show that session's list below the cards; click
 **Teams** for the Teams view instead. The clicked card stays highlighted to show which list is open.
 
-![Clicking the Collisions, Incompletes and Teams cards switches the list below them](docs/media/panel-view-switch.gif)
-<!-- Capture: panel open with at least one collision and one incomplete already logged. Click:
-Collisions, then Incompletes, then Teams. Length: 3-4 s. Crop: sidebar only (cards plus the list
-area). Size: ~360px wide. -->
-
 ### Clicking a row
 
 Click a row in the Collisions or Incompletes list to highlight the tile it happened on in the game
@@ -84,11 +80,6 @@ highlight is in the game view while the click is in the sidebar. Size: ~700px wi
 
 Each list (and the Teams view) has a Clear button behind an inline confirmation. Clearing only
 resets what the panel shows this session — **the saved files in `rfl/collisions` are kept.**
-
-![The inline confirmation before Clear removes anything](docs/media/panel-clear-confirm.png)
-<!-- Capture: a view with at least one row or one team assignment. Click: Clear once (not the
-confirm), so the inline question is showing. Crop: sidebar only, the Clear row and the question
-beneath it. Size: ~360px wide. -->
 
 ### Copy plugin history
 
@@ -122,19 +113,11 @@ character makes it fail to open. The panel says "Copied encrypted history (N vis
 - Nothing is sent anywhere: it only goes to your clipboard. Clearing the key copies plain
   text exactly as before.
 
-![Copy plugin history and its result line](docs/media/panel-copy-history.gif)
-<!-- Capture: at least one house visit logged today. Click: "Copy plugin history". Length: 2-3 s.
-Crop: sidebar only, the footer (button plus result line). Size: ~360px wide. -->
-
 ### The Record button
 
 Toggles the **Record replays** setting. Its label says what a click does, not what's happening now:
 "Start recording" when off, "Stop recording" (in red) when on. Recording itself only starts once
 you're inside a house.
-
-![The record button's two labels](docs/media/panel-record-button.png)
-<!-- Capture: two shots (or one composite), Record replays off then on. Crop: sidebar only, the
-record button row. Size: ~360px wide. -->
 
 ### Save last 3 min
 
@@ -154,11 +137,6 @@ line under it says how the save is going:
 - "Couldn't save clip: `<reason>`" if it failed (for example, a full disk).
 - Pressing the hotkey while nothing is recording shows a short notice instead.
 
-![Saving a replay buffer clip from the panel](docs/media/panel-save-clip.gif)
-<!-- Capture: Record replays on, recording in a house for at least 30 s, panel open. Click: "Save
-last 3 min", wait for "Saved clip ...", then click its Open folder. Length: 4-6 s. Crop: sidebar
-only, the footer (record button, Save last, result line). Size: ~360px wide. -->
-
 ## Teams
 
 Every league player should run the plugin and be assigned to a team before a game. Assign a
@@ -172,19 +150,10 @@ Right-click team options** turned on (off by default); the panel's Teams view al
 player, hover Player options, click "RFL: Team A". Length: 2-4 s. Crop: game view only, menu
 included. Size: ~600px wide. -->
 
-![Assigning a team from the panel's Teams view](docs/media/panel-team-assign.gif)
-<!-- Capture: panel open on the Teams view, at least one player present. Click: the A button, then
-B, then -, on the same row. Length: 3-4 s. Crop: sidebar only, the Teams view. Size: ~360px wide. -->
-
 Assignments **persist across restarts** and change only when you change them or click **Clear
 teams** — there's no per-game reset. While the panel's Teams view is open on screen, each
 assigned player's tile is tinted their team colour in the game view, display-only, like core's
 Player Indicators.
-
-![Team-coloured tiles under players while the Teams view is open](docs/media/team-tiles-overlay.gif)
-<!-- Capture: at least two players on different teams, Teams view open in the panel. Click: none;
-just show the tiles. Length: 2-3 s. Crop: game view, panel edge included to show the Teams view is
-open. Size: ~700px wide. -->
 
 **Only Team A against Team B ever counts.** Same-team pairs and anyone unassigned never trigger a
 collision, an incomplete, or the touching-triangle highlight — so with nobody assigned, nothing is
@@ -339,10 +308,6 @@ Open a recorded file at **[rfl.gg/replay](https://rfl.gg/replay)**.
 
 > A dev build of the viewer, for testing against replays made by a dev build of the plugin, is at
 > **<https://dev.rfl.gg/replay>**.
-
-![The replay viewer's file list](docs/media/replay-viewer-list.png)
-<!-- Capture: open rfl.gg/replay (or dev.rfl.gg/replay) with a replay loaded. Screenshot the
-browser window. Crop: browser viewport. Size: full width. -->
 
 ![A replay playing back in the viewer](docs/media/replay-viewer-playback.gif)
 <!-- Capture: a replay open and playing. Length: 4-6 s. Crop: the pitch/viewer area of the page.
