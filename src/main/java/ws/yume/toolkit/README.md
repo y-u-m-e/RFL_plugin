@@ -68,5 +68,5 @@ types use `SidebarWidgets`; `model` is self-contained apart from `ModelCapture` 
 
 ## Package name
 
-`ws.yume.toolkit` is reverse-domain for `yumekui.sh`, a domain the owner holds. Keep that name
+`ws.yume.toolkit` is reverse-domain for `yume.ws` (renamed from `sh.yumekui.toolkit` in 0.3.0). Keep that name
 when vendoring the package into other plugins so every copy stays the same toolkit.
