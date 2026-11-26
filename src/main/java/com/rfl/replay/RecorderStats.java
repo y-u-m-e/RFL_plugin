@@ -2,7 +2,7 @@ package com.rfl.replay;
 
 import com.rfl.replay.pitch.LocSkip;
 import com.rfl.replay.pitch.PitchCapture;
-import sh.yumekui.toolkit.model.RenderableModels;
+import ws.yume.toolkit.model.RenderableModels;
 
 import java.util.Arrays;
 

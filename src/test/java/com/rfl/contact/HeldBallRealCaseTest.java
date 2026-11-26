@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import sh.yumekui.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.geom.TriangleMesh;
 
 /**
  * {@link HeldBallFaces} on a real case: Receiver catching a handegg next to Defender, rebuilt from

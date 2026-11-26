@@ -1,6 +1,6 @@
 package com.rfl.replay;
 
-import sh.yumekui.toolkit.model.ModelCapture;
+import ws.yume.toolkit.model.ModelCapture;
 
 /**
  * A captured player model plus where its held ball's faces sit in it, for the {@code model} line's

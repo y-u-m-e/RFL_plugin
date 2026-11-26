@@ -536,15 +536,15 @@ the listing icon and plugin properties, and so on.
 | `com.rfl.replay` | Replay recording: `ReplayRecorder`, `ReplaySampler`, `ReplayLines`, `ReplayFileName`, `FrameReader`; replay buffer clips: `ReplayRing`, `ClipBuilder`, `ClipWriter`, `ClipFileName`, `ClipStatus` |
 | `com.rfl.replay.pitch` | The house/pitch capture that feeds replays: `PitchCapture`, `PitchScanner`, `PitchFloor`, `PitchObjects` |
 | `com.rfl.teams` | Team assignment: `Teams`, `TeamMenu` |
-| `sh.yumekui.toolkit.*` | Plugin-neutral pieces vendored into this plugin — see below |
+| `ws.yume.toolkit.*` | Plugin-neutral pieces vendored into this plugin — see below |
 
 ### The toolkit
 
-`sh.yumekui.toolkit` (under `src/main/java/sh/yumekui/toolkit`) is a set of small, RFL-agnostic pieces
+`ws.yume.toolkit` (under `src/main/java/ws/yume/toolkit`) is a set of small, RFL-agnostic pieces
 — serial queues, a gzip NDJSON writer, triangle-mesh intersection, Swing sidebar widgets, and more
 — pulled out so another RuneLite plugin can vendor the same code. It's plain source copied into
 this repository, not a published dependency (the Plugin Hub builds each plugin from its own repo
-and won't fetch one). See [`src/main/java/sh/yumekui/toolkit/README.md`](src/main/java/sh/yumekui/toolkit/README.md)
+and won't fetch one). See [`src/main/java/ws/yume/toolkit/README.md`](src/main/java/ws/yume/toolkit/README.md)
 for what's in it and how to copy it into another plugin.
 
 ### Plugin Hub compliance
@@ -590,7 +590,7 @@ when that player's bare model changed, in the same frame as `pm`, after the mode
 
 RFL Audit is licensed under the [BSD 2-Clause License](LICENSE).
 
-The client's colour palette (`sh.yumekui.toolkit.model.Palette`, used by the model capture that
+The client's colour palette (`ws.yume.toolkit.model.Palette`, used by the model capture that
 feeds replays) is an original implementation, written from public sources only: the packed 16-bit
 colour layout documented by RuneLite's BSD-licensed `net.runelite.api.JagexColor`, the standard
 HSL-to-RGB formula, and a brightness gamma that is the inverse of `JagexColor.rgbToHSL`. The file's

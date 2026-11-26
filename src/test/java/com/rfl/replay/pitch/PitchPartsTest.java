@@ -6,7 +6,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.rfl.replay.ReplaySampler;
-import sh.yumekui.toolkit.model.ModelCapture;
+import ws.yume.toolkit.model.ModelCapture;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

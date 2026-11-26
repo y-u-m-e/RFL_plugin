@@ -1,7 +1,7 @@
 package com.rfl.panel;
 
-import sh.yumekui.toolkit.clipboard.Clipboard;
-import sh.yumekui.toolkit.text.PlayerNames;
+import ws.yume.toolkit.clipboard.Clipboard;
+import ws.yume.toolkit.text.PlayerNames;
 import com.rfl.RflConfig;
 import com.rfl.log.CollisionLog;
 import com.rfl.log.PluginHistory;

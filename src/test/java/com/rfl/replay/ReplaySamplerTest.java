@@ -2,7 +2,7 @@ package com.rfl.replay;
 
 import com.rfl.replay.pitch.PitchFloor;
 import com.rfl.replay.pitch.PitchObjects;
-import sh.yumekui.toolkit.model.ModelCapture;
+import ws.yume.toolkit.model.ModelCapture;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;

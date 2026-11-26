@@ -1,7 +1,7 @@
 package com.rfl.replay;
 
 import com.rfl.contact.Collision;
-import sh.yumekui.toolkit.text.FileNameTemplate;
+import ws.yume.toolkit.text.FileNameTemplate;
 
 import java.time.Instant;
 import java.time.ZoneId;

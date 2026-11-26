@@ -2,9 +2,9 @@ package com.rfl.replay;
 
 import java.util.function.IntUnaryOperator;
 import net.runelite.api.TextureProvider;
-import sh.yumekui.toolkit.model.Palette;
-import sh.yumekui.toolkit.text.PlayerNames;
-import sh.yumekui.toolkit.io.GzipNdjsonWriter;
+import ws.yume.toolkit.model.Palette;
+import ws.yume.toolkit.text.PlayerNames;
+import ws.yume.toolkit.io.GzipNdjsonWriter;
 
 import com.rfl.RflConfig;
 import com.rfl.contact.BareBody;

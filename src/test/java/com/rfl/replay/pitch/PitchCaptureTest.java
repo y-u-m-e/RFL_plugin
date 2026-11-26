@@ -2,7 +2,7 @@ package com.rfl.replay.pitch;
 
 import com.rfl.replay.ReplaySampler;
 import com.rfl.replay.ReplayWarmUp;
-import sh.yumekui.toolkit.model.ModelCapture;
+import ws.yume.toolkit.model.ModelCapture;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

@@ -3,7 +3,7 @@ package com.rfl.log;
 import com.rfl.RflConfig;
 import com.rfl.contact.Collision;
 import com.rfl.incomplete.Incomplete;
-import sh.yumekui.toolkit.io.DailyJsonlAppender;
+import ws.yume.toolkit.io.DailyJsonlAppender;
 
 import java.nio.file.Path;
 import java.util.concurrent.ScheduledExecutorService;

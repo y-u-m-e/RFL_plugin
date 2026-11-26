@@ -1,6 +1,6 @@
 package com.rfl;
 
-import sh.yumekui.toolkit.text.PlayerNames;
+import ws.yume.toolkit.text.PlayerNames;
 import com.rfl.contact.BareBody;
 import com.rfl.contact.ContactDetector;
 import com.rfl.incomplete.IncompleteReporter;
@@ -15,9 +15,9 @@ import com.rfl.replay.ReplayLines;
 import com.rfl.replay.ReplayRecorder;
 import com.rfl.teams.TeamMenu;
 import com.rfl.teams.Teams;
-import sh.yumekui.toolkit.scene.PohDetector;
-import sh.yumekui.toolkit.scene.ScenePlane;
-import sh.yumekui.toolkit.scene.SceneStamps;
+import ws.yume.toolkit.scene.PohDetector;
+import ws.yume.toolkit.scene.ScenePlane;
+import ws.yume.toolkit.scene.SceneStamps;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;

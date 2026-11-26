@@ -4,7 +4,7 @@ import com.rfl.RflConfig;
 import com.rfl.contact.Collision;
 import com.rfl.log.PluginEntry;
 import com.rfl.teams.Teams;
-import sh.yumekui.toolkit.io.GzipNdjsonWriter;
+import ws.yume.toolkit.io.GzipNdjsonWriter;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

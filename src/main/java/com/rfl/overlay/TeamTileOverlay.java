@@ -1,7 +1,7 @@
 package com.rfl.overlay;
 
-import sh.yumekui.toolkit.overlay.TilePainter;
-import sh.yumekui.toolkit.text.PlayerNames;
+import ws.yume.toolkit.overlay.TilePainter;
+import ws.yume.toolkit.text.PlayerNames;
 import com.rfl.panel.RflPanel;
 import com.rfl.teams.Teams;
 

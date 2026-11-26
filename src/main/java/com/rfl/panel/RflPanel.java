@@ -1,13 +1,13 @@
 package com.rfl.panel;
 
-import sh.yumekui.toolkit.swing.CopyFeedbackLabel;
-import sh.yumekui.toolkit.swing.SelectableCard;
-import sh.yumekui.toolkit.text.Html;
+import ws.yume.toolkit.swing.CopyFeedbackLabel;
+import ws.yume.toolkit.swing.SelectableCard;
+import ws.yume.toolkit.text.Html;
 import com.rfl.overlay.EventTileOverlay;
 import com.rfl.overlay.TeamTileOverlay;
 import com.rfl.teams.Teams;
-import sh.yumekui.toolkit.swing.SidebarWidgets;
-import sh.yumekui.toolkit.swing.ToggleSelection;
+import ws.yume.toolkit.swing.SidebarWidgets;
+import ws.yume.toolkit.swing.ToggleSelection;
 
 import java.awt.BorderLayout;
 import java.awt.Color;

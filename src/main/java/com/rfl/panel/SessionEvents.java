@@ -3,7 +3,7 @@ package com.rfl.panel;
 import com.rfl.contact.Collision;
 import com.rfl.incomplete.Incomplete;
 import com.rfl.log.CollisionLog;
-import sh.yumekui.toolkit.scene.SceneStamps;
+import ws.yume.toolkit.scene.SceneStamps;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;

@@ -3,8 +3,8 @@ package com.rfl.panel;
 import com.rfl.Fixtures;
 import com.rfl.contact.Collision;
 import com.rfl.overlay.EventTileOverlay;
-import sh.yumekui.toolkit.scene.SceneStamps;
-import sh.yumekui.toolkit.swing.ToggleSelection;
+import ws.yume.toolkit.scene.SceneStamps;
+import ws.yume.toolkit.swing.ToggleSelection;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

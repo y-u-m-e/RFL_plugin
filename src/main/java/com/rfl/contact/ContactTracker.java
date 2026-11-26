@@ -2,7 +2,7 @@ package com.rfl.contact;
 
 import com.rfl.incomplete.IncompleteDetector;
 import com.rfl.teams.Teams;
-import sh.yumekui.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.geom.TriangleMesh;
 
 import java.util.ArrayList;
 import java.util.Collections;

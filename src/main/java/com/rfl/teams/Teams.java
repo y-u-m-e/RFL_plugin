@@ -1,6 +1,6 @@
 package com.rfl.teams;
 
-import sh.yumekui.toolkit.text.PlayerNames;
+import ws.yume.toolkit.text.PlayerNames;
 import com.rfl.RflConfig;
 
 import java.awt.Color;

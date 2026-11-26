@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import net.runelite.api.gameval.ItemID;
 import org.junit.Test;
-import sh.yumekui.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.geom.TriangleMesh;
 
 /** A gnomeball in the weapon slot makes its holder the ball holder, exactly like a handegg. */
 public class BallHolderTest

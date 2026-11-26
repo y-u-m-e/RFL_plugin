@@ -11,7 +11,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.rfl.Fixtures;
 import com.rfl.RflConfig;
-import sh.yumekui.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.geom.TriangleMesh;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;

@@ -1,7 +1,7 @@
 package com.rfl.replay;
 
 import com.rfl.replay.pitch.LocPass;
-import sh.yumekui.toolkit.model.ModelCapture;
+import ws.yume.toolkit.model.ModelCapture;
 
 import java.util.ArrayList;
 import java.util.Arrays;

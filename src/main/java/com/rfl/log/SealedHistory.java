@@ -1,6 +1,6 @@
 package com.rfl.log;
 
-import sh.yumekui.toolkit.crypto.SealedBox;
+import ws.yume.toolkit.crypto.SealedBox;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;

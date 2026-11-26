@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import net.runelite.api.gameval.ItemID;
 import org.junit.Test;
-import sh.yumekui.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.geom.TriangleMesh;
 
 /** {@link HeldBallFaces}: the held ball's faces are found as one block and never count as contact. */
 public class HeldBallFacesTest

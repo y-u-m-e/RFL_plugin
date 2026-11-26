@@ -1,6 +1,6 @@
 package com.rfl.contact;
 
-import sh.yumekui.toolkit.model.VertexSnapshot;
+import ws.yume.toolkit.model.VertexSnapshot;
 
 import com.google.gson.Gson;
 import java.io.InputStream;

@@ -1,6 +1,6 @@
 package com.rfl.panel;
 
-import sh.yumekui.toolkit.swing.SidebarWidgets;
+import ws.yume.toolkit.swing.SidebarWidgets;
 
 import java.awt.BorderLayout;
 import java.awt.Color;

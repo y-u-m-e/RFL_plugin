@@ -5,8 +5,8 @@ import com.rfl.contact.ContactDetector;
 import com.rfl.contact.ContactTracker;
 import com.rfl.replay.PlayerState;
 import com.rfl.replay.ReplaySampler;
-import sh.yumekui.toolkit.geom.TriangleMesh;
-import sh.yumekui.toolkit.model.ModelCapture;
+import ws.yume.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.model.ModelCapture;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

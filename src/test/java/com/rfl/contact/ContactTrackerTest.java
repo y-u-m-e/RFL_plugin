@@ -6,7 +6,7 @@ import static com.rfl.Fixtures.THROUGH_2;
 import static com.rfl.Fixtures.THROUGH;
 import static com.rfl.Fixtures.NEAR;
 import static com.rfl.Fixtures.FAR;
-import sh.yumekui.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.geom.TriangleMesh;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

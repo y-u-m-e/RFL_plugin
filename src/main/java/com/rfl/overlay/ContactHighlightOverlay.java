@@ -1,6 +1,6 @@
 package com.rfl.overlay;
 
-import sh.yumekui.toolkit.overlay.TilePainter;
+import ws.yume.toolkit.overlay.TilePainter;
 import com.rfl.RflConfig;
 import com.rfl.contact.ContactHighlights;
 

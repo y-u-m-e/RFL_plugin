@@ -1,8 +1,8 @@
 package com.rfl.replay;
 
-import sh.yumekui.toolkit.io.WriterState;
+import ws.yume.toolkit.io.WriterState;
 import com.rfl.Fixtures;
-import sh.yumekui.toolkit.io.GzipNdjsonWriter;
+import ws.yume.toolkit.io.GzipNdjsonWriter;
 
 import com.rfl.RflConfig;
 import com.rfl.contact.Collision;
@@ -10,7 +10,7 @@ import com.rfl.incomplete.Incomplete;
 import com.rfl.log.CollisionLog;
 import com.rfl.log.PluginEntry;
 import com.rfl.teams.Teams;
-import sh.yumekui.toolkit.model.ModelCapture;
+import ws.yume.toolkit.model.ModelCapture;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

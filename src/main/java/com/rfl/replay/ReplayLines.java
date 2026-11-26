@@ -1,7 +1,7 @@
 package com.rfl.replay;
 
-import sh.yumekui.toolkit.model.ModelCapture;
-import sh.yumekui.toolkit.text.PlayerNames;
+import ws.yume.toolkit.model.ModelCapture;
+import ws.yume.toolkit.text.PlayerNames;
 import com.rfl.incomplete.Incomplete;
 import com.rfl.log.PluginEntry;
 import com.rfl.teams.Teams;

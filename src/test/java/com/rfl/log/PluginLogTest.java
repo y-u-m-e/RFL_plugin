@@ -1,7 +1,7 @@
 package com.rfl.log;
 
 import com.rfl.Fixtures;
-import sh.yumekui.toolkit.io.DailyJsonlAppender;
+import ws.yume.toolkit.io.DailyJsonlAppender;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

@@ -5,7 +5,7 @@ import com.rfl.RflConfig;
 import com.rfl.contact.ContactDetector;
 import com.rfl.contact.ContactHighlights;
 import com.rfl.log.CollisionLog;
-import sh.yumekui.toolkit.scene.ScenePlane;
+import ws.yume.toolkit.scene.ScenePlane;
 
 import java.util.HashMap;
 import java.util.List;

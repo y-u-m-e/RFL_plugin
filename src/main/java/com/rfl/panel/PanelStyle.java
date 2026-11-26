@@ -2,7 +2,7 @@ package com.rfl.panel;
 
 import java.awt.Color;
 import net.runelite.client.ui.ColorScheme;
-import sh.yumekui.toolkit.swing.SidebarWidgets;
+import ws.yume.toolkit.swing.SidebarWidgets;
 
 /** The RFL panel's colours, tints and HTML wrapping, shared by its cards and lists. */
 final class PanelStyle

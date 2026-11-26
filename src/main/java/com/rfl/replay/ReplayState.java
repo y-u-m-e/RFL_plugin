@@ -1,6 +1,6 @@
 package com.rfl.replay;
 
-import sh.yumekui.toolkit.io.WriterState;
+import ws.yume.toolkit.io.WriterState;
 
 /**
  * Where the replay file is in its life, for the panel's status strip: nothing open, being

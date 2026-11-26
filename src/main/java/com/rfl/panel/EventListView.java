@@ -1,9 +1,9 @@
 package com.rfl.panel;
 
-import sh.yumekui.toolkit.text.Html;
-import sh.yumekui.toolkit.swing.ConfirmHeader;
-import sh.yumekui.toolkit.swing.SidebarWidgets;
-import sh.yumekui.toolkit.swing.ToggleSelection;
+import ws.yume.toolkit.text.Html;
+import ws.yume.toolkit.swing.ConfirmHeader;
+import ws.yume.toolkit.swing.SidebarWidgets;
+import ws.yume.toolkit.swing.ToggleSelection;
 
 import java.awt.Color;
 import java.awt.event.MouseAdapter;

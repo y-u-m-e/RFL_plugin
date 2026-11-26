@@ -6,8 +6,8 @@ import com.rfl.replay.pitch.LocModel;
 import com.rfl.replay.pitch.PitchCapture;
 import com.rfl.replay.pitch.PitchFloor;
 import com.rfl.replay.pitch.PitchObjects;
-import sh.yumekui.toolkit.model.ModelCapture;
-import sh.yumekui.toolkit.model.Palette;
+import ws.yume.toolkit.model.ModelCapture;
+import ws.yume.toolkit.model.Palette;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

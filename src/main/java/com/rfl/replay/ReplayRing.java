@@ -1,7 +1,7 @@
 package com.rfl.replay;
 
 import com.rfl.contact.Collision;
-import sh.yumekui.toolkit.io.GzipNdjsonWriter;
+import ws.yume.toolkit.io.GzipNdjsonWriter;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;

@@ -1,6 +1,6 @@
 package com.rfl.log;
 
-import sh.yumekui.toolkit.text.PlayerNames;
+import ws.yume.toolkit.text.PlayerNames;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 

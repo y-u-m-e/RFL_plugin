@@ -1,14 +1,14 @@
 package com.rfl.panel;
 
-import sh.yumekui.toolkit.text.PlayerNames;
-import sh.yumekui.toolkit.text.Html;
+import ws.yume.toolkit.text.PlayerNames;
+import ws.yume.toolkit.text.Html;
 import com.rfl.contact.Collision;
 import com.rfl.incomplete.Incomplete;
 import com.rfl.replay.ClipStatus;
 import com.rfl.replay.ReplayState;
 import com.rfl.replay.ReplayStatus;
 import com.rfl.teams.Teams;
-import sh.yumekui.toolkit.scene.SceneStamps;
+import ws.yume.toolkit.scene.SceneStamps;
 
 import java.time.Instant;
 import java.time.ZoneId;

@@ -1,7 +1,7 @@
 package com.rfl.overlay;
 
-import sh.yumekui.toolkit.overlay.TilePainter;
-import sh.yumekui.toolkit.scene.SceneStamps;
+import ws.yume.toolkit.overlay.TilePainter;
+import ws.yume.toolkit.scene.SceneStamps;
 
 import java.awt.BasicStroke;
 import java.awt.Color;

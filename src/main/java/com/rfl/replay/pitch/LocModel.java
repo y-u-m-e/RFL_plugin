@@ -1,6 +1,6 @@
 package com.rfl.replay.pitch;
 
-import sh.yumekui.toolkit.model.ModelCapture;
+import ws.yume.toolkit.model.ModelCapture;
 
 /** What reading one loc's model yielded: geometry, or the reason there is none. */
 public final class LocModel

@@ -1,6 +1,6 @@
 package com.rfl.log;
 
-import sh.yumekui.toolkit.io.DailyJsonlAppender;
+import ws.yume.toolkit.io.DailyJsonlAppender;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

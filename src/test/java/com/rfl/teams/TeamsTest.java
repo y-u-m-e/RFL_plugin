@@ -2,10 +2,10 @@ package com.rfl.teams;
 
 import com.rfl.Fixtures;
 import com.rfl.contact.TileRef;
-import sh.yumekui.toolkit.text.PlayerNames;
+import ws.yume.toolkit.text.PlayerNames;
 import com.rfl.contact.ContactTracker;
 import com.rfl.panel.PanelModel;
-import sh.yumekui.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.geom.TriangleMesh;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

@@ -3,7 +3,7 @@ package com.rfl.panel;
 import com.rfl.Fixtures;
 import com.rfl.contact.Collision;
 import com.rfl.incomplete.Incomplete;
-import sh.yumekui.toolkit.scene.SceneStamps;
+import ws.yume.toolkit.scene.SceneStamps;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;

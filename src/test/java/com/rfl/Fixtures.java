@@ -4,7 +4,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.rfl.contact.Collision;
 import com.rfl.incomplete.Incomplete;
-import sh.yumekui.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.geom.TriangleMesh;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;

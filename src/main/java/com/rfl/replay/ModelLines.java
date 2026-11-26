@@ -1,6 +1,6 @@
 package com.rfl.replay;
 
-import sh.yumekui.toolkit.model.ModelCapture;
+import ws.yume.toolkit.model.ModelCapture;
 
 import java.util.ArrayList;
 import java.util.Arrays;

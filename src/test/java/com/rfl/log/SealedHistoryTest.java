@@ -1,6 +1,6 @@
 package com.rfl.log;
 
-import sh.yumekui.toolkit.crypto.SealedBox;
+import ws.yume.toolkit.crypto.SealedBox;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

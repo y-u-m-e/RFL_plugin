@@ -9,7 +9,7 @@ import com.rfl.Handegg;
 import com.rfl.contact.ContactDetector;
 import com.rfl.contact.ContactTracker;
 import com.rfl.teams.Teams;
-import sh.yumekui.toolkit.geom.TriangleMesh;
+import ws.yume.toolkit.geom.TriangleMesh;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
